@@ -1,0 +1,31 @@
+package com.temotskipa.vulkanimprovement.mixin.client;
+
+import com.temotskipa.vulkanimprovement.client.vulkan.SectionMeshletStore;
+import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
+import net.minecraft.client.renderer.chunk.CompiledSectionMesh;
+import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
+import org.jspecify.annotations.Nullable;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+
+import java.nio.ByteBuffer;
+
+@Mixin(SectionRenderDispatcher.RenderSection.class)
+public abstract class SectionRenderDispatcherRenderSectionMixin {
+    @Shadow
+    private long sectionNode;
+    
+    @Inject(method = "addSectionBuffersToUberBuffer", at = @At("HEAD"))
+    private void vim$captureSectionMeshletInput(
+            ChunkSectionLayer layer,
+            CompiledSectionMesh key,
+            @Nullable ByteBuffer vertexBuffer,
+            @Nullable ByteBuffer indexBuffer,
+            CallbackInfoReturnable<Boolean> cir
+    ) {
+        SectionMeshletStore.capture(this.sectionNode, key, layer, vertexBuffer, indexBuffer);
+    }
+}

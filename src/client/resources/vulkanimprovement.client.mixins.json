@@ -1,0 +1,22 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.temotskipa.vulkanimprovement.mixin.client",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "ChunkSectionsToRenderMixin",
+    "CompiledSectionMeshMixin",
+    "SectionRenderDispatcherRenderSectionMixin",
+    "VulkanBackendMixin",
+    "VulkanDeviceMixin",
+    "VulkanGpuSurfaceMixin",
+    "VulkanInstanceMixin",
+    "VulkanRenderPassMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "vulkanimprovement",
+  "version": "${version}",
+  "name": "Vulkan Improvement Mod",
+  "description": "",
+  "authors": [],
+  "contact": {},
+  "license": "unlicense",
+  "icon": "assets/vulkanimprovement/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "com.temotskipa.vulkanimprovement.client.VulkanImprovementClient"
+    ],
+    "main": [
+      "com.temotskipa.vulkanimprovement.VulkanImprovement"
+    ]
+  },
+  "mixins": [
+    "vulkanimprovement.mixins.json",
+    {
+      "config": "vulkanimprovement.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric-api": "*",
+    "minecraft": [
+      "${minecraft_version}",
+      "26.2-alpha.6"
+    ]
+  }
+}
