@@ -11,29 +11,30 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public final class FragmentShadingRateController {
     private static final FragmentShadingRateController INSTANCE = new FragmentShadingRateController();
-    
+
     private final AtomicLong terrainCommands = new AtomicLong();
     private volatile boolean available;
     private volatile boolean disabled;
     private volatile int width = 1;
     private volatile int height = 1;
-    
+
     private FragmentShadingRateController() {
     }
-    
+
     public static FragmentShadingRateController get() {
         return INSTANCE;
     }
-    
+
     public void configure(VulkanImprovementCapabilities.Snapshot capabilities) {
         this.available = capabilities.fragmentShadingRateExtension();
-        this.disabled = TerrainRendererDebugConfig.DISABLE_FRAGMENT_SHADING_RATE;
+        this.disabled = !TerrainRendererDebugConfig.fragmentShadingRateEnabled();
         int requestedRate = TerrainRendererDebugConfig.TERRAIN_FRAGMENT_SHADING_RATE;
         this.width = Math.clamp(requestedRate, 1, capabilities.maxFragmentWidth());
         this.height = Math.clamp(requestedRate, 1, capabilities.maxFragmentHeight());
     }
-    
+
     public void applyToTerrain(VkCommandBuffer commandBuffer) {
+        this.disabled = !TerrainRendererDebugConfig.fragmentShadingRateEnabled();
         if (!this.available || this.disabled || !TerrainRenderContext.isTerrainPass()) {
             return;
         }
@@ -47,7 +48,7 @@ public final class FragmentShadingRateController {
             this.terrainCommands.incrementAndGet();
         }
     }
-    
+
     public Map<String, Object> asMap() {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("available", this.available);

@@ -26,6 +26,7 @@ final class TerrainGpuBuffer implements Destroyable, AutoCloseable {
     private final long deviceAddress;
     private final long mappedAddress;
     private boolean closed;
+    private boolean destroyed;
     
     TerrainGpuBuffer(VulkanDevice device, String label, long size, int usage, boolean hostVisible) {
         this.device = device;
@@ -47,10 +48,7 @@ final class TerrainGpuBuffer implements Destroyable, AutoCloseable {
             LongBuffer bufferPtr = stack.callocLong(1);
             PointerBuffer allocationPtr = stack.callocPointer(1);
             VmaAllocationInfo allocationResult = VmaAllocationInfo.calloc(stack);
-            VulkanUtils.crashIfFailure(
-                    Vma.vmaCreateBuffer(device.vma(), bufferInfo, allocationInfo, bufferPtr, allocationPtr, allocationResult),
-                    "Failed to allocate Vulkan Improvement terrain buffer " + label
-            );
+            VulkanUtils.crashIfFailure(Vma.vmaCreateBuffer(device.vma(), bufferInfo, allocationInfo, bufferPtr, allocationPtr, allocationResult), "Failed to allocate Vulkan Improvement terrain buffer " + label);
             this.vkBuffer = bufferPtr.get(0);
             this.allocation = allocationPtr.get(0);
             this.mappedAddress = allocationResult.pMappedData();
@@ -67,6 +65,22 @@ final class TerrainGpuBuffer implements Destroyable, AutoCloseable {
     
     long vkBuffer() {
         return this.vkBuffer;
+    }
+    
+    String label() {
+        return this.label;
+    }
+    
+    String vkBufferHex() {
+        return "0x" + Long.toUnsignedString(this.vkBuffer, 16);
+    }
+    
+    boolean closed() {
+        return this.closed;
+    }
+    
+    boolean destroyed() {
+        return this.destroyed;
     }
     
     long size() {
@@ -96,7 +110,7 @@ final class TerrainGpuBuffer implements Destroyable, AutoCloseable {
             Vma.vmaFlushAllocation(this.device.vma(), this.allocation, 0L, this.size);
         }
     }
-
+    
     void invalidate() {
         if (this.mappedAddress != 0L) {
             Vma.vmaInvalidateAllocation(this.device.vma(), this.allocation, 0L, this.size);
@@ -104,15 +118,23 @@ final class TerrainGpuBuffer implements Destroyable, AutoCloseable {
     }
     
     @Override
-    public void close() {
+    public synchronized void close() {
         if (!this.closed) {
             this.closed = true;
             this.device.createCommandEncoder().queueForDestroy(this);
         }
     }
     
+    synchronized void destroyNow() {
+        this.closed = true;
+        destroy();
+    }
+    
     @Override
-    public void destroy() {
-        Vma.vmaDestroyBuffer(this.device.vma(), this.vkBuffer, this.allocation);
+    public synchronized void destroy() {
+        if (!this.destroyed) {
+            this.destroyed = true;
+            Vma.vmaDestroyBuffer(this.device.vma(), this.vkBuffer, this.allocation);
+        }
     }
 }

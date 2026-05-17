@@ -1,3 +1,7 @@
+import groovy.json.JsonSlurper
+
+import java.util.concurrent.TimeUnit
+
 plugins {
     id 'net.fabricmc.fabric-loom' version '1.17.0-alpha.8'
     id 'maven-publish'
@@ -38,6 +42,13 @@ dependencies {
     implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 }
 
+sourceSets {
+    test {
+        compileClasspath += sourceSets.client.output
+        runtimeClasspath += sourceSets.client.output
+    }
+}
+
 processResources {
     inputs.property "version", project.version
     inputs.property "minecraft_version", project.minecraft_version
@@ -49,6 +60,520 @@ processResources {
                 "minecraft_version": project.minecraft_version,
                 "loader_version": project.loader_version
     }
+}
+
+def requiredRepoDocs = ["AGENTS.md",
+                        "ARCHITECTURE.md",
+                        "docs/index.md",
+                        "docs/PLANS.md",
+                        "docs/QUALITY_SCORE.md",
+                        "docs/RELIABILITY.md",
+                        "docs/SECURITY.md",
+                        "docs/design-docs/index.md",
+                        "docs/design-docs/core-beliefs.md",
+                        "docs/exec-plans/index.md",
+                        "docs/exec-plans/active/README.md",
+                        "docs/exec-plans/completed/README.md",
+                        "docs/exec-plans/tech-debt-tracker.md",
+                        "docs/generated/README.md",
+                        "docs/product-specs/index.md",
+                        "docs/references/harness-engineering.md"]
+
+tasks.register("checkRepoDocs") {
+    group = "verification"
+    description = "Validates the repository knowledge map and local documentation links."
+
+    inputs.files(requiredRepoDocs.collect { layout.projectDirectory.file(it) })
+    inputs.files(fileTree(dir: "docs", include: "**/*.md"))
+
+    doLast {
+        def missingDocs = requiredRepoDocs.findAll { !layout.projectDirectory.file(it).asFile.isFile() }
+        if (!missingDocs.isEmpty()) {
+            throw new GradleException("Missing required repository docs: ${missingDocs.join(', ')}")
+        }
+
+        def agentLines = layout.projectDirectory.file("AGENTS.md").asFile.readLines("UTF-8")
+        if (agentLines.size() > 140) {
+            throw new GradleException("AGENTS.md should stay concise; found ${agentLines.size()} lines, maximum is 140.")
+        }
+
+        def markdownFiles = ([layout.projectDirectory.file("AGENTS.md").asFile,
+                              layout.projectDirectory.file("ARCHITECTURE.md").asFile] + fileTree(dir: "docs", include: "**/*.md").files).unique()
+        def headingFailures = []
+        def brokenLinks = []
+        def linkPattern = ~/\[[^]]+]\(([^)]+)\)/
+
+        markdownFiles.each { markdownFile ->
+            def lines = markdownFile.readLines("UTF-8")
+            def firstContentLine = lines.find { !it.trim().isEmpty() }
+            if (firstContentLine == null || !firstContentLine.startsWith("# ")) {
+                headingFailures.add(project.relativePath(markdownFile))
+            }
+
+            lines.each { line ->
+                def matcher = line =~ linkPattern
+                matcher.each { match ->
+                    def target = match[1]
+                    def externalLink = target.startsWith("http://") || target.startsWith("https://") || target.startsWith("mailto:") || target.startsWith("#")
+                    if (!externalLink) {
+                        def pathOnly = target.split("#", 2)[0]
+                        if (!pathOnly.isEmpty()) {
+                            def resolvedTarget = markdownFile.parentFile.toPath().resolve(pathOnly).normalize().toFile()
+                            if (!resolvedTarget.exists()) {
+                                brokenLinks.add("${project.relativePath(markdownFile)} -> ${target}")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!headingFailures.isEmpty()) {
+            throw new GradleException("Markdown files must start with a level-one heading: ${headingFailures.join(', ')}")
+        }
+
+        if (!brokenLinks.isEmpty()) {
+            throw new GradleException("Broken local documentation links: ${brokenLinks.join(', ')}")
+        }
+    }
+}
+
+def clientMixinConfig = layout.projectDirectory.file("src/client/resources/vulkanimprovement.client.mixins.json")
+def clientMixinSourceDir = layout.projectDirectory.dir("src/client/java/com/temotskipa/vulkanimprovement/mixin/client")
+def vulkanSourceDir = layout.projectDirectory.dir("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan")
+def terrainShaderSourceDir = layout.projectDirectory.dir("src/client/resources/assets/vulkanimprovement/shaders/terrain")
+def terrainGpuLayoutSource = layout.projectDirectory.file("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/TerrainGpuLayout.java")
+def requireShaderValidator = providers.gradleProperty("vim.requireShaderValidator")
+        .map { it.toBoolean() }
+        .orElse(false)
+
+tasks.register("checkClientMixinConfig") {
+    group = "verification"
+    description = "Validates that client mixin config entries match client mixin source files."
+
+    inputs.file(clientMixinConfig)
+    inputs.files(fileTree(dir: clientMixinSourceDir, include: "*.java"))
+
+    doLast {
+        def configFile = clientMixinConfig.asFile
+        def sourceDir = clientMixinSourceDir.asFile
+        if (!configFile.isFile()) {
+            throw new GradleException("Missing client mixin config: ${project.relativePath(configFile)}")
+        }
+        if (!sourceDir.isDirectory()) {
+            throw new GradleException("Missing client mixin source directory: ${project.relativePath(sourceDir)}")
+        }
+
+        def config = new JsonSlurper().parse(configFile)
+        def mixinPackage = config.package as String
+        if (!mixinPackage) {
+            throw new GradleException("Client mixin config must declare a package.")
+        }
+
+        def listedMixins = (config.client ?: []).collect { it.toString() }
+        def duplicateMixins = listedMixins.groupBy { it }.findAll { it.value.size() > 1 }.keySet().sort()
+        def sourceFiles = fileTree(dir: sourceDir, include: "*.java").files
+        def sourceBySimpleName = sourceFiles.collectEntries { sourceFile -> [(sourceFile.name.replaceFirst(/\.java$/, "")): sourceFile]
+        }
+        def expectedMixins = sourceBySimpleName.findAll { simpleName, sourceFile -> simpleName.endsWith("Mixin") || sourceFile.getText("UTF-8").contains("@Mixin")
+        }.keySet().sort()
+
+        def missingSources = listedMixins.findAll { !sourceBySimpleName.containsKey(it) }.sort()
+        def unlistedSources = expectedMixins.findAll { !listedMixins.contains(it) }.sort()
+        def listedWithoutMixinAnnotation = listedMixins.findAll { simpleName ->
+            def sourceFile = sourceBySimpleName[simpleName]
+            sourceFile != null && !sourceFile.getText("UTF-8").contains("@Mixin")
+        }.sort()
+        def packageFailures = listedMixins.findAll { simpleName ->
+            def sourceFile = sourceBySimpleName[simpleName]
+            sourceFile != null && !sourceFile.getText("UTF-8").contains("package ${mixinPackage};")
+        }.sort()
+
+        def failures = []
+        if (!duplicateMixins.isEmpty()) {
+            failures.add("duplicate entries: ${duplicateMixins.join(', ')}")
+        }
+        if (!missingSources.isEmpty()) {
+            failures.add("listed mixins without source files: ${missingSources.join(', ')}")
+        }
+        if (!unlistedSources.isEmpty()) {
+            failures.add("mixin source files not listed in config: ${unlistedSources.join(', ')}")
+        }
+        if (!listedWithoutMixinAnnotation.isEmpty()) {
+            failures.add("listed sources without @Mixin annotation: ${listedWithoutMixinAnnotation.join(', ')}")
+        }
+        if (!packageFailures.isEmpty()) {
+            failures.add("listed sources outside configured package ${mixinPackage}: ${packageFailures.join(', ')}")
+        }
+        if (!failures.isEmpty()) {
+            throw new GradleException("Client mixin config mismatch: ${failures.join('; ')}")
+        }
+    }
+}
+
+tasks.register("checkVulkanPackageBoundaries") {
+    group = "verification"
+    description = "Validates renderer package dependency boundaries."
+
+    inputs.files(fileTree(dir: vulkanSourceDir, include: "**/*.java"))
+
+    doLast {
+        def forbiddenReferences = []
+        fileTree(dir: vulkanSourceDir, include: "**/*.java").files.each { sourceFile ->
+            sourceFile.readLines("UTF-8").eachWithIndex { line, index ->
+                def importsMixinPackage = line ==~ /\s*import\s+com\.temotskipa\.vulkanimprovement\.mixin\.client(\..*)?;.*/
+                def referencesMixinPackage = line.contains("com.temotskipa.vulkanimprovement.mixin.client")
+                if (importsMixinPackage || referencesMixinPackage) {
+                    forbiddenReferences.add("${project.relativePath(sourceFile)}:${index + 1}")
+                }
+            }
+        }
+
+        if (!forbiddenReferences.isEmpty()) {
+            throw new GradleException("client.vulkan must not depend on mixin.client: ${forbiddenReferences.join(', ')}")
+        }
+    }
+}
+
+tasks.register("checkTerrainShaders") {
+    group = "verification"
+    description = "Validates terrain GLSL shaders with glslangValidator when available."
+
+    def shaderFiles = fileTree(dir: terrainShaderSourceDir, include: "*.glsl")
+    inputs.files(shaderFiles)
+    inputs.property("requireShaderValidator", requireShaderValidator)
+    outputs.dir(layout.buildDirectory.dir("validated-shaders/terrain"))
+
+    doLast {
+        def required = requireShaderValidator.get()
+        def candidates = []
+        def vulkanSdk = System.getenv("VULKAN_SDK")
+        if (vulkanSdk != null && !vulkanSdk.isBlank()) {
+            candidates.add(new File(vulkanSdk, "Bin/glslangValidator.exe").absolutePath)
+            candidates.add(new File(vulkanSdk, "bin/glslangValidator").absolutePath)
+        }
+        candidates.add("glslangValidator")
+        candidates.add("glslangValidator.exe")
+
+        def validator = candidates.find { candidate ->
+            try {
+                def process = new ProcessBuilder(candidate, "--version")
+                        .redirectErrorStream(true)
+                        .start()
+                process.waitFor(5, TimeUnit.SECONDS) && process.exitValue() == 0
+            } catch (IOException ignored) {
+                false
+            }
+        }
+
+        if (validator == null) {
+            def message = "glslangValidator not found; skipping terrain shader validation. Use -Pvim.requireShaderValidator=true to require it."
+            if (required) {
+                throw new GradleException(message)
+            }
+            logger.lifecycle(message)
+            return
+        }
+
+        def outputDir = layout.buildDirectory.dir("validated-shaders/terrain").get().asFile
+        outputDir.mkdirs()
+        shaderFiles.files.sort { it.name }.each { shaderFile ->
+            def stage = shaderFile.name.endsWith(".task.glsl") ? "task" : shaderFile.name.endsWith(".mesh.glsl") ? "mesh" : shaderFile.name.endsWith(".frag.glsl") ? "frag" : shaderFile.name.endsWith(".comp.glsl") ? "comp" : null
+            if (stage == null) {
+                throw new GradleException("Unknown terrain shader stage for ${project.relativePath(shaderFile)}")
+            }
+            def outputFile = new File(outputDir, shaderFile.name + ".spv")
+            def process = new ProcessBuilder(validator as String,
+                    "-V",
+                    "--target-env",
+                    "vulkan1.4",
+                    "-S",
+                    stage,
+                    shaderFile.absolutePath,
+                    "-o",
+                    outputFile.absolutePath).redirectErrorStream(true).start()
+            def output = process.inputStream.getText("UTF-8")
+            process.waitFor()
+            if (process.exitValue() != 0) {
+                throw new GradleException("Terrain shader validation failed for ${project.relativePath(shaderFile)}:\n${output}")
+            }
+        }
+    }
+}
+
+tasks.register("checkTerrainLayoutManifest") {
+    group = "verification"
+    description = "Validates that terrain CPU layout constants match terrain shader layout assumptions."
+
+    def shaderFiles = fileTree(dir: terrainShaderSourceDir, include: "*.glsl")
+    inputs.file(terrainGpuLayoutSource)
+    inputs.files(shaderFiles)
+
+    doLast {
+        def layoutSource = terrainGpuLayoutSource.asFile.getText("UTF-8")
+        def constants = [:]
+        def matcher = layoutSource =~ /static final int\s+([A-Z0-9_]+)\s*=\s*(Integer\.BYTES|\d+);/
+        matcher.each { match -> constants[match[1]] = match[2] == "Integer.BYTES" ? Integer.BYTES : match[2].toInteger()
+        }
+
+        def requiredConstants = ["SECTION_METADATA_STRIDE",
+                                 "MESHLET_HEADER_STRIDE",
+                                 "VISIBLE_MESHLET_RECORD_STRIDE",
+                                 "TERRAIN_WORK_QUEUE_COUNTER_BYTES",
+                                 "TERRAIN_WORK_QUEUE_RECORD_STRIDE",
+                                 "TERRAIN_MESH_TASK_COMMAND_STRIDE",
+                                 "TERRAIN_MESH_TASK_COMMAND_CAPACITY",
+                                 "TERRAIN_MESH_TASK_COMMAND_PUSH_CONSTANT_BYTES",
+                                 "MATERIAL_RECORD_STRIDE",
+                                 "MATERIAL_TABLE_CAPACITY",
+                                 "TERRAIN_PUSH_CONSTANT_BYTES",
+                                 "TARGET_VERTICES_PER_MESHLET",
+                                 "TARGET_TRIANGLES_PER_INDEXED_MESHLET",
+                                 "MAX_MESH_OUTPUT_VERTICES",
+                                 "MAX_MESH_OUTPUT_PRIMITIVES",
+                                 "BLOCK_VERTEX_STRIDE",
+                                 "INDEXED_TRIANGLES_FLAG",
+                                 "NORMALIZED_INDEX_STRIDE"]
+        def missingConstants = requiredConstants.findAll { !constants.containsKey(it) }
+        if (!missingConstants.isEmpty()) {
+            throw new GradleException("Terrain layout constants missing from TerrainGpuLayout: ${missingConstants.join(', ')}")
+        }
+
+        def shaderDir = terrainShaderSourceDir.asFile
+        def taskShader = new File(shaderDir, "mesh_terrain.task.glsl").getText("UTF-8")
+        def meshShader = new File(shaderDir, "mesh_terrain.mesh.glsl").getText("UTF-8")
+        def fragmentShader = new File(shaderDir, "mesh_terrain.frag.glsl").getText("UTF-8")
+        def commandShader = new File(shaderDir, "mesh_task_command.comp.glsl").getText("UTF-8")
+        def normalize = { value -> value.replaceAll(/\s+/, " ").trim() }
+        def requireText = { label, text, expected ->
+            if (!text.contains(expected)) {
+                throw new GradleException("Terrain layout mismatch in ${label}; expected text: ${expected}")
+            }
+        }
+        def requireNormalizedText = { label, text, expected ->
+            if (!normalize(text).contains(normalize(expected))) {
+                throw new GradleException("Terrain layout mismatch in ${label}; expected layout: ${expected}")
+            }
+        }
+
+        requireText("mesh terrain shader",
+                meshShader,
+                "layout(triangles, max_vertices = ${constants.MAX_MESH_OUTPUT_VERTICES}, max_primitives = ${constants.MAX_MESH_OUTPUT_PRIMITIVES}) out;")
+        requireText("mesh terrain shader",
+                meshShader,
+                "const int INDEXED_TRIANGLES_FLAG = ${constants.INDEXED_TRIANGLES_FLAG};")
+        requireText("mesh terrain shader",
+                meshShader,
+                "const int MATERIAL_TABLE_CAPACITY = ${constants.MATERIAL_TABLE_CAPACITY};")
+        requireText("mesh terrain shader",
+                meshShader,
+                "uint(clamp(header.indexCount, 0, ${constants.MAX_MESH_OUTPUT_VERTICES}))")
+        requireText("mesh terrain shader",
+                meshShader,
+                "uint(clamp(header.vertexCount, 0, ${constants.MAX_MESH_OUTPUT_VERTICES}))")
+        requireNormalizedText("mesh terrain shader",
+                meshShader,
+                "struct MeshletHeader { uint64_t sectionNode; int sectionX; int sectionY; int sectionZ; int layer; int firstVertex; int vertexCount; int firstIndex; int indexCount; int vertexByteOffset; int indexByteOffset; int vertexBytes; int indexBytes; int flags0; int materialId; };")
+        requireNormalizedText("mesh terrain shader",
+                meshShader,
+                "struct BlockVertex { vec3 position; uint color; vec2 uv0; uint uv2; };")
+        requireNormalizedText("mesh terrain shader",
+                meshShader,
+                "struct MaterialRecord { int materialId; int flags; int blockAtlasWidth; int blockAtlasHeight; int blockAtlasBaseMip; int blockAtlasMipLevels; int lightmapWidth; int lightmapHeight; int normalTextureIndex; int specularTextureIndex; int emissionTextureIndex; int tintFlags; int alphaMode; int renderLayerOrdinal; int materialDomain; int reserved0; };")
+        requireNormalizedText("mesh terrain shader",
+                meshShader,
+                "layout(buffer_reference, scalar, buffer_reference_align = 4) readonly buffer MaterialTable { MaterialRecord records[]; };")
+        requireNormalizedText("task terrain shader",
+                taskShader,
+                "struct VisibleMeshletRecord { uint meshletIndex; float visibility; };")
+        requireNormalizedText("task terrain shader",
+                taskShader,
+                "struct TerrainWorkQueueRecord { uint meshletIndex; uint layerOrdinal; uint lodLevel; uint flags; };")
+        requireNormalizedText("task terrain shader",
+                taskShader,
+                "layout(buffer_reference, scalar, buffer_reference_align = 4) readonly buffer TerrainWorkQueue { uint producedCount; uint consumedCount; uint droppedCount; uint reserved; TerrainWorkQueueRecord records[]; };")
+
+        def pushConstantBlock = "layout(push_constant, scalar) uniform TerrainPushConstants { uint64_t meshletHeaders; uint64_t vertexPayload; uint64_t indexPayload; uint64_t debugCounters; uint64_t visibleMeshlets; uint64_t workQueue; uint64_t materialTable; uint meshletCount; uint debugFlags; uint meshletOffset; int layerOrdinal; vec4 cameraPosition; vec4 cameraRight; vec4 cameraUp; vec4 cameraForward; vec4 projection; } pc;"
+        requireNormalizedText("task terrain shader", taskShader, pushConstantBlock)
+        requireNormalizedText("mesh terrain shader", meshShader, pushConstantBlock)
+        requireText("task terrain shader", taskShader, "TerrainWorkQueue queue = TerrainWorkQueue(pc.workQueue);")
+        requireNormalizedText("mesh-task command shader",
+                commandShader,
+                "struct MeshTaskCommand { uint groupCountX; uint groupCountY; uint groupCountZ; };")
+        requireNormalizedText("mesh-task command shader",
+                commandShader,
+                "layout(push_constant, scalar) uniform CommandPushConstants { uint64_t workQueue; uint64_t meshTaskCommands; uint commandIndex; uint maxTaskCount; uint flags; uint reserved; } pc;")
+        requireText("mesh-task command shader", commandShader, "commands.commands[pc.commandIndex].groupCountX = produced;")
+        requireText("mesh terrain shader", meshShader, "materialFlags = uint(materials.records[materialIndex].flags);")
+        requireText("mesh terrain shader", meshShader, "layout(location = 3) out flat uint meshMaterialFlags[];")
+        requireText("fragment terrain shader", fragmentShader, "layout(location = 3) flat in uint meshMaterialFlags;")
+
+        if (constants.BLOCK_VERTEX_STRIDE != 28) {
+            throw new GradleException("TerrainGpuLayout.BLOCK_VERTEX_STRIDE must match scalar BlockVertex layout size 28.")
+        }
+        if (constants.NORMALIZED_INDEX_STRIDE != Integer.BYTES) {
+            throw new GradleException("TerrainGpuLayout.NORMALIZED_INDEX_STRIDE must remain ${Integer.BYTES} for shader uint index payloads.")
+        }
+        if (constants.MESHLET_HEADER_STRIDE != Long.BYTES + Integer.BYTES * 14) {
+            throw new GradleException("TerrainGpuLayout.MESHLET_HEADER_STRIDE does not match MeshletHeader layout.")
+        }
+        if (constants.VISIBLE_MESHLET_RECORD_STRIDE != Integer.BYTES + Float.BYTES) {
+            throw new GradleException("TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE does not match VisibleMeshletRecord layout.")
+        }
+        if (constants.TERRAIN_WORK_QUEUE_COUNTER_BYTES != Integer.BYTES * 4) {
+            throw new GradleException("TerrainGpuLayout.TERRAIN_WORK_QUEUE_COUNTER_BYTES must cover four uint counters.")
+        }
+        if (constants.TERRAIN_WORK_QUEUE_RECORD_STRIDE != Integer.BYTES * 4) {
+            throw new GradleException("TerrainGpuLayout.TERRAIN_WORK_QUEUE_RECORD_STRIDE must match the four-int work queue record.")
+        }
+        if (constants.TERRAIN_MESH_TASK_COMMAND_STRIDE != Integer.BYTES * 3) {
+            throw new GradleException("TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_STRIDE must match VkDrawMeshTasksIndirectCommandEXT.")
+        }
+        if (constants.TERRAIN_MESH_TASK_COMMAND_CAPACITY <= 0) {
+            throw new GradleException("TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_CAPACITY must be positive.")
+        }
+        if (constants.TERRAIN_MESH_TASK_COMMAND_PUSH_CONSTANT_BYTES != Long.BYTES * 2 + Integer.BYTES * 4) {
+            throw new GradleException("TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_PUSH_CONSTANT_BYTES must cover command-generation compute push constants.")
+        }
+        if (constants.MATERIAL_RECORD_STRIDE != Integer.BYTES * 16) {
+            throw new GradleException("TerrainGpuLayout.MATERIAL_RECORD_STRIDE must match the 16-int default material record.")
+        }
+        if (constants.MATERIAL_TABLE_CAPACITY <= 0) {
+            throw new GradleException("TerrainGpuLayout.MATERIAL_TABLE_CAPACITY must be positive.")
+        }
+
+        def minimumPushConstantBytes = Long.BYTES * 7 + Integer.BYTES * 4 + Float.BYTES * 4 * 5
+        if (constants.TERRAIN_PUSH_CONSTANT_BYTES < minimumPushConstantBytes || constants.TERRAIN_PUSH_CONSTANT_BYTES % Long.BYTES != 0) {
+            throw new GradleException("TerrainGpuLayout.TERRAIN_PUSH_CONSTANT_BYTES must cover the terrain push constant block and stay ${Long.BYTES}-byte aligned.")
+        }
+    }
+}
+
+tasks.register("checkTerrainMeshletInvariants", JavaExec) {
+    group = "verification"
+    description = "Runs pure Java terrain meshlet partitioning and material ID invariant checks."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.TerrainMeshletInvariantCheck"
+}
+
+tasks.register("checkRendererDomainInvariants", JavaExec) {
+    group = "verification"
+    description = "Runs pure Java renderer domain registry path invariant checks."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.RendererDomainInvariantCheck"
+}
+
+tasks.register("checkMaterialRecordInvariants", JavaExec) {
+    group = "verification"
+    description = "Runs pure Java GPU material record layout and flag invariant checks."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.GpuMaterialRecordInvariantCheck"
+}
+
+tasks.register("checkTerrainMaterialInvariants", JavaExec) {
+    group = "verification"
+    description = "Runs pure Java terrain material classification invariant checks."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.TerrainMaterialClassifierInvariantCheck"
+}
+
+tasks.register("checkRuntimeProfileInvariants", JavaExec) {
+    group = "verification"
+    description = "Runs pure Java Vulkan runtime profile grouping and selected-path invariant checks."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.VulkanRuntimeProfileInvariantCheck"
+}
+
+tasks.register("checkVulkanRequirementInvariants", JavaExec) {
+    group = "verification"
+    description = "Runs pure Java Vulkan requirement extension, feature, and version invariant checks."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.VulkanRequirementInvariantCheck"
+    jvmArgs "--enable-native-access=ALL-UNNAMED"
+}
+
+tasks.register("checkGpuResourceRetirementInvariants", JavaExec) {
+    group = "verification"
+    description = "Runs pure Java GPU resource retirement diagnostics invariant checks."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.GpuResourceRetirementStatsInvariantCheck"
+}
+
+tasks.register("checkTerrainDispatchInvariants", JavaExec) {
+    group = "verification"
+    description = "Runs pure Java terrain mesh-task dispatch invariant checks."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.TerrainMeshTaskDispatchInvariantCheck"
+}
+
+tasks.register("checkVisibleMeshletRingInvariants", JavaExec) {
+    group = "verification"
+    description = "Runs pure Java visible meshlet ring allocation invariant checks."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.TerrainVisibleMeshletRingInvariantCheck"
+}
+
+tasks.register("checkTerrainWorkQueueLayoutInvariants", JavaExec) {
+    group = "verification"
+    description = "Runs pure Java terrain GPU work-queue layout invariant checks."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.TerrainWorkQueueLayoutInvariantCheck"
+}
+
+tasks.register("checkTerrainMeshTaskCommandLayoutInvariants", JavaExec) {
+    group = "verification"
+    description = "Runs pure Java terrain mesh-task indirect command layout invariant checks."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.TerrainMeshTaskCommandLayoutInvariantCheck"
+}
+
+tasks.named("compileTestJava") {
+    dependsOn tasks.named("compileClientJava")
+}
+
+tasks.named("test") {
+    failOnNoDiscoveredTests = false
+}
+
+tasks.named("check") {
+    dependsOn tasks.named("checkRepoDocs")
+    dependsOn tasks.named("checkClientMixinConfig")
+    dependsOn tasks.named("checkVulkanPackageBoundaries")
+    dependsOn tasks.named("checkTerrainShaders")
+    dependsOn tasks.named("checkTerrainLayoutManifest")
+    dependsOn tasks.named("checkTerrainMeshletInvariants")
+    dependsOn tasks.named("checkRendererDomainInvariants")
+    dependsOn tasks.named("checkMaterialRecordInvariants")
+    dependsOn tasks.named("checkTerrainMaterialInvariants")
+    dependsOn tasks.named("checkRuntimeProfileInvariants")
+    dependsOn tasks.named("checkVulkanRequirementInvariants")
+    dependsOn tasks.named("checkGpuResourceRetirementInvariants")
+    dependsOn tasks.named("checkTerrainDispatchInvariants")
+    dependsOn tasks.named("checkVisibleMeshletRingInvariants")
+    dependsOn tasks.named("checkTerrainWorkQueueLayoutInvariants")
+    dependsOn tasks.named("checkTerrainMeshTaskCommandLayoutInvariants")
 }
 
 def targetJavaVersion = 25

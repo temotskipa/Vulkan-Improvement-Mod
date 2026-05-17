@@ -8,7 +8,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(CompiledSectionMesh.class)
-public abstract class CompiledSectionMeshMixin {
+public final class CompiledSectionMeshMixin {
     @Inject(method = "close", at = @At("HEAD"))
     private void vim$releaseMeshletCapture(CallbackInfo ci) {
         SectionMeshletStore.release((CompiledSectionMesh) (Object) this);

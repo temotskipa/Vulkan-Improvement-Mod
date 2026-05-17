@@ -11,13 +11,13 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(ChunkSectionsToRender.class)
-public abstract class ChunkSectionsToRenderMixin {
+public final class ChunkSectionsToRenderMixin {
     @Inject(method = "renderGroup", at = @At("HEAD"))
     private void vim$observeTerrainGroup(ChunkSectionLayerGroup group, GpuSampler sampler, CallbackInfo ci) {
         TerrainRenderContext.enter();
-        MeshTerrainRenderer.get().observeTerrainGroup(group);
+        MeshTerrainRenderer.get().observeTerrainGroup((ChunkSectionsToRender) (Object) this, group);
     }
-    
+
     @Inject(method = "renderGroup", at = @At("RETURN"))
     private void vim$leaveTerrainGroup(ChunkSectionLayerGroup group, GpuSampler sampler, CallbackInfo ci) {
         TerrainRenderContext.exit();

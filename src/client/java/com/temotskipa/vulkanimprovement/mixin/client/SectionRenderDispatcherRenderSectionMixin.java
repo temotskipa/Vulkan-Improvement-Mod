@@ -14,7 +14,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.nio.ByteBuffer;
 
 @Mixin(SectionRenderDispatcher.RenderSection.class)
-public abstract class SectionRenderDispatcherRenderSectionMixin {
+public final class SectionRenderDispatcherRenderSectionMixin {
     @Shadow
     private long sectionNode;
     

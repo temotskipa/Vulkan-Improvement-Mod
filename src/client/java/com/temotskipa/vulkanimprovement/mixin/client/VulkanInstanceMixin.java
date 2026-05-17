@@ -7,12 +7,8 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
 
 @Mixin(VulkanInstance.class)
-public abstract class VulkanInstanceMixin {
-    @ModifyArg(
-            method = "<init>",
-            at = @At(value = "INVOKE", target = "Lorg/lwjgl/vulkan/VkApplicationInfo;apiVersion(I)Lorg/lwjgl/vulkan/VkApplicationInfo;"),
-            index = 0
-    )
+public final class VulkanInstanceMixin {
+    @ModifyArg(method = "<init>", at = @At(value = "INVOKE", target = "Lorg/lwjgl/vulkan/VkApplicationInfo;apiVersion(I)Lorg/lwjgl/vulkan/VkApplicationInfo;"), index = 0)
     private int vim$requestVulkan14Instance(int original) {
         return VK14.VK_API_VERSION_1_4;
     }
