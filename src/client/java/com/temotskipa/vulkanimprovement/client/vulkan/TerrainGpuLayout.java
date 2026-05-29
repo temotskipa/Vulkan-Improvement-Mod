@@ -2,6 +2,7 @@ package com.temotskipa.vulkanimprovement.client.vulkan;
 
 final class TerrainGpuLayout {
     static final int SECTION_METADATA_STRIDE = 80;
+    public static final String MESHLET_HEADER_SHADER_MANIFEST = "struct MeshletHeader { uint64_t sectionNode; int sectionX; int sectionY; int sectionZ; int layer; int firstVertex; int vertexCount; int firstIndex; int indexCount; uint vertexByteOffset; uint indexByteOffset; int vertexBytes; int indexBytes; int flags0; int materialId; };";
     static final int MESHLET_HEADER_STRIDE = 64;
     static final int VISIBLE_MESHLET_RECORD_STRIDE = 8;
     static final int VISIBLE_MESHLET_RING_MULTIPLIER = 8;
@@ -10,6 +11,7 @@ final class TerrainGpuLayout {
     static final int TERRAIN_MESH_TASK_COMMAND_STRIDE = 12;
     static final int TERRAIN_MESH_TASK_COMMAND_CAPACITY = 64;
     static final int TERRAIN_MESH_TASK_COMMAND_PUSH_CONSTANT_BYTES = 32;
+    static final int TERRAIN_MESH_TASK_COMMAND_USE_PUSH_TASK_COUNT_FLAG = 1;
     static final int DEBUG_COUNTER_BYTES = 64;
     static final int MATERIAL_RECORD_STRIDE = 64;
     static final int MATERIAL_TABLE_CAPACITY = 256;

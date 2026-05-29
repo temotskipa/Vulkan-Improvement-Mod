@@ -39,10 +39,12 @@ layout(push_constant, scalar) uniform CommandPushConstants {
     uint reserved;
 } pc;
 
+const uint COMMAND_FLAG_USE_PUSH_TASK_COUNT = 1u;
+
 void main() {
     TerrainWorkQueue queue = TerrainWorkQueue(pc.workQueue);
     MeshTaskCommands commands = MeshTaskCommands(pc.meshTaskCommands);
-    uint produced = min(queue.producedCount, pc.maxTaskCount);
+    uint produced = (pc.flags & COMMAND_FLAG_USE_PUSH_TASK_COUNT) != 0u ? pc.maxTaskCount : min(queue.producedCount, pc.maxTaskCount);
     commands.commands[pc.commandIndex].groupCountX = produced;
     commands.commands[pc.commandIndex].groupCountY = produced == 0u ? 0u : 1u;
     commands.commands[pc.commandIndex].groupCountZ = produced == 0u ? 0u : 1u;

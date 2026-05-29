@@ -17,6 +17,8 @@ void main() {
         discard;
     }
     vec3 light = max(texture(sampler2D(lightmapTexture, lightmapSampler), clamp(meshLightUv, vec2(0.0), vec2(0.99))).rgb, vec3(0.35));
-    float materialAlphaScale = (meshMaterialFlags & 1u) != 0u ? 1.0 : 1.0;
-    fragColor = vec4(atlas.rgb * light * meshColor.rgb, alpha * materialAlphaScale);
+    bool alphaMasked = (meshMaterialFlags & 4u) != 0u;
+    bool alphaBlended = (meshMaterialFlags & 8u) != 0u;
+    float materialAlpha = (alphaMasked || alphaBlended) ? alpha : 1.0;
+    fragColor = vec4(atlas.rgb * light * meshColor.rgb, materialAlpha);
 }

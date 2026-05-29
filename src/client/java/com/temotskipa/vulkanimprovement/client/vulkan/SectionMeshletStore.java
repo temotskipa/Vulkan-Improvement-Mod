@@ -194,13 +194,9 @@ public final class SectionMeshletStore {
         return result;
     }
 
-    public static DescriptorHeapTerrainResources.UploadStats writeMetadataSnapshot(ByteBuffer sectionMetadata, ByteBuffer meshletHeaders, ByteBuffer meshletVertices, ByteBuffer meshletIndices, int maxSectionLayers, int maxMeshlets, DescriptorHeapTerrainResources.UploadStats previousStats) {
+    public static DescriptorHeapTerrainResources.UploadStats writeMetadataSnapshot(ByteBuffer sectionMetadata, ByteBuffer meshletHeaders, TerrainGpuBuffer meshletVertices, TerrainGpuBuffer meshletIndices, int maxSectionLayers, int maxMeshlets, DescriptorHeapTerrainResources.UploadStats previousStats) {
         sectionMetadata.clear();
-        meshletHeaders.clear();
-        meshletVertices.clear();
-        meshletIndices.clear();
-
-        int sectionLayers = 0;
+        meshletHeaders.clear();        int sectionLayers = 0;
         int liveSections;
         int meshlets = 0;
         int droppedSections = 0;
@@ -230,19 +226,30 @@ public final class SectionMeshletStore {
                 if (layer == null) {
                     continue;
                 }
-                int vertexByteOffset = meshletVertices.position();
-                int indexByteOffset = meshletIndices.position();
-                if (!copyInto(meshletVertices, layer.buffers.vertices) || !copyInto(meshletIndices, layer.buffers.indices)) {
-                    meshletVertices.position(vertexByteOffset);
-                    meshletIndices.position(indexByteOffset);
+                int vertexByteOffset = (int) vertexBytesUploaded;
+                int indexByteOffset = (int) indexBytesUploaded;
+                int layerVertexBytes = layer.buffers.vertexBytes();
+                int layerIndexBytes = layer.buffers.indexBytes();
+
+                if (vertexBytesUploaded + layerVertexBytes > meshletVertices.size() || indexBytesUploaded + layerIndexBytes > meshletIndices.size()) {
                     droppedSections++;
                     droppedMeshlets += layer.meshlets.size();
-                    vertexBytesDropped += layer.buffers.vertexBytes();
-                    indexBytesDropped += layer.buffers.indexBytes();
+                    vertexBytesDropped += layerVertexBytes;
+                    indexBytesDropped += layerIndexBytes;
                     continue;
                 }
-                vertexBytesUploaded += layer.buffers.vertexBytes();
-                indexBytesUploaded += layer.buffers.indexBytes();
+
+                if (layerVertexBytes > 0) {
+                    ByteBuffer vertexSlice = meshletVertices.mappedSlice(vertexByteOffset, layerVertexBytes);
+                    vertexSlice.put(layer.buffers.vertices().duplicate());
+                }
+                if (layerIndexBytes > 0) {
+                    ByteBuffer indexSlice = meshletIndices.mappedSlice(indexByteOffset, layerIndexBytes);
+                    indexSlice.put(layer.buffers.indices().duplicate());
+                }
+
+                vertexBytesUploaded += layerVertexBytes;
+                indexBytesUploaded += layerIndexBytes;
 
                 int firstMeshlet = meshlets;
                 int writtenMeshlets = 0;

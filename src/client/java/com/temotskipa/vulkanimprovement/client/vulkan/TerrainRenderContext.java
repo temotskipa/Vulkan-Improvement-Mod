@@ -6,6 +6,10 @@ import net.minecraft.client.renderer.chunk.ChunkSectionLayerGroup;
 import net.minecraft.client.renderer.chunk.ChunkSectionsToRender;
 import org.jspecify.annotations.Nullable;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.List;
+
 public final class TerrainRenderContext {
     private static final ThreadLocal<Integer> DEPTH = ThreadLocal.withInitial(() -> 0);
     private static final ThreadLocal<Integer> CURRENT_LAYER_ORDINAL = ThreadLocal.withInitial(() -> -1);
@@ -13,7 +17,7 @@ public final class TerrainRenderContext {
     private static final ThreadLocal<Boolean> DISPATCHED_WHOLE_SET = ThreadLocal.withInitial(() -> false);
     private static final ThreadLocal<Boolean> REPLACEMENT_ALLOWED = ThreadLocal.withInitial(() -> true);
     private static final ThreadLocal<Boolean> MESH_PIPELINE_BOUND = ThreadLocal.withInitial(() -> false);
-    private static final ThreadLocal<TerrainMeshTaskDispatch[]> PREPARED_LAYER_DISPATCHES = new ThreadLocal<>();
+    private static final ThreadLocal<List<ArrayDeque<TerrainMeshTaskDispatch>>> PREPARED_LAYER_DISPATCHES = new ThreadLocal<>();
     private static final ThreadLocal<ChunkSectionsToRender> CURRENT_SECTIONS_TO_RENDER = new ThreadLocal<>();
     private static final ThreadLocal<ChunkSectionLayerGroup> CURRENT_GROUP = new ThreadLocal<>();
 
@@ -29,7 +33,11 @@ public final class TerrainRenderContext {
             DISPATCHED_WHOLE_SET.set(false);
             REPLACEMENT_ALLOWED.set(true);
             MESH_PIPELINE_BOUND.set(false);
-            PREPARED_LAYER_DISPATCHES.set(new TerrainMeshTaskDispatch[ChunkSectionLayer.values().length]);
+            List<ArrayDeque<TerrainMeshTaskDispatch>> preparedDispatches = new ArrayList<>(ChunkSectionLayer.values().length);
+            for (int i = 0; i < ChunkSectionLayer.values().length; i++) {
+                preparedDispatches.add(new ArrayDeque<>());
+            }
+            PREPARED_LAYER_DISPATCHES.set(preparedDispatches);
             CURRENT_SECTIONS_TO_RENDER.remove();
             CURRENT_GROUP.remove();
         }
@@ -100,19 +108,19 @@ public final class TerrainRenderContext {
         return MESH_PIPELINE_BOUND.get();
     }
 
-    public static void setPreparedLayerDispatch(int layerOrdinal, TerrainMeshTaskDispatch dispatch) {
-        TerrainMeshTaskDispatch[] preparedDispatches = PREPARED_LAYER_DISPATCHES.get();
-        if (preparedDispatches != null && layerOrdinal >= 0 && layerOrdinal < preparedDispatches.length) {
-            preparedDispatches[layerOrdinal] = dispatch;
+    public static void enqueuePreparedLayerDispatch(int layerOrdinal, TerrainMeshTaskDispatch dispatch) {
+        List<ArrayDeque<TerrainMeshTaskDispatch>> preparedDispatches = PREPARED_LAYER_DISPATCHES.get();
+        if (preparedDispatches != null && dispatch != null && layerOrdinal >= 0 && layerOrdinal < preparedDispatches.size()) {
+            preparedDispatches.get(layerOrdinal).addLast(dispatch);
         }
     }
 
-    public static @Nullable TerrainMeshTaskDispatch preparedLayerDispatch(int layerOrdinal) {
-        TerrainMeshTaskDispatch[] preparedDispatches = PREPARED_LAYER_DISPATCHES.get();
-        if (preparedDispatches == null || layerOrdinal < 0 || layerOrdinal >= preparedDispatches.length) {
+    public static @Nullable TerrainMeshTaskDispatch pollPreparedLayerDispatch(int layerOrdinal) {
+        List<ArrayDeque<TerrainMeshTaskDispatch>> preparedDispatches = PREPARED_LAYER_DISPATCHES.get();
+        if (preparedDispatches == null || layerOrdinal < 0 || layerOrdinal >= preparedDispatches.size()) {
             return null;
         }
-        return preparedDispatches[layerOrdinal];
+        return preparedDispatches.get(layerOrdinal).pollFirst();
     }
 
     public static void clearMeshPipelineBound() {

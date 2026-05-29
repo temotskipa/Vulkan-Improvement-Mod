@@ -29,6 +29,7 @@ final class TerrainMeshTaskCommandLayout {
         map.put("bytes", bytesForCapacity());
         map.put("commandFields", Map.of("groupCountX", 0, "groupCountY", 4, "groupCountZ", 8));
         map.put("pushConstantFields", Map.of("workQueue", 0, "meshTaskCommands", 8, "commandIndex", 16, "maxTaskCount", 20, "flags", 24, "reserved", 28));
+        map.put("usePushTaskCountFlag", TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_USE_PUSH_TASK_COUNT_FLAG);
         return map;
     }
 }

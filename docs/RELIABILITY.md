@@ -58,8 +58,11 @@ validation on real Vulkan hardware.
   renderer path diagnostics. It also reports the last terrain mesh-task
   dispatch record, including dispatch source, task count, task-limit truncation,
   whether a CPU-written visible meshlet list was used, and whether a CPU-filled
-  terrain work queue was used. It also reports whether the draw used a
-  mesh-task indirect command.
+  terrain work queue was used. Normal visible draw-list replacement now prefers
+  the work-queue source and consumes GPU-generated indirect commands prepared
+  before the terrain render pass. It also reports whether the draw used a
+  mesh-task indirect command and splits prepared command diagnostics between
+  full-layer and visible draw-list preparation.
 - `DescriptorHeapTerrainResources.asMap()` exposes terrain material-table
   address, allocation size, material record layout, write count, and
   missing-resource count. It also reports retired GPU resource-set, buffer, and
@@ -67,11 +70,14 @@ validation on real Vulkan hardware.
   visible meshlet diagnostics include ring wrap count and the last allocation's
   wrap/fence-blocked state. Terrain work-queue and mesh-task indirect-command
   diagnostics include upload, GPU-reservation, drop, wrap, and fence-deferral
-  counters. In full-layer diagnostic mode, the render-group head hook can queue
-  a compute command buffer before the terrain render pass so the GPU writes the
-  indirect mesh-task command from the work-queue produced count. Visible-list
-  replacement still uses CPU-written indirect commands. The terrain material
-  table contains one default record per Minecraft chunk render layer with
+  counters. The render-group head hook queues compute command buffers before the
+  terrain render pass so the GPU writes indirect mesh-task commands from
+  work-queue produced counts. Normal visible-list replacement mirrors vanilla's
+  per-layer draw-group order and translucent reversal; the older visible
+  meshlet ring is retained as an unavailable/capacity fallback. CPU-prepared
+  work queues set the command-generation push-count flag so multiple queued
+  command buffers do not race through the shared work-queue counter header. The
+  terrain material table contains one default record per Minecraft chunk render layer with
   alpha-mode and render-layer metadata. The terrain mesh shader consumes
   material record flags through meshlet material IDs and forwards them to the
   fragment shader.

@@ -283,7 +283,7 @@ public final class MeshShaderTerrainProgram {
             pushConstants.putLong(commandBaseAddress);
             pushConstants.putInt(commandIndex);
             pushConstants.putInt(dispatch.taskCount());
-            pushConstants.putInt(0);
+            pushConstants.putInt(TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_USE_PUSH_TASK_COUNT_FLAG);
             pushConstants.putInt(0);
             pushConstants.flip();
 

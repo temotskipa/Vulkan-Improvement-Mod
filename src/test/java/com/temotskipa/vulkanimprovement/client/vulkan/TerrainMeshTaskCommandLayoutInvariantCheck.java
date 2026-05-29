@@ -17,6 +17,7 @@ public final class TerrainMeshTaskCommandLayoutInvariantCheck {
         require(TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_STRIDE == Integer.BYTES * 3, "mesh-task indirect command must stay three uints");
         require(TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_CAPACITY > 0, "mesh-task command capacity must be positive");
         require(TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_PUSH_CONSTANT_BYTES == Long.BYTES * 2 + Integer.BYTES * 4, "mesh-task command push constants must cover two addresses and four uints");
+        require(TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_USE_PUSH_TASK_COUNT_FLAG == 1, "push task-count command flag must match shader constant");
         require(TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_STRIDE % Integer.BYTES == 0, "mesh-task command stride must be int-aligned");
     }
 
@@ -39,6 +40,7 @@ public final class TerrainMeshTaskCommandLayoutInvariantCheck {
         require(pushConstants instanceof Map<?, ?>, "diagnostics must include command push constant offsets");
         require(((Map<?, ?>) pushConstants).get("meshTaskCommands").equals(8), "push constant diagnostics must include command buffer address offset");
         require(((Map<?, ?>) pushConstants).get("reserved").equals(28), "push constant diagnostics must include reserved offset");
+        require(diagnostics.get("usePushTaskCountFlag").equals(TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_USE_PUSH_TASK_COUNT_FLAG), "diagnostics must include push task-count flag");
     }
 
     private static void checkInvalidInputsRejected() {

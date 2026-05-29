@@ -33,7 +33,7 @@ public class VulkanRenderPassMixin {
     private boolean hasDepth;
 
     @Shadow
-    private VkCommandBuffer secondaryCommandBuffer() {
+    private VkCommandBuffer commandBuffer() {
         throw new AssertionError();
     }
 
@@ -53,7 +53,7 @@ public class VulkanRenderPassMixin {
 
     @Inject(method = "drawMultipleIndexed", at = @At("HEAD"), cancellable = true)
     private <T> void vim$drawMeshTerrain(Collection<RenderPass.Draw<T>> draws, @Nullable GpuBuffer defaultIndexBuffer, @Nullable IndexType defaultIndexType, Collection<String> dynamicUniforms, T uniformArgument, CallbackInfo ci) {
-        TerrainDrawContext context = TerrainDrawContext.current(this.secondaryCommandBuffer(), this.pipeline, this.hasDepth, draws);
+        TerrainDrawContext context = TerrainDrawContext.current(this.commandBuffer(), this.pipeline, this.hasDepth, draws);
         if (MeshTerrainRenderer.get().tryDrawMeshTerrain(context)) {
             ci.cancel();
         }

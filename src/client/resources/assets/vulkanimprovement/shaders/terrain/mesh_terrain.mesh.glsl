@@ -17,8 +17,8 @@ struct MeshletHeader {
     int vertexCount;
     int firstIndex;
     int indexCount;
-    int vertexByteOffset;
-    int indexByteOffset;
+    uint vertexByteOffset;
+    uint indexByteOffset;
     int vertexBytes;
     int indexBytes;
     int flags0;
@@ -145,11 +145,11 @@ void main() {
     uint primitiveCount = indexedTriangles ? min(vertexCount / 3u, 32u) : min(vertexCount / 4u * 2u, 32u);
     TerrainVertices payload = TerrainVertices(
     pc.vertexPayload
-    + uint64_t(max(header.vertexByteOffset, 0))
+    + uint64_t(header.vertexByteOffset)
     );
     TerrainIndices indices = TerrainIndices(
     pc.indexPayload
-    + uint64_t(max(header.indexByteOffset, 0))
+    + uint64_t(header.indexByteOffset)
     );
     uint materialIndex = uint(clamp(header.materialId, 0, MATERIAL_TABLE_CAPACITY - 1));
     uint materialFlags = 3u;

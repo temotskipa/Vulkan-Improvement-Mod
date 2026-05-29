@@ -67,11 +67,14 @@ main         -> Fabric initializer only
 - `TerrainMeshTaskDispatch` records the terrain mesh-task dispatch source,
   direct task cap, meshlet offset, visible-list address, work-queue address,
   indirect command buffer/offset, and truncation state. The current path can
-  submit a CPU-written `VkDrawMeshTasksIndirectCommandEXT` record. In
-  full-layer diagnostic mode, `ChunkSectionsToRenderMixin` prepares per-layer
-  work queues before Minecraft creates the terrain render pass, then queues a
-  compute command buffer that fills the indirect mesh-task command from the
-  work-queue counters.
+  submit a CPU-written `VkDrawMeshTasksIndirectCommandEXT` record when prepared
+  GPU command generation is unavailable. `ChunkSectionsToRenderMixin` prepares
+  work queues before Minecraft creates the terrain render pass: normal visible
+  draw-list replacement queues one prepared dispatch per vanilla draw group, and
+  full-layer diagnostic mode queues one prepared dispatch per layer. The command
+  generation compute pipeline fills each indirect mesh-task command from the
+  work-queue counters. The older visible meshlet ring remains a fallback when a
+  visible work queue cannot be uploaded.
 - `TerrainVisibleMeshletRing` owns the pure allocation rules for the CPU-written
   visible meshlet ring, including wrap decisions and fence-blocked reuse
   diagnostics.

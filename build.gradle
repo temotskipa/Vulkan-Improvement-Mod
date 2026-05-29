@@ -3,7 +3,7 @@ import groovy.json.JsonSlurper
 import java.util.concurrent.TimeUnit
 
 plugins {
-    id 'net.fabricmc.fabric-loom' version '1.17.0-alpha.8'
+    id 'net.fabricmc.fabric-loom' version '1.17.0-alpha.13'
     id 'maven-publish'
 }
 
@@ -373,7 +373,7 @@ tasks.register("checkTerrainLayoutManifest") {
                 "uint(clamp(header.vertexCount, 0, ${constants.MAX_MESH_OUTPUT_VERTICES}))")
         requireNormalizedText("mesh terrain shader",
                 meshShader,
-                "struct MeshletHeader { uint64_t sectionNode; int sectionX; int sectionY; int sectionZ; int layer; int firstVertex; int vertexCount; int firstIndex; int indexCount; int vertexByteOffset; int indexByteOffset; int vertexBytes; int indexBytes; int flags0; int materialId; };")
+                "struct MeshletHeader { uint64_t sectionNode; int sectionX; int sectionY; int sectionZ; int layer; int firstVertex; int vertexCount; int firstIndex; int indexCount; uint vertexByteOffset; uint indexByteOffset; int vertexBytes; int indexBytes; int flags0; int materialId; };")
         requireNormalizedText("mesh terrain shader",
                 meshShader,
                 "struct BlockVertex { vec3 position; uint color; vec2 uv0; uint uv2; };")
@@ -403,6 +403,7 @@ tasks.register("checkTerrainLayoutManifest") {
         requireNormalizedText("mesh-task command shader",
                 commandShader,
                 "layout(push_constant, scalar) uniform CommandPushConstants { uint64_t workQueue; uint64_t meshTaskCommands; uint commandIndex; uint maxTaskCount; uint flags; uint reserved; } pc;")
+        requireText("mesh-task command shader", commandShader, "COMMAND_FLAG_USE_PUSH_TASK_COUNT")
         requireText("mesh-task command shader", commandShader, "commands.commands[pc.commandIndex].groupCountX = produced;")
         requireText("mesh terrain shader", meshShader, "materialFlags = uint(materials.records[materialIndex].flags);")
         requireText("mesh terrain shader", meshShader, "layout(location = 3) out flat uint meshMaterialFlags[];")
@@ -434,6 +435,9 @@ tasks.register("checkTerrainLayoutManifest") {
         }
         if (constants.TERRAIN_MESH_TASK_COMMAND_PUSH_CONSTANT_BYTES != Long.BYTES * 2 + Integer.BYTES * 4) {
             throw new GradleException("TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_PUSH_CONSTANT_BYTES must cover command-generation compute push constants.")
+        }
+        if (constants.TERRAIN_MESH_TASK_COMMAND_USE_PUSH_TASK_COUNT_FLAG != 1) {
+            throw new GradleException("TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_USE_PUSH_TASK_COUNT_FLAG must match mesh_task_command.comp.glsl.")
         }
         if (constants.MATERIAL_RECORD_STRIDE != Integer.BYTES * 16) {
             throw new GradleException("TerrainGpuLayout.MATERIAL_RECORD_STRIDE must match the 16-int default material record.")

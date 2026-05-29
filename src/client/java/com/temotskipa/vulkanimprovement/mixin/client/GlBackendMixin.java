@@ -16,7 +16,7 @@ import java.util.List;
 @Mixin(GlBackend.class)
 public final class GlBackendMixin {
     @Inject(method = "createDevice", at = @At("HEAD"))
-    private void vim$rejectOpenGlFallback(long window, ShaderSource defaultShaderSource, GpuDebugOptions debugOptions, CallbackInfoReturnable<GpuDevice> cir) throws BackendCreationException {
+    private void vim$rejectOpenGlFallback(long window, ShaderSource defaultShaderSource, GpuDebugOptions debugOptions, Runnable criticalShaderLoader, CallbackInfoReturnable<GpuDevice> cir) throws BackendCreationException {
         if (TerrainRendererDebugConfig.REQUIRE_VULKAN_BACKEND) {
             throw new BackendCreationException("Vulkan Improvement developer config vim.requireVulkanBackend=true forbids OpenGL fallback after Vulkan backend creation failed or was not selected.", BackendCreationException.Reason.OTHER, List.of("vim.requireVulkanBackend"));
         }

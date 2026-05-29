@@ -9,7 +9,7 @@ public final class TerrainRendererDebugConfig {
     public static final int TERRAIN_FRAGMENT_SHADING_RATE = intProperty("vim.terrainFragmentShadingRate", 1, 1, 4);
     public static final int INITIAL_SECTION_CAPACITY = intProperty("vim.initialSectionCapacity", 32768, 1024, 1_048_576);
     public static final int INITIAL_MESHLET_CAPACITY = intProperty("vim.initialMeshletCapacity", 524288, 4096, 8_388_608);
-    public static final int INITIAL_VERTEX_PAYLOAD_BYTES = intProperty("vim.initialVertexPayloadBytes", 512 * 1024 * 1024, 1024 * 1024, 1024 * 1024 * 1024);
+    public static final int INITIAL_VERTEX_PAYLOAD_BYTES = intProperty("vim.initialVertexPayloadBytes", 512 * 1024 * 1024, 1024 * 1024, 1 << 30);
     public static final int INITIAL_INDEX_PAYLOAD_BYTES = intProperty("vim.initialIndexPayloadBytes", 64 * 1024 * 1024, 1024 * 1024, 512 * 1024 * 1024);
     public static final int TERRAIN_MIRROR_STABILIZATION_MILLIS = intProperty("vim.terrainMirrorStabilizationMillis", 750, 0, 10_000);
     private static volatile boolean fragmentShadingRateEnabled = !booleanProperty("vim.disableFragmentShadingRate", false);

@@ -297,7 +297,7 @@ public final class DescriptorHeapTerrainResources {
         }
         
         long startedNanos = System.nanoTime();
-        UploadStats stats = SectionMeshletStore.writeMetadataSnapshot(activeResources.sectionMetadata().mappedByteBuffer().order(ByteOrder.LITTLE_ENDIAN), activeResources.meshletHeaders().mappedByteBuffer().order(ByteOrder.LITTLE_ENDIAN), activeResources.meshletVertices().mappedByteBuffer().order(ByteOrder.LITTLE_ENDIAN), activeResources.meshletIndices().mappedByteBuffer().order(ByteOrder.LITTLE_ENDIAN), this.layout.sectionCapacity, this.layout.meshletCapacity, this.uploadStats);
+        UploadStats stats = SectionMeshletStore.writeMetadataSnapshot(activeResources.sectionMetadata().mappedByteBuffer().order(ByteOrder.LITTLE_ENDIAN), activeResources.meshletHeaders().mappedByteBuffer().order(ByteOrder.LITTLE_ENDIAN), activeResources.meshletVertices(), activeResources.meshletIndices(), this.layout.sectionCapacity, this.layout.meshletCapacity, this.uploadStats);
         activeResources.sectionMetadata().flush();
         activeResources.meshletHeaders().flush();
         activeResources.meshletVertices().flush();
@@ -317,7 +317,7 @@ public final class DescriptorHeapTerrainResources {
         if (activeDevice == null) {
             return true;
         }
-        VulkanUtils.crashIfFailure(VK12.vkDeviceWaitIdle(activeDevice.vkDevice()), "Failed to wait for Vulkan Improvement terrain upload safety");
+        VulkanUtils.crashIfFailure(activeDevice, VK12.vkDeviceWaitIdle(activeDevice.vkDevice()), "Failed to wait for Vulkan Improvement terrain upload safety");
         this.terrainUploadDeviceIdleWaits.increment();
         return true;
     }
@@ -599,7 +599,66 @@ public final class DescriptorHeapTerrainResources {
         this.lastWorkQueueUpload = new TerrainWorkQueueStats(requestedRecords, 0, firstRecord, capacity, this.workQueueCursor, wrapped, false, "");
         return new TerrainWorkQueueUpload(firstRecord, requestedRecords, workQueue.deviceAddress(), 0, true);
     }
-    
+
+    public synchronized TerrainWorkQueueUpload writeVisibleWorkQueue(List<SectionMeshletStore.MeshletRange> ranges, int layerOrdinal) {
+        int requiredRecords = visibleMeshletRecordCount(ranges);
+        if (requiredRecords <= 0) {
+            this.lastWorkQueueUpload = TerrainWorkQueueStats.unavailable(0, workQueueRecordCapacity(), this.workQueueCursor, "no visible terrain work queue records requested", false);
+            return TerrainWorkQueueUpload.unavailable(0);
+        }
+
+        TerrainGpuBuffer workQueue = this.resources.workQueue();
+        if (workQueue == null || workQueue.deviceAddress() == 0L || !workQueue.hostVisible()) {
+            this.lastWorkQueueUpload = TerrainWorkQueueStats.unavailable(requiredRecords, 0, this.workQueueCursor, "terrain work queue buffer unavailable", false);
+            this.terrainWorkQueueRecordsDropped.add(requiredRecords);
+            return TerrainWorkQueueUpload.unavailable(requiredRecords);
+        }
+
+        int capacity = workQueueRecordCapacity(workQueue);
+        if (requiredRecords > capacity) {
+            this.lastWorkQueueUpload = TerrainWorkQueueStats.unavailable(requiredRecords, capacity, this.workQueueCursor, "visible terrain work queue records exceed capacity", false);
+            this.terrainWorkQueueRecordsDropped.add(requiredRecords);
+            return TerrainWorkQueueUpload.unavailable(requiredRecords);
+        }
+
+        boolean wrapped = false;
+        if (this.workQueueCursor + requiredRecords > capacity) {
+            if (!waitForTerrainReadFence()) {
+                this.terrainWorkQueueDeferrals.increment();
+                this.lastWorkQueueUpload = TerrainWorkQueueStats.unavailable(requiredRecords, capacity, this.workQueueCursor, "visible terrain work queue wrap requires completed terrain read fence", true);
+                return TerrainWorkQueueUpload.unavailable(requiredRecords);
+            }
+            this.workQueueCursor = 0;
+            wrapped = true;
+        }
+
+        int firstRecord = this.workQueueCursor;
+        this.workQueueCursor += requiredRecords;
+        ByteBuffer queue = workQueue.mappedByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
+        queue.position(0);
+        queue.putInt(requiredRecords);
+        queue.putInt(0);
+        queue.putInt(0);
+        queue.putInt(0);
+        queue.position((int) TerrainWorkQueueLayout.recordOffset(firstRecord));
+        for (SectionMeshletStore.MeshletRange range : ranges) {
+            for (int i = 0; i < range.count(); i++) {
+                queue.putInt(range.offset() + i);
+                queue.putInt(layerOrdinal);
+                queue.putInt(0);
+                queue.putInt(0);
+            }
+        }
+        workQueue.flush();
+        this.terrainWorkQueueUploads.increment();
+        this.terrainWorkQueueRecordsUploaded.add(requiredRecords);
+        if (wrapped) {
+            this.terrainWorkQueueRingWraps.increment();
+        }
+        this.lastWorkQueueUpload = new TerrainWorkQueueStats(requiredRecords, 0, firstRecord, capacity, this.workQueueCursor, wrapped, false, "visible-draw-list");
+        return new TerrainWorkQueueUpload(firstRecord, requiredRecords, workQueue.deviceAddress(), 0, true);
+    }
+
     public synchronized TerrainMeshTaskCommandUpload writeMeshTaskCommand(int taskCount) {
         TerrainMeshTaskCommandUpload upload = allocateMeshTaskCommand(taskCount, false);
         if (!upload.ready()) {
@@ -880,6 +939,9 @@ public final class DescriptorHeapTerrainResources {
                          long descriptorBufferSamplerDescriptorBytes, long descriptorBufferSampledImageDescriptorBytes,
                          long descriptorBufferUniformBufferDescriptorBytes,
                          long descriptorBufferStorageBufferDescriptorBytes, Map<String, String> slots) {
+        // Java ByteBuffer and LWJGL MemoryUtil.memByteBuffer cannot wrap segments >= Integer.MAX_VALUE.
+        // Cap host-mapped GPU buffers at 1 GiB which is a safe power-of-two well under that limit.
+        private static final long MAX_HOST_MAPPED_BUFFER_BYTES = 1L << 30;
         static Layout unconfigured() {
             return new Layout(false, false, false, 0, 0, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 1L, 0L, 0L, 0L, 0L, Map.of());
         }
@@ -940,7 +1002,7 @@ public final class DescriptorHeapTerrainResources {
             }
             long headroom = required + Math.max(1L << 20, required / 4L);
             long doubled = Math.max(1L, current) * 2L;
-            return nextPowerOfTwo(Math.max(headroom, doubled));
+            return Math.min(MAX_HOST_MAPPED_BUFFER_BYTES, nextPowerOfTwo(Math.max(headroom, doubled)));
         }
         
         private static long nextPowerOfTwo(long value) {

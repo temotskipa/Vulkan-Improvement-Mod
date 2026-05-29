@@ -48,7 +48,7 @@ final class TerrainGpuBuffer implements Destroyable, AutoCloseable {
             LongBuffer bufferPtr = stack.callocLong(1);
             PointerBuffer allocationPtr = stack.callocPointer(1);
             VmaAllocationInfo allocationResult = VmaAllocationInfo.calloc(stack);
-            VulkanUtils.crashIfFailure(Vma.vmaCreateBuffer(device.vma(), bufferInfo, allocationInfo, bufferPtr, allocationPtr, allocationResult), "Failed to allocate Vulkan Improvement terrain buffer " + label);
+            VulkanUtils.crashIfFailure(device, Vma.vmaCreateBuffer(device.vma(), bufferInfo, allocationInfo, bufferPtr, allocationPtr, allocationResult), "Failed to allocate Vulkan Improvement terrain buffer " + label);
             this.vkBuffer = bufferPtr.get(0);
             this.allocation = allocationPtr.get(0);
             this.mappedAddress = allocationResult.pMappedData();
@@ -99,12 +99,22 @@ final class TerrainGpuBuffer implements Destroyable, AutoCloseable {
         if (this.mappedAddress == 0L) {
             throw new IllegalStateException(this.label + " is not host visible");
         }
-        if (this.size > Integer.MAX_VALUE) {
-            throw new IllegalStateException(this.label + " is too large to map as a Java ByteBuffer");
+        if (this.size > Integer.MAX_VALUE - 8) {
+            throw new IllegalStateException(this.label + " exceeds ByteBuffer limit (" + this.size + " bytes); use mappedSlice() instead");
         }
         return MemoryUtil.memByteBuffer(this.mappedAddress, (int) this.size);
     }
     
+    ByteBuffer mappedSlice(long offset, int length) {
+        if (this.mappedAddress == 0L) {
+            throw new IllegalStateException(this.label + " is not host visible");
+        }
+        if (offset < 0L || length < 0 || offset + length > this.size) {
+            throw new IllegalArgumentException(this.label + " slice out of bounds: offset=" + offset + ", length=" + length + ", bufferSize=" + this.size);
+        }
+        return MemoryUtil.memByteBuffer(this.mappedAddress + offset, length);
+    }
+
     void flush() {
         if (this.mappedAddress != 0L) {
             Vma.vmaFlushAllocation(this.device.vma(), this.allocation, 0L, this.size);

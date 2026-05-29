@@ -4,6 +4,7 @@ import com.mojang.blaze3d.shaders.ShaderSource;
 import com.mojang.blaze3d.vulkan.VulkanDevice;
 import com.mojang.blaze3d.vulkan.VulkanInstance;
 import com.mojang.blaze3d.vulkan.VulkanPhysicalDevice;
+import com.mojang.blaze3d.vulkan.checkpoints.CheckpointExtension;
 import com.temotskipa.vulkanimprovement.client.vulkan.MeshTerrainRenderer;
 import com.temotskipa.vulkanimprovement.client.vulkan.VulkanImprovementCapabilities;
 import org.lwjgl.vulkan.VK12;
@@ -24,7 +25,7 @@ public final class VulkanDeviceMixin {
     private VkDevice vkDevice;
 
     @Inject(method = "<init>", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/vulkan/VulkanPhysicalDevice;close()V"))
-    private void vim$captureCapabilities(ShaderSource defaultShaderSource, VulkanInstance instance, VulkanPhysicalDevice physicalDevice, Set<String> enabledDeviceExtensions, VkDevice vkDevice, long vma, CallbackInfo ci) {
+    private void vim$captureCapabilities(ShaderSource defaultShaderSource, VulkanInstance instance, VulkanPhysicalDevice physicalDevice, Set enabledDeviceExtensions, VkDevice vkDevice, long vma, CheckpointExtension checkpointExtension, CallbackInfo ci) {
         MeshTerrainRenderer.get().configure((VulkanDevice) (Object) this, VulkanImprovementCapabilities.capture(physicalDevice, enabledDeviceExtensions));
     }
 
