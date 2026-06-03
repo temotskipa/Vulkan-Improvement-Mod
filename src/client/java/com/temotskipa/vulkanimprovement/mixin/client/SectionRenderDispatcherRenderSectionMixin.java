@@ -17,7 +17,7 @@ import java.nio.ByteBuffer;
 public final class SectionRenderDispatcherRenderSectionMixin {
     @Shadow
     private long sectionNode;
-    
+
     @Inject(method = "addSectionBuffersToUberBuffer", at = @At("HEAD"))
     private void vim$captureSectionMeshletInput(
             ChunkSectionLayer layer,

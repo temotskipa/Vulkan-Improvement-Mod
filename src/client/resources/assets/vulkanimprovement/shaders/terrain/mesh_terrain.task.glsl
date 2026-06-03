@@ -44,7 +44,7 @@ layout(push_constant, scalar) uniform TerrainPushConstants {
     uint64_t workQueue;
     uint64_t materialTable;
     uint meshletCount;
-    uint debugFlags;
+    uint enableMeshletFrustumCulling;
     uint meshletOffset;
     int layerOrdinal;
     vec4 cameraPosition;

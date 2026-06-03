@@ -216,7 +216,8 @@ public final class SectionMeshletStore {
         for (ChunkSectionLayer chunkLayer : layers) {
             int layerOrdinal = chunkLayer.ordinal();
             meshletOffsetsByLayer[layerOrdinal] = meshlets;
-            if (chunkLayer == ChunkSectionLayer.TRANSLUCENT && !TerrainRendererDebugConfig.meshTranslucentTerrainEnabled()) {
+            if (chunkLayer == ChunkSectionLayer.TRANSLUCENT
+                    && (!TerrainRendererDebugConfig.replaceVanillaTerrain() || !TerrainRendererDebugConfig.meshTranslucentTerrainEnabled())) {
                 meshletCountsByLayer[layerOrdinal] = 0;
                 continue;
             }

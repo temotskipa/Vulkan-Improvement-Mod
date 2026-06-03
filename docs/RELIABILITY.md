@@ -106,8 +106,25 @@ validation on real Vulkan hardware.
 | `vim.initialVertexPayloadBytes`        | `536870912` | Initial vertex payload buffer size.                   |
 | `vim.initialIndexPayloadBytes`         | `67108864`  | Initial index payload buffer size.                    |
 | `vim.terrainMirrorStabilizationMillis` | `750`       | Delay before mirrored terrain is treated as stable.   |
+| `vim.allowCpuVisibleMeshletFallback`   | `false`     | Allow the legacy CPU visible-meshlet ring when work-queue upload is unavailable. |
+
+Press the **Dump Vulkan Improvement Diagnostics** key (default: `K` in the Debug category) to log a compact bug-report JSON blob via `RendererDiagnostics`.
 
 Update this table when adding or removing flags.
+
+`vim.waitIdleBeforeTerrainUpload` is a validation escape hatch only. Normal uploads wait on the terrain read fence created when mesh terrain draws are recorded.
+
+## GPU Validation Matrix
+
+Record manual validation results here before treating the mesh terrain path as generally usable.
+
+| Date       | OS           | GPU   | Driver        | Vulkan API | Minecraft     | Fabric API      | Result | Notes |
+|------------|--------------|-------|---------------|------------|---------------|-----------------|--------|-------|
+| 2026-06-04 | Windows 11   | RTX 4070 Ti | 596.49 / 1.4.329 | 1.4.329 | 26.2-pre-3 | 0.150.2+26.2 | build pass | `.\gradlew.bat check` and `build` pass on JDK 25; runtime smoke pending |
+
+Required JVM flags to record per run: `vim.replaceVanillaTerrain`, `vim.enableMeshTranslucentTerrain`, `vim.drawAllCapturedTerrainLayers`, `vim.disableFragmentShadingRate`, `vim.validationDescriptorBufferOnly`, `vim.allowCpuVisibleMeshletFallback`.
+
+Required runtime counters to inspect: `meshReplacementPreparedGpuCommands`, `meshReplacementPreparedDispatchQueueLeaks`, `meshReplacementVisibleMeshletFallbackRefusals`, `meshReplacementPreparedGpuCommandRefusals`.
 
 ## Manual Runtime Checklist
 

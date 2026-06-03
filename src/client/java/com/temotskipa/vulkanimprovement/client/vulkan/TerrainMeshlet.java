@@ -15,14 +15,14 @@ public record TerrainMeshlet(long sectionNode, int sectionX, int sectionY, int s
         int count = indexCount == 0 ? 0 : (meshletIndex == meshletCount - 1 ? indexCount - firstIndex : Math.max(1, indexCount / meshletCount));
         return new TerrainMeshlet(sectionNode, SectionPos.x(sectionNode), SectionPos.y(sectionNode), SectionPos.z(sectionNode), layer, firstVertex, vertexCount, firstIndex, count, TerrainMaterialClassifier.materialIdForLayer(layer));
     }
-    
+
     static TerrainMeshlet fromIndexedTriangles(long sectionNode, ChunkSectionLayer layer, int meshletIndex, int meshletCount, int indexCount) {
         int firstTriangle = meshletIndex * TerrainGpuLayout.TARGET_TRIANGLES_PER_INDEXED_MESHLET;
         int totalTriangles = indexCount / 3;
         int triangleCount = meshletIndex == meshletCount - 1 ? Math.max(0, totalTriangles - firstTriangle) : Math.min(TerrainGpuLayout.TARGET_TRIANGLES_PER_INDEXED_MESHLET, totalTriangles - firstTriangle);
         return new TerrainMeshlet(sectionNode, SectionPos.x(sectionNode), SectionPos.y(sectionNode), SectionPos.z(sectionNode), layer, 0, triangleCount * 3, firstTriangle * 3, triangleCount * 3, TerrainMaterialClassifier.materialIdForLayer(layer));
     }
-    
+
     public Map<String, Object> asMap() {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("sectionNode", this.sectionNode);

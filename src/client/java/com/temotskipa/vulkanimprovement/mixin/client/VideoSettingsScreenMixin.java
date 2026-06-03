@@ -1,6 +1,9 @@
 package com.temotskipa.vulkanimprovement.mixin.client;
 
+import com.temotskipa.vulkanimprovement.client.vulkan.VulkanImprovementRuntime;
 import com.temotskipa.vulkanimprovement.client.vulkan.VulkanImprovementVideoOptions;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.OptionInstance;
 import net.minecraft.client.Options;
 import net.minecraft.client.gui.components.OptionsList;
 import net.minecraft.client.gui.screens.Screen;
@@ -17,13 +20,26 @@ public abstract class VideoSettingsScreenMixin extends OptionsSubScreen {
     protected VideoSettingsScreenMixin(Screen lastScreen, Options options, Component title) {
         super(lastScreen, options, title);
     }
-    
+
     @Inject(method = "addOptions", at = @At("TAIL"))
     private void vim$addRendererOptions(CallbackInfo ci) {
-        OptionsList optionsList = this.list;
-        if (optionsList != null) {
-            optionsList.addHeader(VulkanImprovementVideoOptions.HEADER);
-            optionsList.addSmall(VulkanImprovementVideoOptions.createOptions());
+        if (!VulkanImprovementRuntime.shouldShowVideoOptions(Minecraft.getInstance())) {
+            return;
         }
+        OptionsList optionsList = this.list;
+        if (optionsList == null) {
+            return;
+        }
+        OptionInstance<?>[] options = VulkanImprovementVideoOptions.createOptions();
+        if (options.length == 0) {
+            return;
+        }
+        optionsList.addHeader(VulkanImprovementVideoOptions.HEADER);
+        optionsList.addSmall(options);
+    }
+
+    @Inject(method = "tick", at = @At("TAIL"))
+    private void vim$updateRendererOptions(CallbackInfo ci) {
+        VulkanImprovementVideoOptions.updateWidgetState(this.list);
     }
 }

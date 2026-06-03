@@ -18,20 +18,20 @@ public final class VulkanGpuSurfaceMixin {
     @Shadow
     @Final
     private VulkanDevice device;
-    
+
     @Shadow
     private long swapchain;
-    
+
     @Inject(method = "present", at = @At("HEAD"))
     private void vim$beforePresent(CallbackInfo ci) {
         PresentPacingController.get().beforePresent();
     }
-    
+
     @Inject(method = "present", at = @At("RETURN"))
     private void vim$afterPresent(CallbackInfo ci) {
         PresentPacingController.get().afterPresent();
     }
-    
+
     @Redirect(
             method = "present",
             at = @At(value = "INVOKE", target = "Lorg/lwjgl/vulkan/KHRSwapchain;vkQueuePresentKHR(Lorg/lwjgl/vulkan/VkQueue;Lorg/lwjgl/vulkan/VkPresentInfoKHR;)I", remap = false)

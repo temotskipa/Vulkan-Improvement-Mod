@@ -21,3 +21,7 @@ hs_err_pid*
 # Common working directory
 run
 logs/
+
+# Agent / IDE harness (not mod sources)
+mcps/
+agent-tools/

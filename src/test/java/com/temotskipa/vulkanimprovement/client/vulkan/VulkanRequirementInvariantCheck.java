@@ -9,19 +9,19 @@ import java.util.stream.Collectors;
 public final class VulkanRequirementInvariantCheck {
     private VulkanRequirementInvariantCheck() {
     }
-    
+
     public static void main(String[] args) {
         checkVersionString();
         checkRequiredExtensions();
         checkRequiredFeatures();
     }
-    
+
     private static void checkVersionString() {
         require("1.4.0".equals(VulkanFeatureRequirements.versionString(VK14.VK_API_VERSION_1_4)), "Vulkan 1.4 version string must be stable");
         require("1.4.12".equals(VulkanFeatureRequirements.versionString(version(1, 4, 12))), "Vulkan patch version string must be stable");
         require("2.0.3".equals(VulkanFeatureRequirements.versionString(version(2, 0, 3))), "Vulkan major/minor version string must be stable");
     }
-    
+
     private static void checkRequiredExtensions() {
         Set<String> extensions = VulkanFeatureRequirements.requiredDeviceExtensions();
         require(extensions.contains(EXTMeshShader.VK_EXT_MESH_SHADER_EXTENSION_NAME), "mesh shader extension must be required");
@@ -35,13 +35,13 @@ public final class VulkanRequirementInvariantCheck {
         require(extensions.contains(KHRPresentId.VK_KHR_PRESENT_ID_EXTENSION_NAME), "present id extension must be required");
         require(extensions.contains(KHRPresentWait.VK_KHR_PRESENT_WAIT_EXTENSION_NAME), "present wait extension must be required");
     }
-    
+
     private static void checkRequiredFeatures() {
         Set<String> featureNames = VulkanFeatureRequirements.requiredDeviceFeatures()
                 .stream()
                 .map(VulkanFeature::name)
                 .collect(Collectors.toSet());
-        
+
         require(featureNames.contains("vim.shaderInt64"), "shaderInt64 feature must be required");
         require(featureNames.contains("vim.vulkan12.bufferDeviceAddress"), "buffer device address feature must be required");
         require(featureNames.contains("vim.vulkan12.scalarBlockLayout"), "scalar block layout feature must be required");
@@ -58,11 +58,11 @@ public final class VulkanRequirementInvariantCheck {
         require(featureNames.contains("vim.presentId"), "present id feature must be required");
         require(featureNames.contains("vim.presentWait"), "present wait feature must be required");
     }
-    
+
     private static int version(int major, int minor, int patch) {
         return major << 22 | minor << 12 | patch;
     }
-    
+
     private static void require(boolean condition, String message) {
         if (!condition) {
             throw new AssertionError(message);

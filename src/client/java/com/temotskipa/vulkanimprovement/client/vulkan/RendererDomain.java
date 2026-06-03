@@ -11,13 +11,13 @@ enum RendererDomain {
     WEATHER("weather"),
     TRANSLUCENT_EFFECTS("translucentEffects"),
     DIAGNOSTICS("diagnostics");
-    
+
     private final String diagnosticName;
-    
+
     RendererDomain(String diagnosticName) {
         this.diagnosticName = diagnosticName;
     }
-    
+
     String diagnosticName() {
         return this.diagnosticName;
     }

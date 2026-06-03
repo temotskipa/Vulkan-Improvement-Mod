@@ -27,24 +27,24 @@ final class TerrainGpuBuffer implements Destroyable, AutoCloseable {
     private final long mappedAddress;
     private boolean closed;
     private boolean destroyed;
-    
+
     TerrainGpuBuffer(VulkanDevice device, String label, long size, int usage, boolean hostVisible) {
         this.device = device;
         this.label = label;
         this.size = size;
-        
+
         try (MemoryStack stack = MemoryStack.stackPush()) {
             VkBufferCreateInfo bufferInfo = VkBufferCreateInfo.calloc(stack).sType$Default();
             bufferInfo.size(size);
             bufferInfo.usage(usage | VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
             bufferInfo.sharingMode(VK10.VK_SHARING_MODE_EXCLUSIVE);
-            
+
             VmaAllocationCreateInfo allocationInfo = VmaAllocationCreateInfo.calloc(stack);
             allocationInfo.usage(hostVisible ? Vma.VMA_MEMORY_USAGE_AUTO_PREFER_HOST : Vma.VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
             if (hostVisible) {
                 allocationInfo.flags(Vma.VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | Vma.VMA_ALLOCATION_CREATE_MAPPED_BIT);
             }
-            
+
             LongBuffer bufferPtr = stack.callocLong(1);
             PointerBuffer allocationPtr = stack.callocPointer(1);
             VmaAllocationInfo allocationResult = VmaAllocationInfo.calloc(stack);
@@ -56,45 +56,45 @@ final class TerrainGpuBuffer implements Destroyable, AutoCloseable {
             device.instance().debug().setObjectName(device.vkDevice(), VK10.VK_OBJECT_TYPE_BUFFER, this.vkBuffer, label);
         }
     }
-    
+
     private static long queryDeviceAddress(MemoryStack stack, VulkanDevice device, long buffer) {
         VkBufferDeviceAddressInfo addressInfo = VkBufferDeviceAddressInfo.calloc(stack).sType$Default();
         addressInfo.buffer(buffer);
         return VK12.vkGetBufferDeviceAddress(device.vkDevice(), addressInfo);
     }
-    
+
     long vkBuffer() {
         return this.vkBuffer;
     }
-    
+
     String label() {
         return this.label;
     }
-    
+
     String vkBufferHex() {
         return "0x" + Long.toUnsignedString(this.vkBuffer, 16);
     }
-    
+
     boolean closed() {
         return this.closed;
     }
-    
+
     boolean destroyed() {
         return this.destroyed;
     }
-    
+
     long size() {
         return this.size;
     }
-    
+
     long deviceAddress() {
         return this.deviceAddress;
     }
-    
+
     boolean hostVisible() {
         return this.mappedAddress != 0L;
     }
-    
+
     ByteBuffer mappedByteBuffer() {
         if (this.mappedAddress == 0L) {
             throw new IllegalStateException(this.label + " is not host visible");
@@ -104,7 +104,7 @@ final class TerrainGpuBuffer implements Destroyable, AutoCloseable {
         }
         return MemoryUtil.memByteBuffer(this.mappedAddress, (int) this.size);
     }
-    
+
     ByteBuffer mappedSlice(long offset, int length) {
         if (this.mappedAddress == 0L) {
             throw new IllegalStateException(this.label + " is not host visible");
@@ -120,13 +120,13 @@ final class TerrainGpuBuffer implements Destroyable, AutoCloseable {
             Vma.vmaFlushAllocation(this.device.vma(), this.allocation, 0L, this.size);
         }
     }
-    
+
     void invalidate() {
         if (this.mappedAddress != 0L) {
             Vma.vmaInvalidateAllocation(this.device.vma(), this.allocation, 0L, this.size);
         }
     }
-    
+
     @Override
     public synchronized void close() {
         if (!this.closed) {
@@ -134,12 +134,12 @@ final class TerrainGpuBuffer implements Destroyable, AutoCloseable {
             this.device.createCommandEncoder().queueForDestroy(this);
         }
     }
-    
+
     synchronized void destroyNow() {
         this.closed = true;
         destroy();
     }
-    
+
     @Override
     public synchronized void destroy() {
         if (!this.destroyed) {

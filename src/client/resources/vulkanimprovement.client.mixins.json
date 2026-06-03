@@ -9,6 +9,8 @@
     "CompiledSectionMeshMixin",
     "GlBackendMixin",
     "LevelRendererMixin",
+    "OptionsAccessor",
+    "OptionsMixin",
     "SectionRenderDispatcherMixin",
     "SectionRenderDispatcherRenderSectionMixin",
     "VideoSettingsScreenMixin",

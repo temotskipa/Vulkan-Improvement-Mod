@@ -6,9 +6,13 @@ import net.minecraft.client.renderer.chunk.ChunkSectionLayerGroup;
 import net.minecraft.client.renderer.chunk.ChunkSectionsToRender;
 import org.jspecify.annotations.Nullable;
 
+import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
+
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public final class TerrainRenderContext {
     private static final ThreadLocal<Integer> DEPTH = ThreadLocal.withInitial(() -> 0);
@@ -125,6 +129,34 @@ public final class TerrainRenderContext {
 
     public static void clearMeshPipelineBound() {
         MESH_PIPELINE_BOUND.set(false);
+    }
+
+    public static Map<String, Object> preparedDispatchQueueDepths() {
+        List<ArrayDeque<TerrainMeshTaskDispatch>> preparedDispatches = PREPARED_LAYER_DISPATCHES.get();
+        Map<String, Object> depths = new LinkedHashMap<>();
+        if (preparedDispatches == null) {
+            return depths;
+        }
+        ChunkSectionLayer[] layers = ChunkSectionLayer.values();
+        for (int layerOrdinal = 0; layerOrdinal < preparedDispatches.size() && layerOrdinal < layers.length; layerOrdinal++) {
+            int depth = preparedDispatches.get(layerOrdinal).size();
+            if (depth > 0) {
+                depths.put(layers[layerOrdinal].label(), depth);
+            }
+        }
+        return depths;
+    }
+
+    public static int unconsumedPreparedDispatchCount() {
+        List<ArrayDeque<TerrainMeshTaskDispatch>> preparedDispatches = PREPARED_LAYER_DISPATCHES.get();
+        if (preparedDispatches == null) {
+            return 0;
+        }
+        int remaining = 0;
+        for (ArrayDeque<TerrainMeshTaskDispatch> queue : preparedDispatches) {
+            remaining += queue.size();
+        }
+        return remaining;
     }
 
     public static boolean markDispatchRequired(int layerOrdinal) {

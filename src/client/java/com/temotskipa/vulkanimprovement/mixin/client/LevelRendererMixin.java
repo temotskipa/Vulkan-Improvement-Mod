@@ -19,17 +19,17 @@ public final class LevelRendererMixin {
     private void vim$beginChunkVisibilityFrame(Matrix4fc modelViewMatrix, CallbackInfoReturnable<?> cir) {
         SectionMeshletStore.clearSectionVisibilityFrame();
     }
-    
+
     @Inject(method = "invalidateCompiledGeometry", at = @At("HEAD"))
     private void vim$clearMeshletCacheForGeometryInvalidation(ClientLevel level, Options options, Camera camera, BlockColors blockColors, CallbackInfo ci) {
         SectionMeshletStore.clearAll("invalidateCompiledGeometry");
     }
-    
+
     @Inject(method = "resetLevelRenderData", at = @At("HEAD"))
     private void vim$clearMeshletCacheForLevelReset(CallbackInfo ci) {
         SectionMeshletStore.clearAll("resetLevelRenderData");
     }
-    
+
     @Inject(method = "close", at = @At("HEAD"))
     private void vim$clearMeshletCacheForRendererClose(CallbackInfo ci) {
         SectionMeshletStore.clearAll("close");

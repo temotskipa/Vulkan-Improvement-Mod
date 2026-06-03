@@ -9,19 +9,19 @@ import java.util.Map;
 public final class VulkanVideoSettingsCompatibility {
     private VulkanVideoSettingsCompatibility() {
     }
-    
+
     public static boolean useRgssTextureFiltering() {
         Minecraft minecraft = Minecraft.getInstance();
         return minecraft != null && minecraft.options.textureFiltering().get() == TextureFilteringMethod.RGSS;
     }
-    
+
     public static Map<String, Object> snapshot() {
         Map<String, Object> map = new LinkedHashMap<>();
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft == null) {
             return map;
         }
-        
+
         map.put("quality", qualitySettings(minecraft));
         map.put("display", displaySettings(minecraft));
         map.put("preferences", preferenceSettings(minecraft));
@@ -29,7 +29,7 @@ public final class VulkanVideoSettingsCompatibility {
         map.put("terrainCompatibility", terrainCompatibility(minecraft));
         return map;
     }
-    
+
     private static Map<String, Object> qualitySettings(Minecraft minecraft) {
         Map<String, Object> map = new LinkedHashMap<>();
         var options = minecraft.options;
@@ -59,7 +59,7 @@ public final class VulkanVideoSettingsCompatibility {
         map.put("weatherRadius", options.weatherRadius().get());
         return map;
     }
-    
+
     private static Map<String, Object> displaySettings(Minecraft minecraft) {
         Map<String, Object> map = new LinkedHashMap<>();
         var options = minecraft.options;
@@ -74,7 +74,7 @@ public final class VulkanVideoSettingsCompatibility {
         map.put("restartRequiredToApplyVideoSettings", options.isRestartRequiredToApplyVideoSettings());
         return map;
     }
-    
+
     private static Map<String, Object> preferenceSettings(Minecraft minecraft) {
         Map<String, Object> map = new LinkedHashMap<>();
         var options = minecraft.options;
@@ -84,9 +84,12 @@ public final class VulkanVideoSettingsCompatibility {
         map.put("chunkSectionFadeInTime", options.chunkSectionFadeInTime().get());
         return map;
     }
-    
+
     private static Map<String, Object> modSettings() {
         Map<String, Object> map = new LinkedHashMap<>();
+        map.put("vulkanBackendActive", VulkanImprovementRuntime.isVulkanBackendActive());
+        map.put("modRendererActive", VulkanImprovementRuntime.isModRendererActive());
+        map.put("videoOptionsVisible", VulkanImprovementRuntime.shouldShowVideoOptions(Minecraft.getInstance()));
         map.put("replaceVanillaTerrain", TerrainRendererDebugConfig.replaceVanillaTerrain());
         map.put("meshTranslucentTerrainEnabled", TerrainRendererDebugConfig.meshTranslucentTerrainEnabled());
         map.put("meshletFrustumCullingEnabled", TerrainRendererDebugConfig.meshletFrustumCullingEnabled());
@@ -96,9 +99,10 @@ public final class VulkanVideoSettingsCompatibility {
         map.put("requireVulkanBackend", TerrainRendererDebugConfig.REQUIRE_VULKAN_BACKEND);
         map.put("presentPacingEnabled", !TerrainRendererDebugConfig.DISABLE_PRESENT_PACING);
         map.put("waitIdleBeforeTerrainUpload", TerrainRendererDebugConfig.WAIT_IDLE_BEFORE_TERRAIN_UPLOAD);
+        map.put("allowCpuVisibleMeshletFallback", TerrainRendererDebugConfig.ALLOW_CPU_VISIBLE_MESHLET_FALLBACK);
         return map;
     }
-    
+
     private static Map<String, Object> terrainCompatibility(Minecraft minecraft) {
         Map<String, Object> map = new LinkedHashMap<>();
         var options = minecraft.options;
@@ -116,7 +120,7 @@ public final class VulkanVideoSettingsCompatibility {
         map.put("graphicsBackendRequirement", TerrainRendererDebugConfig.REQUIRE_VULKAN_BACKEND ? "vulkan-required" : "vanilla-selection");
         return map;
     }
-    
+
     private static String enumName(Object value) {
         return value instanceof Enum<?> enumValue ? enumValue.name() : String.valueOf(value);
     }

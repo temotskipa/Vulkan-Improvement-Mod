@@ -20,6 +20,7 @@ public final class ChunkSectionsToRenderMixin {
 
     @Inject(method = "renderGroup", at = @At("RETURN"))
     private void vim$leaveTerrainGroup(ChunkSectionLayerGroup group, GpuSampler sampler, CallbackInfo ci) {
+        MeshTerrainRenderer.get().finalizeTerrainGroupObservation();
         TerrainRenderContext.exit();
     }
 }

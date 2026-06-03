@@ -11,14 +11,14 @@ import java.util.Set;
 public final class TerrainMaterialClassifierInvariantCheck {
     private TerrainMaterialClassifierInvariantCheck() {
     }
-    
+
     public static void main(String[] args) {
         checkMaterialIdsFitTableAndAreStable();
         checkLayerAlphaClassification();
         checkTerrainLayerRecords();
         checkDiagnostics();
     }
-    
+
     private static void checkMaterialIdsFitTableAndAreStable() {
         Set<Integer> materialIds = new HashSet<>();
         for (ChunkSectionLayer layer : ChunkSectionLayer.values()) {
@@ -28,7 +28,7 @@ public final class TerrainMaterialClassifierInvariantCheck {
             require(materialIds.add(materialId), layer.label() + " material ID must be unique");
         }
     }
-    
+
     private static void checkLayerAlphaClassification() {
         for (ChunkSectionLayer layer : ChunkSectionLayer.values()) {
             GpuMaterialAlphaMode alphaMode = TerrainMaterialClassifier.alphaModeForLayer(layer);
@@ -42,13 +42,13 @@ public final class TerrainMaterialClassifierInvariantCheck {
             }
         }
     }
-    
+
     private static void checkTerrainLayerRecords() {
         GpuMaterialRecord.TextureInfo blockAtlas = new GpuMaterialRecord.TextureInfo(true, 1024, 512, 0, 5);
         GpuMaterialRecord.TextureInfo lightmap = new GpuMaterialRecord.TextureInfo(true, 16, 16, 0, 1);
         ByteBuffer table = ByteBuffer.allocate(TerrainGpuLayout.MATERIAL_TABLE_CAPACITY * TerrainGpuLayout.MATERIAL_RECORD_STRIDE).order(ByteOrder.LITTLE_ENDIAN);
         TerrainMaterialClassifier.writeTerrainLayerRecords(table, blockAtlas, lightmap);
-        
+
         for (ChunkSectionLayer layer : ChunkSectionLayer.values()) {
             int materialId = TerrainMaterialClassifier.materialIdForLayer(layer);
             int[] encoded = readRecord(table, materialId);
@@ -60,7 +60,7 @@ public final class TerrainMaterialClassifierInvariantCheck {
             require(encoded[14] == GpuMaterialRecord.MATERIAL_DOMAIN_TERRAIN, layer.label() + " material record must encode terrain domain");
         }
     }
-    
+
     private static void checkDiagnostics() {
         Map<String, Object> diagnostics = TerrainMaterialClassifier.asMap();
         require(diagnostics.size() == ChunkSectionLayer.values().length, "material diagnostics must include every chunk section layer");
@@ -73,7 +73,7 @@ public final class TerrainMaterialClassifierInvariantCheck {
             require(layerMap.get("renderLayerOrdinal").equals(layer.ordinal()), layer.label() + " diagnostics must include render-layer ordinal");
         }
     }
-    
+
     private static int expectedFlags(GpuMaterialAlphaMode alphaMode) {
         int flags = GpuMaterialRecord.FLAG_BLOCK_ATLAS_READY | GpuMaterialRecord.FLAG_LIGHTMAP_READY;
         if (alphaMode == GpuMaterialAlphaMode.MASKED) {
@@ -83,7 +83,7 @@ public final class TerrainMaterialClassifierInvariantCheck {
         }
         return flags;
     }
-    
+
     private static int[] readRecord(ByteBuffer table, int materialId) {
         ByteBuffer duplicate = table.duplicate().order(ByteOrder.LITTLE_ENDIAN);
         duplicate.position(materialId * TerrainGpuLayout.MATERIAL_RECORD_STRIDE);
@@ -93,7 +93,7 @@ public final class TerrainMaterialClassifierInvariantCheck {
         }
         return encoded;
     }
-    
+
     private static void require(boolean condition, String message) {
         if (!condition) {
             throw new AssertionError(message);

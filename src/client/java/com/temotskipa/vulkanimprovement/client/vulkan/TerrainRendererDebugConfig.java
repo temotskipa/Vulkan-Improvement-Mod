@@ -6,6 +6,7 @@ public final class TerrainRendererDebugConfig {
     public static final boolean REQUIRE_VULKAN_BACKEND = booleanProperty("vim.requireVulkanBackend", false);
     public static final boolean VALIDATION_DESCRIPTOR_BUFFER_ONLY = booleanProperty("vim.validationDescriptorBufferOnly", false);
     public static final boolean WAIT_IDLE_BEFORE_TERRAIN_UPLOAD = booleanProperty("vim.waitIdleBeforeTerrainUpload", false);
+    public static final boolean ALLOW_CPU_VISIBLE_MESHLET_FALLBACK = booleanProperty("vim.allowCpuVisibleMeshletFallback", false);
     public static final int TERRAIN_FRAGMENT_SHADING_RATE = intProperty("vim.terrainFragmentShadingRate", 1, 1, 4);
     public static final int INITIAL_SECTION_CAPACITY = intProperty("vim.initialSectionCapacity", 32768, 1024, 1_048_576);
     public static final int INITIAL_MESHLET_CAPACITY = intProperty("vim.initialMeshletCapacity", 524288, 4096, 8_388_608);
@@ -105,6 +106,7 @@ public final class TerrainRendererDebugConfig {
                 + ", disablePresentPacing=" + DISABLE_PRESENT_PACING
                 + ", validationDescriptorBufferOnly=" + VALIDATION_DESCRIPTOR_BUFFER_ONLY
                 + ", waitIdleBeforeTerrainUpload=" + WAIT_IDLE_BEFORE_TERRAIN_UPLOAD
+                + ", allowCpuVisibleMeshletFallback=" + ALLOW_CPU_VISIBLE_MESHLET_FALLBACK
                 + ", terrainFragmentShadingRate=" + TERRAIN_FRAGMENT_SHADING_RATE
                 + ", terrainMirrorStabilizationMillis=" + TERRAIN_MIRROR_STABILIZATION_MILLIS
                 + ", initialSectionCapacity=" + INITIAL_SECTION_CAPACITY

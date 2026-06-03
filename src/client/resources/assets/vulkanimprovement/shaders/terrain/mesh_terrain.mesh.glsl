@@ -86,7 +86,7 @@ layout(push_constant, scalar) uniform TerrainPushConstants {
     uint64_t workQueue;
     uint64_t materialTable;
     uint meshletCount;
-    uint debugFlags;
+    uint enableMeshletFrustumCulling;
     uint meshletOffset;
     int layerOrdinal;
     vec4 cameraPosition;
@@ -134,7 +134,7 @@ void main() {
     MeshletHeader header = meshlets.headers[taskPayload.visibleMeshlet];
     bool indexedTriangles = (header.flags0 & INDEXED_TRIANGLES_FLAG) != 0 && header.indexBytes > 0;
     atomicAdd(counters.candidateMeshlets, 1u);
-    if (cullMeshlet(header)) {
+    if (pc.enableMeshletFrustumCulling != 0u && cullMeshlet(header)) {
         atomicAdd(counters.culledMeshlets, 1u);
         SetMeshOutputsEXT(0u, 0u);
         return;

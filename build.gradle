@@ -3,7 +3,7 @@ import groovy.json.JsonSlurper
 import java.util.concurrent.TimeUnit
 
 plugins {
-    id 'net.fabricmc.fabric-loom' version '1.17.0-alpha.13'
+    id 'net.fabricmc.fabric-loom' version '1.17.0-alpha.16'
     id 'maven-publish'
 }
 
@@ -43,6 +43,9 @@ dependencies {
 }
 
 sourceSets {
+    client {
+        resources.srcDir(layout.buildDirectory.dir("generated/resources/terrain-spirv"))
+    }
     test {
         compileClasspath += sourceSets.client.output
         runtimeClasspath += sourceSets.client.output
@@ -53,7 +56,7 @@ processResources {
     inputs.property "version", project.version
     inputs.property "minecraft_version", project.minecraft_version
     inputs.property "loader_version", project.loader_version
-    filteringCharset "UTF-8"
+    filteringCharset = "UTF-8"
 
     filesMatching("fabric.mod.json") {
         expand "version": project.version,
@@ -235,6 +238,82 @@ tasks.register("checkVulkanPackageBoundaries") {
     }
 }
 
+tasks.register("compileTerrainSpirv") {
+    group = "build"
+    description = "Compiles terrain GLSL to SPIR-V for packaged client resources when glslangValidator is available."
+
+    def shaderFiles = fileTree(dir: terrainShaderSourceDir, include: "*.glsl")
+    def generatedResourceRoot = layout.buildDirectory.dir("generated/resources/terrain-spirv")
+    inputs.files(shaderFiles)
+    outputs.dir(generatedResourceRoot)
+
+    doLast {
+        def validator = findGlslangValidator()
+        if (validator == null) {
+            logger.lifecycle("glslangValidator not found; skipping terrain SPIR-V generation. Runtime shaderc compilation remains available.")
+            return
+        }
+
+        def resourceRoot = generatedResourceRoot.get().asFile
+        def spirvDir = new File(resourceRoot, "assets/vulkanimprovement/shaders/terrain/spirv")
+        spirvDir.mkdirs()
+        shaderFiles.files.sort { it.name }.each { shaderFile ->
+            def stage = shaderFile.name.endsWith(".task.glsl") ? "task"
+                    : shaderFile.name.endsWith(".mesh.glsl") ? "mesh"
+                    : shaderFile.name.endsWith(".frag.glsl") ? "frag"
+                    : shaderFile.name.endsWith(".comp.glsl") ? "comp"
+                    : null
+            if (stage == null) {
+                throw new GradleException("Unknown terrain shader stage for ${project.relativePath(shaderFile)}")
+            }
+            def outputFile = new File(spirvDir, shaderFile.name + ".spv")
+            def process = new ProcessBuilder(validator as String,
+                    "-V",
+                    "--target-env",
+                    "vulkan1.4",
+                    "-S",
+                    stage,
+                    shaderFile.absolutePath,
+                    "-o",
+                    outputFile.absolutePath).redirectErrorStream(true).start()
+            def output = process.inputStream.getText("UTF-8")
+            process.waitFor()
+            if (process.exitValue() != 0) {
+                throw new GradleException("Terrain SPIR-V generation failed for ${project.relativePath(shaderFile)}:\n${output}")
+            }
+        }
+    }
+}
+
+def findGlslangValidator() {
+    def candidates = []
+    def vulkanSdk = System.getenv("VULKAN_SDK")
+    if (vulkanSdk != null && !vulkanSdk.isBlank()) {
+        candidates.add(new File(vulkanSdk, "Bin/glslangValidator.exe").absolutePath)
+        candidates.add(new File(vulkanSdk, "bin/glslangValidator").absolutePath)
+    }
+    candidates.add("glslangValidator")
+    candidates.add("glslangValidator.exe")
+    return candidates.find { candidate ->
+        try {
+            def process = new ProcessBuilder(candidate, "--version")
+                    .redirectErrorStream(true)
+                    .start()
+            process.waitFor(5, TimeUnit.SECONDS) && process.exitValue() == 0
+        } catch (IOException ignored) {
+            false
+        }
+    }
+}
+
+tasks.named("processClientResources") {
+    dependsOn tasks.named("compileTerrainSpirv")
+}
+
+tasks.named("compileClientJava") {
+    dependsOn tasks.named("compileTerrainSpirv")
+}
+
 tasks.register("checkTerrainShaders") {
     group = "verification"
     description = "Validates terrain GLSL shaders with glslangValidator when available."
@@ -246,25 +325,7 @@ tasks.register("checkTerrainShaders") {
 
     doLast {
         def required = requireShaderValidator.get()
-        def candidates = []
-        def vulkanSdk = System.getenv("VULKAN_SDK")
-        if (vulkanSdk != null && !vulkanSdk.isBlank()) {
-            candidates.add(new File(vulkanSdk, "Bin/glslangValidator.exe").absolutePath)
-            candidates.add(new File(vulkanSdk, "bin/glslangValidator").absolutePath)
-        }
-        candidates.add("glslangValidator")
-        candidates.add("glslangValidator.exe")
-
-        def validator = candidates.find { candidate ->
-            try {
-                def process = new ProcessBuilder(candidate, "--version")
-                        .redirectErrorStream(true)
-                        .start()
-                process.waitFor(5, TimeUnit.SECONDS) && process.exitValue() == 0
-            } catch (IOException ignored) {
-                false
-            }
-        }
+        def validator = findGlslangValidator()
 
         if (validator == null) {
             def message = "glslangValidator not found; skipping terrain shader validation. Use -Pvim.requireShaderValidator=true to require it."
@@ -393,7 +454,7 @@ tasks.register("checkTerrainLayoutManifest") {
                 taskShader,
                 "layout(buffer_reference, scalar, buffer_reference_align = 4) readonly buffer TerrainWorkQueue { uint producedCount; uint consumedCount; uint droppedCount; uint reserved; TerrainWorkQueueRecord records[]; };")
 
-        def pushConstantBlock = "layout(push_constant, scalar) uniform TerrainPushConstants { uint64_t meshletHeaders; uint64_t vertexPayload; uint64_t indexPayload; uint64_t debugCounters; uint64_t visibleMeshlets; uint64_t workQueue; uint64_t materialTable; uint meshletCount; uint debugFlags; uint meshletOffset; int layerOrdinal; vec4 cameraPosition; vec4 cameraRight; vec4 cameraUp; vec4 cameraForward; vec4 projection; } pc;"
+        def pushConstantBlock = "layout(push_constant, scalar) uniform TerrainPushConstants { uint64_t meshletHeaders; uint64_t vertexPayload; uint64_t indexPayload; uint64_t debugCounters; uint64_t visibleMeshlets; uint64_t workQueue; uint64_t materialTable; uint meshletCount; uint enableMeshletFrustumCulling; uint meshletOffset; int layerOrdinal; vec4 cameraPosition; vec4 cameraRight; vec4 cameraUp; vec4 cameraForward; vec4 projection; } pc;"
         requireNormalizedText("task terrain shader", taskShader, pushConstantBlock)
         requireNormalizedText("mesh terrain shader", meshShader, pushConstantBlock)
         requireText("task terrain shader", taskShader, "TerrainWorkQueue queue = TerrainWorkQueue(pc.workQueue);")

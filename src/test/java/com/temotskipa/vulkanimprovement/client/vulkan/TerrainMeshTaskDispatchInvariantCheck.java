@@ -5,7 +5,7 @@ import java.util.Map;
 public final class TerrainMeshTaskDispatchInvariantCheck {
     private TerrainMeshTaskDispatchInvariantCheck() {
     }
-    
+
     public static void main(String[] args) {
         checkUnavailableDispatch();
         checkFullLayerDispatch();
@@ -15,39 +15,39 @@ public final class TerrainMeshTaskDispatchInvariantCheck {
         checkIndirectCommandDispatch();
         checkInvalidDispatchesRejected();
     }
-    
+
     private static void checkUnavailableDispatch() {
         TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.unavailable("test");
-        
+
         require(!dispatch.ready(), "unavailable dispatch must not be ready");
         require("unavailable".equals(dispatch.source().id()), "unavailable dispatch must report source id");
         require("test".equals(dispatch.reason()), "unavailable dispatch must preserve reason");
         requireMap(dispatch.asMap(), "unavailable", 0, -1, 0, 0, false, false, false);
     }
-    
+
     private static void checkFullLayerDispatch() {
         TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.fullLayer(32, 2, 128);
-        
+
         require(dispatch.ready(), "full layer dispatch with tasks must be ready");
         require(!dispatch.usesVisibleMeshletList(), "full layer dispatch must not use visible meshlet list");
         require(!dispatch.truncated(), "full layer dispatch below limit must not be truncated");
         requireMap(dispatch.asMap(), "direct-layer", 32, 2, 128, 128, false, false, false);
     }
-    
+
     private static void checkFullLayerDispatchClampsToDirectTaskLimit() {
         int requested = TerrainMeshTaskDispatch.MAX_DIRECT_TASKS + 10;
         TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.fullLayer(0, -1, requested);
-        
+
         require(dispatch.ready(), "clamped full layer dispatch must remain ready");
         require(dispatch.taskCount() == TerrainMeshTaskDispatch.MAX_DIRECT_TASKS, "full layer dispatch must clamp task count");
         require(dispatch.truncated(), "full layer dispatch above direct limit must report truncation");
         requireMap(dispatch.asMap(), "direct-layer", 0, -1, requested, TerrainMeshTaskDispatch.MAX_DIRECT_TASKS, false, false, true);
     }
-    
+
     private static void checkCpuVisibleListDispatch() {
         DescriptorHeapTerrainResources.VisibleMeshletUpload upload = new DescriptorHeapTerrainResources.VisibleMeshletUpload(7, 64, 4096L, 0, true);
         TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.cpuVisibleList(upload, 1);
-        
+
         require(dispatch.ready(), "CPU visible-list dispatch must be ready when upload is ready");
         require(dispatch.usesVisibleMeshletList(), "CPU visible-list dispatch must use visible meshlet list");
         require(!dispatch.usesWorkQueue(), "CPU visible-list dispatch must not use work queue");
@@ -90,7 +90,7 @@ public final class TerrainMeshTaskDispatchInvariantCheck {
         requireThrows(() -> new TerrainMeshTaskDispatch(0, 0, 1, 1, 0L, 0L, 1L, 0L, 0, 0L, false, TerrainMeshTaskDispatch.Source.DIRECT_LAYER, ""), "indirect dispatch without stride must be rejected");
         requireThrows(() -> new TerrainMeshTaskDispatch(0, 0, 1, 1, 0L, 0L, 0L, 1L, TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_STRIDE, 0L, false, TerrainMeshTaskDispatch.Source.DIRECT_LAYER, ""), "indirect metadata without buffer must be rejected");
     }
-    
+
     private static void requireMap(Map<String, Object> map, String source, int offset, int layerOrdinal,
                                    int requestedMeshlets, int taskCount, boolean usesVisibleList,
                                    boolean usesWorkQueue, boolean truncated) {
@@ -106,7 +106,7 @@ public final class TerrainMeshTaskDispatchInvariantCheck {
         require(map.get("truncated").equals(truncated), "dispatch diagnostics must include truncation state");
         require(map.get("directMeshTaskLimit").equals(TerrainMeshTaskDispatch.MAX_DIRECT_TASKS), "dispatch diagnostics must include direct task limit");
     }
-    
+
     private static void requireThrows(Runnable action, String message) {
         try {
             action.run();
@@ -115,7 +115,7 @@ public final class TerrainMeshTaskDispatchInvariantCheck {
         }
         throw new AssertionError(message);
     }
-    
+
     private static void require(boolean condition, String message) {
         if (!condition) {
             throw new AssertionError(message);

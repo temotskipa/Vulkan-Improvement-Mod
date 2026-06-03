@@ -1,15 +1,16 @@
 {
   "options.vulkanimprovement.header": "Vulkan Improvement",
   "options.vulkanimprovement.meshTerrainRenderer": "Mesh Terrain",
-  "options.vulkanimprovement.meshTerrainRenderer.tooltip": "Replaces vanilla solid and cutout terrain submission with the Vulkan Improvement mesh-shader terrain path.",
+  "options.vulkanimprovement.meshTerrainRenderer.tooltip": "Replaces vanilla solid and cutout terrain with the mesh-shader path. Requires the Vulkan graphics API.",
   "options.vulkanimprovement.meshTranslucentTerrain": "Mesh Water",
-  "options.vulkanimprovement.meshTranslucentTerrain.tooltip": "Routes translucent terrain through the mesh-shader path. Disabled by default until water ordering and blending match vanilla.",
+  "options.vulkanimprovement.meshTranslucentTerrain.tooltip": "Routes translucent terrain through the mesh-shader path. Requires Mesh Terrain. Disabled by default until water ordering matches vanilla.",
   "options.vulkanimprovement.meshletFrustumCulling": "Meshlet Culling",
-  "options.vulkanimprovement.meshletFrustumCulling.tooltip": "Enables shader-side meshlet frustum culling. Leave this off while checking for edge-of-screen chunk holes.",
+  "options.vulkanimprovement.meshletFrustumCulling.tooltip": "Enables shader-side meshlet frustum culling. Requires Mesh Terrain. Leave off while checking for edge-of-screen chunk holes.",
   "options.vulkanimprovement.drawAllCapturedTerrainLayers": "Full Captured Terrain",
-  "options.vulkanimprovement.drawAllCapturedTerrainLayers.tooltip": "Draws all captured solid and cutout mesh terrain instead of the visible-list subset. This is a heavy diagnostic mode for chunk flicker.",
+  "options.vulkanimprovement.drawAllCapturedTerrainLayers.tooltip": "Draws all captured solid and cutout mesh terrain instead of the visible-list subset. Requires Mesh Terrain. Heavy diagnostic mode.",
   "options.vulkanimprovement.vanillaChunkVisibilityFade": "Chunk Fade",
-  "options.vulkanimprovement.vanillaChunkVisibilityFade.tooltip": "Applies vanilla chunk-section fade to mesh terrain. Disable only when comparing raw chunk streaming behavior.",
+  "options.vulkanimprovement.vanillaChunkVisibilityFade.tooltip": "Applies vanilla chunk-section fade to mesh terrain. Requires Mesh Terrain.",
   "options.vulkanimprovement.terrainFragmentShadingRate": "Terrain VRS",
-  "options.vulkanimprovement.terrainFragmentShadingRate.tooltip": "Applies Vulkan fragment shading rate commands to terrain when the device supports them."
+  "options.vulkanimprovement.terrainFragmentShadingRate.tooltip": "Applies Vulkan fragment shading rate to terrain. Requires Mesh Terrain and GPU support.",
+  "key.vulkanimprovement.dump_diagnostics": "Dump Vulkan Improvement Diagnostics"
 }

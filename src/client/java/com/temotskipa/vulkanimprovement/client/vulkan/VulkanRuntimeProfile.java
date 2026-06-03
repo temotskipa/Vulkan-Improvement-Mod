@@ -10,9 +10,7 @@ final class VulkanRuntimeProfile {
     private final Map<String, Object> selectedPaths;
     private final Map<String, Object> disabledReasons;
     
-    private VulkanRuntimeProfile(Map<String, Object> hardRequirements, Map<String, Object> preferredFeatures,
-                                 Map<String, Object> rtReadiness, Map<String, Object> selectedPaths,
-                                 Map<String, Object> disabledReasons) {
+    private VulkanRuntimeProfile(Map<String, Object> hardRequirements, Map<String, Object> preferredFeatures, Map<String, Object> rtReadiness, Map<String, Object> selectedPaths, Map<String, Object> disabledReasons) {
         this.hardRequirements = Map.copyOf(hardRequirements);
         this.preferredFeatures = Map.copyOf(preferredFeatures);
         this.rtReadiness = Map.copyOf(rtReadiness);

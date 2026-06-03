@@ -36,6 +36,8 @@ public final class MeshTerrainRenderer {
     private final LongAdder meshReplacementPreparedFullLayerGpuCommands = new LongAdder();
     private final LongAdder meshReplacementPreparedVisibleGpuCommands = new LongAdder();
     private final LongAdder meshReplacementPreparedGpuCommandRefusals = new LongAdder();
+    private final LongAdder meshReplacementPreparedDispatchQueueLeaks = new LongAdder();
+    private final LongAdder meshReplacementVisibleMeshletFallbackRefusals = new LongAdder();
     private final LongAdder meshReplacementTaskTruncations = new LongAdder();
     private final LongAdder meshReplacementLayerFilteredDrawCalls = new LongAdder();
     private final LongAdder meshReplacementWholeSetDrawCalls = new LongAdder();
@@ -80,6 +82,13 @@ public final class MeshTerrainRenderer {
         TerrainRenderContext.setCurrentTerrainGroup(chunkSectionsToRender, group);
         DescriptorHeapTerrainResources.get().uploadDirtyTerrainData();
         prepareTerrainCommands(chunkSectionsToRender, group);
+    }
+
+    public void finalizeTerrainGroupObservation() {
+        int unconsumedPreparedDispatches = TerrainRenderContext.unconsumedPreparedDispatchCount();
+        if (unconsumedPreparedDispatches > 0) {
+            this.meshReplacementPreparedDispatchQueueLeaks.add(unconsumedPreparedDispatches);
+        }
     }
 
     public void recordSectionCapture(int vertexBytes, int indexBytes, int meshlets) {
@@ -159,6 +168,11 @@ public final class MeshTerrainRenderer {
             DescriptorHeapTerrainResources.TerrainWorkQueueUpload workQueue = terrainResources.writeVisibleWorkQueue(ranges, layerOrdinal);
             dispatch = TerrainMeshTaskDispatch.cpuWorkQueue(workQueue, layerOrdinal, workQueue.count());
             if (!dispatch.ready()) {
+                if (!TerrainRendererDebugConfig.ALLOW_CPU_VISIBLE_MESHLET_FALLBACK) {
+                    this.meshReplacementVisibleMeshletFallbackRefusals.increment();
+                    this.meshReplacementRefusals.increment();
+                    return false;
+                }
                 DescriptorHeapTerrainResources.VisibleMeshletUpload visibleMeshlets = terrainResources.writeVisibleMeshletList(ranges);
                 if (!visibleMeshlets.ready()) {
                     this.meshReplacementRefusals.increment();
@@ -295,6 +309,7 @@ public final class MeshTerrainRenderer {
             drawDispatch = dispatch.withIndirectCommand(commandUpload);
         }
         if (MeshShaderTerrainProgram.get().drawTerrain(context.commandBuffer(), vanillaPipeline, context.hasDepth(), drawDispatch, terrainResources.meshletHeaderAddress(), terrainResources.meshletVertexPayloadAddress(), terrainResources.meshletIndexPayloadAddress())) {
+            terrainResources.markTerrainReadInCurrentSubmit();
             this.meshReplacementDrawCalls.increment();
             this.meshReplacementTasks.add(drawDispatch.taskCount());
             this.lastTerrainDispatch = drawDispatch;
@@ -340,7 +355,7 @@ public final class MeshTerrainRenderer {
             MeshShaderTerrainProgram.get().configure(device);
             PresentPacingController.get().configure(capabilities);
             FragmentShadingRateController.get().configure(capabilities);
-            RendererDomainRegistry.get().set(RendererDomain.TERRAIN, RendererDomainRegistry.DomainState.meshTerrain("terrain mesh shader path configured"));
+            RendererDomainObserver.observeRendererReady();
             setLifecycleState(RendererLifecycleState.READY, "renderer services configured");
         } catch (RuntimeException | Error ex) {
             setLifecycleState(RendererLifecycleState.FAILED, ex.getClass().getSimpleName() + " during renderer configuration");
@@ -391,6 +406,8 @@ public final class MeshTerrainRenderer {
         map.put("meshReplacementPreparedFullLayerGpuCommands", this.meshReplacementPreparedFullLayerGpuCommands.sum());
         map.put("meshReplacementPreparedVisibleGpuCommands", this.meshReplacementPreparedVisibleGpuCommands.sum());
         map.put("meshReplacementPreparedGpuCommandRefusals", this.meshReplacementPreparedGpuCommandRefusals.sum());
+        map.put("meshReplacementPreparedDispatchQueueLeaks", this.meshReplacementPreparedDispatchQueueLeaks.sum());
+        map.put("meshReplacementVisibleMeshletFallbackRefusals", this.meshReplacementVisibleMeshletFallbackRefusals.sum());
         map.put("meshReplacementTaskTruncations", this.meshReplacementTaskTruncations.sum());
         map.put("meshReplacementLayerFilteredDrawCalls", this.meshReplacementLayerFilteredDrawCalls.sum());
         map.put("meshReplacementWholeSetDrawCalls", this.meshReplacementWholeSetDrawCalls.sum());
@@ -410,6 +427,10 @@ public final class MeshTerrainRenderer {
         map.put("presentPacing", PresentPacingController.get().asMap());
         map.put("fragmentShadingRate", FragmentShadingRateController.get().asMap());
         return map;
+    }
+
+    RendererLifecycleState currentLifecycleState() {
+        return this.lifecycleState;
     }
 
     private void setLifecycleState(RendererLifecycleState lifecycleState, String reason) {

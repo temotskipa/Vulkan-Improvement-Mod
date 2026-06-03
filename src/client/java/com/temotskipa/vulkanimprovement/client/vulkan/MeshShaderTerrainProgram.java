@@ -45,6 +45,10 @@ public final class MeshShaderTerrainProgram {
     private volatile long commandModule;
     private volatile CommandPipeline commandPipeline;
     private volatile String lastError = "";
+    private volatile String taskShaderCompileSource = "unconfigured";
+    private volatile String meshShaderCompileSource = "unconfigured";
+    private volatile String fragmentShaderCompileSource = "unconfigured";
+    private volatile String commandShaderCompileSource = "unconfigured";
 
     private MeshShaderTerrainProgram() {
     }
@@ -114,6 +118,10 @@ public final class MeshShaderTerrainProgram {
         putVec4(target, focal, aspect, 0.05F, 512.0F);
     }
 
+    private static int meshletFrustumCullingPushConstant() {
+        return TerrainRendererDebugConfig.meshletFrustumCullingEnabled() ? 1 : 0;
+    }
+
     private static void putVec4(ByteBuffer target, float x, float y, float z, float w) {
         target.putFloat(x);
         target.putFloat(y);
@@ -148,10 +156,14 @@ public final class MeshShaderTerrainProgram {
         shutdown();
         this.device = device;
         try (Compiler compiler = new Compiler()) {
-            this.taskModule = compiler.compile(device, TerrainShaderSource.TASK_SHADER, Shaderc.shaderc_task_shader, TerrainShaderSource.load(TerrainShaderSource.TASK_SHADER));
-            this.meshModule = compiler.compile(device, TerrainShaderSource.MESH_SHADER, Shaderc.shaderc_mesh_shader, TerrainShaderSource.load(TerrainShaderSource.MESH_SHADER));
-            this.fragmentModule = compiler.compile(device, TerrainShaderSource.FRAGMENT_SHADER, Shaderc.shaderc_fragment_shader, TerrainShaderSource.load(TerrainShaderSource.FRAGMENT_SHADER));
-            this.commandModule = compiler.compile(device, TerrainShaderSource.MESH_TASK_COMMAND_SHADER, Shaderc.shaderc_compute_shader, TerrainShaderSource.load(TerrainShaderSource.MESH_TASK_COMMAND_SHADER));
+            this.taskModule = compiler.compile(device, TerrainShaderSource.TASK_SHADER, TerrainShaderSource.TASK_SHADER_SPIRV, Shaderc.shaderc_task_shader, TerrainShaderSource.load(TerrainShaderSource.TASK_SHADER));
+            this.taskShaderCompileSource = compiler.lastCompileSource();
+            this.meshModule = compiler.compile(device, TerrainShaderSource.MESH_SHADER, TerrainShaderSource.MESH_SHADER_SPIRV, Shaderc.shaderc_mesh_shader, TerrainShaderSource.load(TerrainShaderSource.MESH_SHADER));
+            this.meshShaderCompileSource = compiler.lastCompileSource();
+            this.fragmentModule = compiler.compile(device, TerrainShaderSource.FRAGMENT_SHADER, TerrainShaderSource.FRAGMENT_SHADER_SPIRV, Shaderc.shaderc_fragment_shader, TerrainShaderSource.load(TerrainShaderSource.FRAGMENT_SHADER));
+            this.fragmentShaderCompileSource = compiler.lastCompileSource();
+            this.commandModule = compiler.compile(device, TerrainShaderSource.MESH_TASK_COMMAND_SHADER, TerrainShaderSource.MESH_TASK_COMMAND_SHADER_SPIRV, Shaderc.shaderc_compute_shader, TerrainShaderSource.load(TerrainShaderSource.MESH_TASK_COMMAND_SHADER));
+            this.commandShaderCompileSource = compiler.lastCompileSource();
             this.commandPipeline = createCommandPipeline(device);
             this.lastError = "";
             device.instance().debug().setObjectName(device.vkDevice(), VK10.VK_OBJECT_TYPE_SHADER_MODULE, this.taskModule, "VIM Terrain Task Shader");
@@ -212,7 +224,7 @@ public final class MeshShaderTerrainProgram {
             pushConstants.putLong(dispatch.workQueueAddress());
             pushConstants.putLong(DescriptorHeapTerrainResources.get().materialTableAddress());
             pushConstants.putInt(dispatch.taskCount());
-            pushConstants.putInt(0);
+            pushConstants.putInt(meshletFrustumCullingPushConstant());
             pushConstants.putInt(dispatch.meshletOffset());
             pushConstants.putInt(dispatch.layerOrdinal());
             writeCameraPushConstants(pushConstants);
@@ -323,6 +335,11 @@ public final class MeshShaderTerrainProgram {
         map.put("meshShaderResource", TerrainShaderSource.MESH_SHADER);
         map.put("fragmentShaderResource", TerrainShaderSource.FRAGMENT_SHADER);
         map.put("meshTaskCommandShaderResource", TerrainShaderSource.MESH_TASK_COMMAND_SHADER);
+        map.put("taskShaderCompileSource", this.taskShaderCompileSource);
+        map.put("meshShaderCompileSource", this.meshShaderCompileSource);
+        map.put("fragmentShaderCompileSource", this.fragmentShaderCompileSource);
+        map.put("commandShaderCompileSource", this.commandShaderCompileSource);
+        map.put("enableMeshletFrustumCulling", meshletFrustumCullingPushConstant() != 0);
         map.put("pipelineCacheSize", this.pipelineCache.size());
         map.put("commandPipelineReady", this.commandPipeline != null);
         map.put("pipelineCompiles", this.pipelineCompiles.sum());
@@ -521,6 +538,7 @@ public final class MeshShaderTerrainProgram {
     private static final class Compiler implements AutoCloseable {
         private final long compiler = Shaderc.shaderc_compiler_initialize();
         private final long options = Shaderc.shaderc_compile_options_initialize();
+        private String lastCompileSource = "unconfigured";
 
         private Compiler() {
             Shaderc.shaderc_compile_options_set_target_env(this.options, Shaderc.shaderc_target_env_vulkan, Shaderc.shaderc_env_version_vulkan_1_4);
@@ -529,7 +547,21 @@ public final class MeshShaderTerrainProgram {
             Shaderc.shaderc_compile_options_set_generate_debug_info(this.options);
         }
 
-        private long compile(VulkanDevice device, String filename, int shaderKind, String source) {
+        private String lastCompileSource() {
+            return this.lastCompileSource;
+        }
+
+        private long compile(VulkanDevice device, String glslResource, String spirvResource, int shaderKind, String source) {
+            ByteBuffer precompiled = TerrainShaderSource.loadSpirv(spirvResource);
+            if (precompiled != null) {
+                this.lastCompileSource = "precompiled-spirv";
+                return createShaderModule(device, glslResource, precompiled);
+            }
+            this.lastCompileSource = "runtime-shaderc";
+            return compileFromSource(device, glslResource, shaderKind, source);
+        }
+
+        private long compileFromSource(VulkanDevice device, String filename, int shaderKind, String source) {
             long result = Shaderc.shaderc_compile_into_spv(this.compiler, source, shaderKind, filename, "main", this.options);
             try {
                 int status = Shaderc.shaderc_result_get_compilation_status(result);
@@ -537,15 +569,19 @@ public final class MeshShaderTerrainProgram {
                     throw new IllegalStateException("Failed to compile " + filename + ": " + Shaderc.shaderc_result_get_error_message(result));
                 }
                 ByteBuffer spirv = Shaderc.shaderc_result_get_bytes(result);
-                try (MemoryStack stack = MemoryStack.stackPush()) {
-                    VkShaderModuleCreateInfo moduleCreateInfo = VkShaderModuleCreateInfo.calloc(stack).sType$Default();
-                    moduleCreateInfo.pCode(Objects.requireNonNull(spirv));
-                    long[] module = new long[1];
-                    VulkanUtils.crashIfFailure(device, VK12.vkCreateShaderModule(device.vkDevice(), moduleCreateInfo, null, module), "Failed to create " + filename);
-                    return module[0];
-                }
+                return createShaderModule(device, filename, spirv);
             } finally {
                 Shaderc.shaderc_result_release(result);
+            }
+        }
+
+        private static long createShaderModule(VulkanDevice device, String filename, ByteBuffer spirv) {
+            try (MemoryStack stack = MemoryStack.stackPush()) {
+                VkShaderModuleCreateInfo moduleCreateInfo = VkShaderModuleCreateInfo.calloc(stack).sType$Default();
+                moduleCreateInfo.pCode(Objects.requireNonNull(spirv));
+                long[] module = new long[1];
+                VulkanUtils.crashIfFailure(device, VK12.vkCreateShaderModule(device.vkDevice(), moduleCreateInfo, null, module), "Failed to create " + filename);
+                return module[0];
             }
         }
 
