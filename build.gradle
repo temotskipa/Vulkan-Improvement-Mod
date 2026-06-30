@@ -3,7 +3,7 @@ import groovy.json.JsonSlurper
 import java.util.concurrent.TimeUnit
 
 plugins {
-    id 'net.fabricmc.fabric-loom' version '1.17.0-alpha.16'
+    id 'net.fabricmc.fabric-loom' version '1.17.12'
     id 'maven-publish'
 }
 
@@ -144,11 +144,26 @@ tasks.register("checkRepoDocs") {
 def clientMixinConfig = layout.projectDirectory.file("src/client/resources/vulkanimprovement.client.mixins.json")
 def clientMixinSourceDir = layout.projectDirectory.dir("src/client/java/com/temotskipa/vulkanimprovement/mixin/client")
 def vulkanSourceDir = layout.projectDirectory.dir("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan")
+def vulkanPackageRoot = "com.temotskipa.vulkanimprovement.client.vulkan"
+def allowedVulkanPackages = [
+        vulkanPackageRoot + ".device",
+        vulkanPackageRoot + ".gpuworld",
+        vulkanPackageRoot + ".presentation",
+        vulkanPackageRoot + ".rtpt",
+        vulkanPackageRoot + ".runtime",
+        vulkanPackageRoot + ".terrain",
+]
 def terrainShaderSourceDir = layout.projectDirectory.dir("src/client/resources/assets/vulkanimprovement/shaders/terrain")
-def terrainGpuLayoutSource = layout.projectDirectory.file("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/TerrainGpuLayout.java")
+def terrainGpuLayoutSource = layout.projectDirectory.file("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/TerrainGpuLayout.java")
 def requireShaderValidator = providers.gradleProperty("vim.requireShaderValidator")
         .map { it.toBoolean() }
         .orElse(false)
+def releaseBuild = providers.gradleProperty("vim.releaseBuild")
+        .map { it.toBoolean() }
+        .orElse(false)
+def requireTerrainShaderValidator = {
+    releaseBuild.get() || requireShaderValidator.get()
+}
 
 tasks.register("checkClientMixinConfig") {
     group = "verification"
@@ -222,8 +237,25 @@ tasks.register("checkVulkanPackageBoundaries") {
 
     doLast {
         def forbiddenReferences = []
+        def packageFailures = []
+        def sourceDir = vulkanSourceDir.asFile
         fileTree(dir: vulkanSourceDir, include: "**/*.java").files.each { sourceFile ->
-            sourceFile.readLines("UTF-8").eachWithIndex { line, index ->
+            def sourceText = sourceFile.getText("UTF-8")
+            def packageMatcher = sourceText =~ /(?m)^\s*package\s+([^;]+);/
+            if (!packageMatcher.find()) {
+                packageFailures.add("${project.relativePath(sourceFile)}: missing package declaration")
+            } else {
+                def packageName = packageMatcher.group(1)
+                if (!allowedVulkanPackages.contains(packageName)) {
+                    packageFailures.add("${project.relativePath(sourceFile)}: package ${packageName} is outside allowed renderer packages")
+                }
+                def expectedRelativeDir = packageName.substring(vulkanPackageRoot.length()).replaceFirst(/^\./, "").replace(".", "/")
+                def actualRelativeDir = sourceDir.toPath().relativize(sourceFile.parentFile.toPath()).toString().replace(File.separator, "/")
+                if (actualRelativeDir != expectedRelativeDir) {
+                    packageFailures.add("${project.relativePath(sourceFile)}: package ${packageName} does not match directory ${actualRelativeDir}")
+                }
+            }
+            sourceText.readLines().eachWithIndex { line, index ->
                 def importsMixinPackage = line ==~ /\s*import\s+com\.temotskipa\.vulkanimprovement\.mixin\.client(\..*)?;.*/
                 def referencesMixinPackage = line.contains("com.temotskipa.vulkanimprovement.mixin.client")
                 if (importsMixinPackage || referencesMixinPackage) {
@@ -232,8 +264,11 @@ tasks.register("checkVulkanPackageBoundaries") {
             }
         }
 
+        if (!packageFailures.isEmpty()) {
+            throw new GradleException("renderer package layout mismatch: ${packageFailures.join(', ')}")
+        }
         if (!forbiddenReferences.isEmpty()) {
-            throw new GradleException("client.vulkan must not depend on mixin.client: ${forbiddenReferences.join(', ')}")
+            throw new GradleException("renderer packages under client.vulkan must not depend on mixin.client: ${forbiddenReferences.join(', ')}")
         }
     }
 }
@@ -245,12 +280,18 @@ tasks.register("compileTerrainSpirv") {
     def shaderFiles = fileTree(dir: terrainShaderSourceDir, include: "*.glsl")
     def generatedResourceRoot = layout.buildDirectory.dir("generated/resources/terrain-spirv")
     inputs.files(shaderFiles)
+    inputs.property("releaseBuild", releaseBuild)
+    inputs.property("requireShaderValidator", requireShaderValidator)
     outputs.dir(generatedResourceRoot)
 
     doLast {
         def validator = findGlslangValidator()
         if (validator == null) {
-            logger.lifecycle("glslangValidator not found; skipping terrain SPIR-V generation. Runtime shaderc compilation remains available.")
+            def message = "glslangValidator not found; skipping terrain SPIR-V generation. Runtime shaderc compilation remains available for development builds. Use -Pvim.requireShaderValidator=true or -Pvim.releaseBuild=true to require it."
+            if (requireTerrainShaderValidator()) {
+                throw new GradleException(message)
+            }
+            logger.lifecycle(message)
             return
         }
 
@@ -258,11 +299,7 @@ tasks.register("compileTerrainSpirv") {
         def spirvDir = new File(resourceRoot, "assets/vulkanimprovement/shaders/terrain/spirv")
         spirvDir.mkdirs()
         shaderFiles.files.sort { it.name }.each { shaderFile ->
-            def stage = shaderFile.name.endsWith(".task.glsl") ? "task"
-                    : shaderFile.name.endsWith(".mesh.glsl") ? "mesh"
-                    : shaderFile.name.endsWith(".frag.glsl") ? "frag"
-                    : shaderFile.name.endsWith(".comp.glsl") ? "comp"
-                    : null
+            def stage = shaderFile.name.endsWith(".task.glsl") ? "task" : shaderFile.name.endsWith(".mesh.glsl") ? "mesh" : shaderFile.name.endsWith(".frag.glsl") ? "frag" : shaderFile.name.endsWith(".comp.glsl") ? "comp" : null
             if (stage == null) {
                 throw new GradleException("Unknown terrain shader stage for ${project.relativePath(shaderFile)}")
             }
@@ -285,7 +322,7 @@ tasks.register("compileTerrainSpirv") {
     }
 }
 
-def findGlslangValidator() {
+static def findGlslangValidator() {
     def candidates = []
     def vulkanSdk = System.getenv("VULKAN_SDK")
     if (vulkanSdk != null && !vulkanSdk.isBlank()) {
@@ -321,14 +358,15 @@ tasks.register("checkTerrainShaders") {
     def shaderFiles = fileTree(dir: terrainShaderSourceDir, include: "*.glsl")
     inputs.files(shaderFiles)
     inputs.property("requireShaderValidator", requireShaderValidator)
+    inputs.property("releaseBuild", releaseBuild)
     outputs.dir(layout.buildDirectory.dir("validated-shaders/terrain"))
 
     doLast {
-        def required = requireShaderValidator.get()
+        def required = requireTerrainShaderValidator()
         def validator = findGlslangValidator()
 
         if (validator == null) {
-            def message = "glslangValidator not found; skipping terrain shader validation. Use -Pvim.requireShaderValidator=true to require it."
+            def message = "glslangValidator not found; skipping terrain shader validation. Use -Pvim.requireShaderValidator=true or -Pvim.releaseBuild=true to require it."
             if (required) {
                 throw new GradleException(message)
             }
@@ -373,7 +411,7 @@ tasks.register("checkTerrainLayoutManifest") {
     doLast {
         def layoutSource = terrainGpuLayoutSource.asFile.getText("UTF-8")
         def constants = [:]
-        def matcher = layoutSource =~ /static final int\s+([A-Z0-9_]+)\s*=\s*(Integer\.BYTES|\d+);/
+        def matcher = layoutSource =~ /(?:static\s+final\s+)?int\s+([A-Z0-9_]+)\s*=\s*(Integer\.BYTES|\d+);/
         matcher.each { match -> constants[match[1]] = match[2] == "Integer.BYTES" ? Integer.BYTES : match[2].toInteger()
         }
 
@@ -469,6 +507,11 @@ tasks.register("checkTerrainLayoutManifest") {
         requireText("mesh terrain shader", meshShader, "materialFlags = uint(materials.records[materialIndex].flags);")
         requireText("mesh terrain shader", meshShader, "layout(location = 3) out flat uint meshMaterialFlags[];")
         requireText("fragment terrain shader", fragmentShader, "layout(location = 3) flat in uint meshMaterialFlags;")
+        requireText("mesh terrain shader", meshShader, "vec4 projectRelative(vec3 relative)")
+        requireText("mesh terrain shader", meshShader, "gl_MeshVerticesEXT[vertex].gl_Position = projectRelative(relative);")
+        if (meshShader.contains("viewZ * 0.2") || meshShader.contains("projectDepth(")) {
+            throw new GradleException("Terrain mesh shader must use Minecraft's camera projection matrix, not a hand-rolled clip-space depth.")
+        }
 
         if (constants.BLOCK_VERTEX_STRIDE != 28) {
             throw new GradleException("TerrainGpuLayout.BLOCK_VERTEX_STRIDE must match scalar BlockVertex layout size 28.")
@@ -520,7 +563,7 @@ tasks.register("checkTerrainMeshletInvariants", JavaExec) {
 
     dependsOn tasks.named("testClasses")
     classpath = sourceSets.test.runtimeClasspath
-    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.TerrainMeshletInvariantCheck"
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainMeshletInvariantCheck"
 }
 
 tasks.register("checkRendererDomainInvariants", JavaExec) {
@@ -529,7 +572,25 @@ tasks.register("checkRendererDomainInvariants", JavaExec) {
 
     dependsOn tasks.named("testClasses")
     classpath = sourceSets.test.runtimeClasspath
-    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.RendererDomainInvariantCheck"
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.runtime.RendererDomainInvariantCheck"
+}
+
+tasks.register("checkRendererCoreServiceInvariants", JavaExec) {
+    group = "verification"
+    description = "Runs pure Java renderer core service ownership invariant checks."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.runtime.RendererCoreServiceInvariantCheck"
+}
+
+tasks.register("checkShaderBuildPipelineInvariants", JavaExec) {
+    group = "verification"
+    description = "Runs pure Java terrain shader build-pipeline invariant checks."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.terrain.ShaderBuildPipelineInvariantCheck"
 }
 
 tasks.register("checkMaterialRecordInvariants", JavaExec) {
@@ -538,7 +599,7 @@ tasks.register("checkMaterialRecordInvariants", JavaExec) {
 
     dependsOn tasks.named("testClasses")
     classpath = sourceSets.test.runtimeClasspath
-    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.GpuMaterialRecordInvariantCheck"
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.terrain.GpuMaterialRecordInvariantCheck"
 }
 
 tasks.register("checkTerrainMaterialInvariants", JavaExec) {
@@ -547,7 +608,7 @@ tasks.register("checkTerrainMaterialInvariants", JavaExec) {
 
     dependsOn tasks.named("testClasses")
     classpath = sourceSets.test.runtimeClasspath
-    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.TerrainMaterialClassifierInvariantCheck"
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainMaterialClassifierInvariantCheck"
 }
 
 tasks.register("checkRuntimeProfileInvariants", JavaExec) {
@@ -556,7 +617,16 @@ tasks.register("checkRuntimeProfileInvariants", JavaExec) {
 
     dependsOn tasks.named("testClasses")
     classpath = sourceSets.test.runtimeClasspath
-    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.VulkanRuntimeProfileInvariantCheck"
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanRuntimeProfileInvariantCheck"
+}
+
+tasks.register("checkRtPtAccelerationDataInvariants", JavaExec) {
+    group = "verification"
+    description = "Runs pure Java RT/PT acceleration-data contract invariant checks."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.rtpt.RtPtAccelerationDataInvariantCheck"
 }
 
 tasks.register("checkVulkanRequirementInvariants", JavaExec) {
@@ -565,7 +635,7 @@ tasks.register("checkVulkanRequirementInvariants", JavaExec) {
 
     dependsOn tasks.named("testClasses")
     classpath = sourceSets.test.runtimeClasspath
-    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.VulkanRequirementInvariantCheck"
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanRequirementInvariantCheck"
     jvmArgs "--enable-native-access=ALL-UNNAMED"
 }
 
@@ -575,7 +645,16 @@ tasks.register("checkGpuResourceRetirementInvariants", JavaExec) {
 
     dependsOn tasks.named("testClasses")
     classpath = sourceSets.test.runtimeClasspath
-    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.GpuResourceRetirementStatsInvariantCheck"
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.terrain.GpuResourceRetirementStatsInvariantCheck"
+}
+
+tasks.register("checkGpuWorldDatabaseInvariants", JavaExec) {
+    group = "verification"
+    description = "Runs pure Java GPU world database identity, revision, material, and dirty-update invariant checks."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldDatabaseInvariantCheck"
 }
 
 tasks.register("checkTerrainDispatchInvariants", JavaExec) {
@@ -584,7 +663,7 @@ tasks.register("checkTerrainDispatchInvariants", JavaExec) {
 
     dependsOn tasks.named("testClasses")
     classpath = sourceSets.test.runtimeClasspath
-    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.TerrainMeshTaskDispatchInvariantCheck"
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainMeshTaskDispatchInvariantCheck"
 }
 
 tasks.register("checkVisibleMeshletRingInvariants", JavaExec) {
@@ -593,7 +672,7 @@ tasks.register("checkVisibleMeshletRingInvariants", JavaExec) {
 
     dependsOn tasks.named("testClasses")
     classpath = sourceSets.test.runtimeClasspath
-    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.TerrainVisibleMeshletRingInvariantCheck"
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainVisibleMeshletRingInvariantCheck"
 }
 
 tasks.register("checkTerrainWorkQueueLayoutInvariants", JavaExec) {
@@ -602,7 +681,7 @@ tasks.register("checkTerrainWorkQueueLayoutInvariants", JavaExec) {
 
     dependsOn tasks.named("testClasses")
     classpath = sourceSets.test.runtimeClasspath
-    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.TerrainWorkQueueLayoutInvariantCheck"
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainWorkQueueLayoutInvariantCheck"
 }
 
 tasks.register("checkTerrainMeshTaskCommandLayoutInvariants", JavaExec) {
@@ -611,7 +690,43 @@ tasks.register("checkTerrainMeshTaskCommandLayoutInvariants", JavaExec) {
 
     dependsOn tasks.named("testClasses")
     classpath = sourceSets.test.runtimeClasspath
-    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.TerrainMeshTaskCommandLayoutInvariantCheck"
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainMeshTaskCommandLayoutInvariantCheck"
+}
+
+tasks.register("checkTerrainRenderPassStateInvariants", JavaExec) {
+    group = "verification"
+    description = "Runs pure Java terrain render-pass state restoration invariant checks."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRenderPassStateInvariantCheck"
+}
+
+tasks.register("checkTerrainRuntimeValidationPlanInvariants", JavaExec) {
+    group = "verification"
+    description = "Runs pure Java terrain runtime-validation plan evidence invariant checks."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.runtime.TerrainRuntimeValidationPlanInvariantCheck"
+}
+
+tasks.register("checkVulkanVideoOptionsInvariants", JavaExec) {
+    group = "verification"
+    description = "Runs pure Java Vulkan Video Settings visibility invariant checks."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.runtime.VulkanVideoOptionsInvariantCheck"
+}
+
+tasks.register("checkMinecraft26MixinTargetManifest", JavaExec) {
+    group = "verification"
+    description = "Runs pure Java 26.2 mcdev mixin target manifest invariant checks."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.runtime.Minecraft26MixinTargetManifestInvariantCheck"
 }
 
 tasks.named("compileTestJava") {
@@ -630,15 +745,23 @@ tasks.named("check") {
     dependsOn tasks.named("checkTerrainLayoutManifest")
     dependsOn tasks.named("checkTerrainMeshletInvariants")
     dependsOn tasks.named("checkRendererDomainInvariants")
+    dependsOn tasks.named("checkRendererCoreServiceInvariants")
+    dependsOn tasks.named("checkShaderBuildPipelineInvariants")
     dependsOn tasks.named("checkMaterialRecordInvariants")
     dependsOn tasks.named("checkTerrainMaterialInvariants")
     dependsOn tasks.named("checkRuntimeProfileInvariants")
+    dependsOn tasks.named("checkRtPtAccelerationDataInvariants")
     dependsOn tasks.named("checkVulkanRequirementInvariants")
     dependsOn tasks.named("checkGpuResourceRetirementInvariants")
+    dependsOn tasks.named("checkGpuWorldDatabaseInvariants")
     dependsOn tasks.named("checkTerrainDispatchInvariants")
     dependsOn tasks.named("checkVisibleMeshletRingInvariants")
     dependsOn tasks.named("checkTerrainWorkQueueLayoutInvariants")
     dependsOn tasks.named("checkTerrainMeshTaskCommandLayoutInvariants")
+    dependsOn tasks.named("checkTerrainRenderPassStateInvariants")
+    dependsOn tasks.named("checkTerrainRuntimeValidationPlanInvariants")
+    dependsOn tasks.named("checkVulkanVideoOptionsInvariants")
+    dependsOn tasks.named("checkMinecraft26MixinTargetManifest")
 }
 
 def targetJavaVersion = 25
@@ -662,6 +785,10 @@ java {
     // if it is present.
     // If you remove this line, sources will not be generated.
     withSourcesJar()
+}
+
+tasks.named("sourcesJar") {
+    dependsOn tasks.named("compileTerrainSpirv")
 }
 
 jar {

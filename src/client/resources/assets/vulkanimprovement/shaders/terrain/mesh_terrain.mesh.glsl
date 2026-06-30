@@ -107,6 +107,16 @@ layout(location = 1) out vec2 meshUv0[];
 layout(location = 2) out vec2 meshLightUv[];
 layout(location = 3) out flat uint meshMaterialFlags[];
 
+vec4 projectRelative(vec3 relative) {
+    vec4 value = vec4(relative, 1.0);
+    return vec4(
+    dot(pc.cameraRight, value),
+    dot(pc.cameraUp, value),
+    dot(pc.cameraForward, value),
+    dot(pc.projection, value)
+    );
+}
+
 bool cullMeshlet(MeshletHeader header) {
     vec3 center = vec3(
     float(header.sectionX * 16) + 8.0,
@@ -114,18 +124,9 @@ bool cullMeshlet(MeshletHeader header) {
     float(header.sectionZ * 16) + 8.0
     );
     vec3 relative = center - pc.cameraPosition.xyz;
-    float viewX = dot(relative, pc.cameraRight.xyz);
-    float viewY = dot(relative, pc.cameraUp.xyz);
-    float viewZ = dot(relative, pc.cameraForward.xyz);
-    float focal = max(pc.projection.x, 0.01);
-    float aspect = max(pc.projection.y, 0.01);
-    float nearPlane = max(pc.projection.z, 0.01);
-    float farPlane = max(pc.projection.w, nearPlane + 1.0);
-    float radius = 14.0;
-    float positiveZ = max(viewZ, nearPlane);
-    float maxX = positiveZ * aspect / focal + radius;
-    float maxY = positiveZ / focal + radius;
-    return viewZ < -radius || viewZ > farPlane + radius || abs(viewX) > maxX || abs(viewY) > maxY;
+    vec4 clip = projectRelative(relative);
+    float margin = 14.0;
+    return clip.w <= 0.0 || clip.z < -margin || clip.z > clip.w + margin || abs(clip.x) > abs(clip.w) + margin || abs(clip.y) > abs(clip.w) + margin;
 }
 
 void main() {
@@ -170,12 +171,7 @@ void main() {
         float(header.sectionZ * 16) + blockVertex.position.z
         );
         vec3 relative = world - pc.cameraPosition.xyz;
-        float viewX = dot(relative, pc.cameraRight.xyz);
-        float viewY = dot(relative, pc.cameraUp.xyz);
-        float viewZ = dot(relative, pc.cameraForward.xyz);
-        float focal = max(pc.projection.x, 0.01);
-        float aspect = max(pc.projection.y, 0.01);
-        gl_MeshVerticesEXT[vertex].gl_Position = vec4(viewX * focal / aspect, viewY * focal, viewZ * 0.2, viewZ);
+        gl_MeshVerticesEXT[vertex].gl_Position = projectRelative(relative);
         vec4 vertexColor = unpackUnorm4x8(blockVertex.color);
         meshColor[vertex] = vec4(vertexColor.rgb, vertexColor.a * clamp(taskPayload.meshletVisibility, 0.0, 1.0));
         meshUv0[vertex] = blockVertex.uv0;

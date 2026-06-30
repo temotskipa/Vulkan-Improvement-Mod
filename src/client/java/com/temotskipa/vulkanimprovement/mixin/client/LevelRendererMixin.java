@@ -1,6 +1,7 @@
 package com.temotskipa.vulkanimprovement.mixin.client;
 
-import com.temotskipa.vulkanimprovement.client.vulkan.SectionMeshletStore;
+import com.temotskipa.vulkanimprovement.client.vulkan.runtime.VulkanImprovementRuntime;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.SectionMeshletStore;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Options;
 import net.minecraft.client.color.block.BlockColors;
@@ -17,21 +18,29 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public final class LevelRendererMixin {
     @Inject(method = "prepareChunkRenders", at = @At("HEAD"))
     private void vim$beginChunkVisibilityFrame(Matrix4fc modelViewMatrix, CallbackInfoReturnable<?> cir) {
-        SectionMeshletStore.clearSectionVisibilityFrame();
+        if (VulkanImprovementRuntime.isVulkanBackendActive()) {
+            SectionMeshletStore.clearSectionVisibilityFrame();
+        }
     }
 
     @Inject(method = "invalidateCompiledGeometry", at = @At("HEAD"))
     private void vim$clearMeshletCacheForGeometryInvalidation(ClientLevel level, Options options, Camera camera, BlockColors blockColors, CallbackInfo ci) {
-        SectionMeshletStore.clearAll("invalidateCompiledGeometry");
+        if (VulkanImprovementRuntime.isVulkanBackendActive()) {
+            SectionMeshletStore.clearAll("invalidateCompiledGeometry");
+        }
     }
 
     @Inject(method = "resetLevelRenderData", at = @At("HEAD"))
     private void vim$clearMeshletCacheForLevelReset(CallbackInfo ci) {
-        SectionMeshletStore.clearAll("resetLevelRenderData");
+        if (VulkanImprovementRuntime.isVulkanBackendActive()) {
+            SectionMeshletStore.clearAll("resetLevelRenderData");
+        }
     }
 
     @Inject(method = "close", at = @At("HEAD"))
     private void vim$clearMeshletCacheForRendererClose(CallbackInfo ci) {
-        SectionMeshletStore.clearAll("close");
+        if (VulkanImprovementRuntime.isVulkanBackendActive()) {
+            SectionMeshletStore.clearAll("close");
+        }
     }
 }

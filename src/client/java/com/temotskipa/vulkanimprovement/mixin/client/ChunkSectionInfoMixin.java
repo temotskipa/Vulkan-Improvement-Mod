@@ -1,6 +1,7 @@
 package com.temotskipa.vulkanimprovement.mixin.client;
 
-import com.temotskipa.vulkanimprovement.client.vulkan.SectionMeshletStore;
+import com.temotskipa.vulkanimprovement.client.vulkan.runtime.VulkanImprovementRuntime;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.SectionMeshletStore;
 import net.minecraft.client.renderer.DynamicUniforms;
 import org.joml.Matrix4fc;
 import org.spongepowered.asm.mixin.Mixin;
@@ -12,6 +13,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public final class ChunkSectionInfoMixin {
     @Inject(method = "<init>", at = @At("TAIL"))
     private void vim$recordChunkVisibility(Matrix4fc modelView, int x, int y, int z, float visibility, int textureAtlasWidth, int textureAtlasHeight, CallbackInfo ci) {
-        SectionMeshletStore.recordSectionVisibility(x, y, z, visibility);
+        if (VulkanImprovementRuntime.isVulkanBackendActive()) {
+            SectionMeshletStore.recordSectionVisibility(x, y, z, visibility);
+        }
     }
 }

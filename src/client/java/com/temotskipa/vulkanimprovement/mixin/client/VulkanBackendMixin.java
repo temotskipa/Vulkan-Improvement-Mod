@@ -1,11 +1,11 @@
 package com.temotskipa.vulkanimprovement.mixin.client;
 
+import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanFeatureRequirements;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
 import com.mojang.blaze3d.systems.BackendCreationException;
 import com.mojang.blaze3d.vulkan.VulkanBackend;
 import com.mojang.blaze3d.vulkan.init.VulkanFeature;
 import com.mojang.logging.LogUtils;
-import com.temotskipa.vulkanimprovement.client.vulkan.TerrainRendererDebugConfig;
-import com.temotskipa.vulkanimprovement.client.vulkan.VulkanFeatureRequirements;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.util.vma.Vma;
 import org.lwjgl.util.vma.VmaAllocatorCreateInfo;
@@ -69,7 +69,7 @@ public final class VulkanBackendMixin {
     private static void vim$throwForMissingModernVulkanCapabilities(VkPhysicalDevice vkPhysicalDevice, CallbackInfo ci) throws BackendCreationException {
         List<String> missingCapabilities = VulkanFeatureRequirements.missingRequiredCapabilities(vkPhysicalDevice);
         if (!missingCapabilities.isEmpty()) {
-            throw new BackendCreationException("Vulkan Improvement Mod requires Vulkan 1.4, mesh/task shaders, " + (TerrainRendererDebugConfig.VALIDATION_DESCRIPTOR_BUFFER_ONLY ? "descriptor buffer support" : "descriptor heap/buffer support") + ", fragment shading rate, and present id/wait support. Missing: " + missingCapabilities + ". Remove the mod to use vanilla renderer.", vim$reasonForMissingCapabilities(missingCapabilities), missingCapabilities);
+            throw new BackendCreationException("Vulkan Improvement Mod requires Vulkan 1.4, mesh/task shaders, " + (TerrainRendererDebugConfig.validationDescriptorBufferOnly() ? "descriptor buffer support" : "descriptor heap/buffer support") + ", fragment shading rate, and present id/wait support. Missing: " + missingCapabilities + ". Remove the mod to use vanilla renderer.", vim$reasonForMissingCapabilities(missingCapabilities), missingCapabilities);
         }
     }
 

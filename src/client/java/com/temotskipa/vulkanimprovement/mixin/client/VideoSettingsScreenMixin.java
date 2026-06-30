@@ -1,7 +1,7 @@
 package com.temotskipa.vulkanimprovement.mixin.client;
 
-import com.temotskipa.vulkanimprovement.client.vulkan.VulkanImprovementRuntime;
-import com.temotskipa.vulkanimprovement.client.vulkan.VulkanImprovementVideoOptions;
+import com.temotskipa.vulkanimprovement.client.vulkan.runtime.VulkanImprovementRuntime;
+import com.temotskipa.vulkanimprovement.client.vulkan.runtime.VulkanImprovementVideoOptions;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.OptionInstance;
 import net.minecraft.client.Options;
