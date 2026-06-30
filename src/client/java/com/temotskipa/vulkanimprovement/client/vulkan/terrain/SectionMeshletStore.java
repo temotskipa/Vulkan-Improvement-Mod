@@ -1,9 +1,9 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
-import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldDatabase;
 import com.mojang.blaze3d.IndexType;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.systems.RenderPass;
+import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldDatabase;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.chunk.CompiledSectionMesh;
 import net.minecraft.client.renderer.chunk.SectionMesh;
@@ -26,10 +26,10 @@ public final class SectionMeshletStore {
     private static final AtomicLong REJECTED_CAPTURES = new AtomicLong();
     private static volatile String lastInvalidationReason = "";
     private static volatile String lastRejectedCapture = "";
-
+    
     private SectionMeshletStore() {
     }
-
+    
     public static void capture(long sectionNode, CompiledSectionMesh mesh, ChunkSectionLayer layer, @Nullable ByteBuffer vertexBuffer, @Nullable ByteBuffer indexBuffer) {
         long startedNanos = System.nanoTime();
         int vertexBytes = remaining(vertexBuffer);
@@ -74,7 +74,7 @@ public final class SectionMeshletStore {
             DescriptorHeapTerrainResources.get().markTerrainDataDirty();
         }
     }
-
+    
     public static void release(CompiledSectionMesh mesh) {
         CapturedSection removed = SECTIONS.remove(mesh);
         if (removed != null) {
@@ -85,7 +85,7 @@ public final class SectionMeshletStore {
             DescriptorHeapTerrainResources.get().markTerrainDataDirty();
         }
     }
-
+    
     public static void clearAll(String reason) {
         boolean hadTerrainData = !SECTIONS.isEmpty() || !DRAW_SLICES.isEmpty() || !GPU_MESHLET_RANGES.isEmpty() || !SECTION_VISIBILITY.isEmpty();
         SECTIONS.clear();
@@ -99,7 +99,7 @@ public final class SectionMeshletStore {
             DescriptorHeapTerrainResources.get().markTerrainDataDirty();
         }
     }
-
+    
     public static void recordDrawSlice(SectionMesh sectionMesh, ChunkSectionLayer layer, SectionRenderDispatcher.RenderSectionBufferSlice slice) {
         if (!(sectionMesh instanceof CompiledSectionMesh compiledSectionMesh)) {
             return;
@@ -109,13 +109,12 @@ public final class SectionMeshletStore {
         if (capturedSection == null || draw == null || slice == null) {
             return;
         }
-
         int baseVertex = (int) (slice.vertexBufferOffset() / layer.vertexFormat().getVertexSize());
         GpuBuffer indexBuffer = draw.hasCustomIndexBuffer() ? slice.indexBuffer() : null;
         int firstIndex = draw.hasCustomIndexBuffer() ? (int) (slice.indexBufferOffset() / draw.indexType().bytes) : 0;
         DRAW_SLICES.put(new DrawKey(slice.vertexBuffer(), indexBuffer, draw.hasCustomIndexBuffer() ? draw.indexType() : null, baseVertex, firstIndex, draw.indexCount()), new SectionLayerKey(compiledSectionMesh, capturedSection.sectionNode, layer.ordinal()));
     }
-
+    
     public static @Nullable MeshletRange meshletRangeForDraw(RenderPass.Draw<?> draw, int layerOrdinal) {
         SectionLayerKey sectionLayer = DRAW_SLICES.get(new DrawKey(draw.vertexBuffer(), draw.indexBuffer(), draw.indexType(), draw.baseVertex(), draw.firstIndex(), draw.indexCount()));
         if (sectionLayer == null || sectionLayer.layerOrdinal() != layerOrdinal) {
@@ -127,7 +126,7 @@ public final class SectionMeshletStore {
         }
         return range.withVisibility(visibilityForSection(sectionLayer.sectionNode()));
     }
-
+    
     @SuppressWarnings("unused")
     public static List<MeshletRange> meshletRangesForLayer(int layerOrdinal) {
         ArrayList<MeshletRange> ranges = new ArrayList<>();
@@ -140,7 +139,7 @@ public final class SectionMeshletStore {
         ranges.sort(Comparator.comparingLong(MeshletRange::sectionNode).thenComparingInt(MeshletRange::offset));
         return ranges;
     }
-
+    
     @SuppressWarnings("unused")
     public static boolean hasGpuMeshletRangeForDraw(RenderPass.Draw<?> draw, int layerOrdinal) {
         SectionLayerKey sectionLayer = DRAW_SLICES.get(new DrawKey(draw.vertexBuffer(), draw.indexBuffer(), draw.indexType(), draw.baseVertex(), draw.firstIndex(), draw.indexCount()));
@@ -150,24 +149,24 @@ public final class SectionMeshletStore {
         MeshletRange range = GPU_MESHLET_RANGES.get(sectionLayer);
         return range != null && range.count() > 0;
     }
-
+    
     public static void recordSectionVisibility(int blockX, int blockY, int blockZ, float visibility) {
         SECTION_VISIBILITY.put(net.minecraft.core.SectionPos.asLong(net.minecraft.core.SectionPos.blockToSectionCoord(blockX), net.minecraft.core.SectionPos.blockToSectionCoord(blockY), net.minecraft.core.SectionPos.blockToSectionCoord(blockZ)), Math.clamp(visibility, 0.0F, 1.0F));
     }
-
+    
     public static void clearSectionVisibilityFrame() {
         SECTION_VISIBILITY.clear();
     }
-
+    
     static void clearGpuMeshletRanges() {
         GPU_MESHLET_RANGES.clear();
     }
-
+    
     @SuppressWarnings("unused")
     public static int liveSectionCount() {
         return SECTIONS.size();
     }
-
+    
     public static Map<String, Object> asMap() {
         int layers = 0;
         int meshlets = 0;
@@ -181,7 +180,6 @@ public final class SectionMeshletStore {
                 stagedIndexBytes += layer.buffers.indexBytes();
             }
         }
-
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("liveSections", SECTIONS.size());
         map.put("capturedLayers", layers);
@@ -204,7 +202,7 @@ public final class SectionMeshletStore {
         map.put("lastRejectedCapture", lastRejectedCapture);
         return map;
     }
-
+    
     @SuppressWarnings("unused")
     public static List<Map<String, Object>> sampleMeshlets(int limit) {
         List<Map<String, Object>> result = new ArrayList<>();
@@ -220,7 +218,7 @@ public final class SectionMeshletStore {
         }
         return result;
     }
-
+    
     static DescriptorHeapTerrainResources.UploadStats writeMetadataSnapshot(ByteBuffer sectionMetadata, ByteBuffer meshletHeaders, TerrainGpuBuffer meshletVertices, TerrainGpuBuffer meshletIndices, int maxSectionLayers, int maxMeshlets, DescriptorHeapTerrainResources.UploadStats previousStats) {
         sectionMetadata.clear();
         meshletHeaders.clear();
@@ -233,19 +231,16 @@ public final class SectionMeshletStore {
         long indexBytesUploaded = 0L;
         long vertexBytesDropped = 0L;
         long indexBytesDropped = 0L;
-
         ChunkSectionLayer[] layers = ChunkSectionLayer.values();
         int[] meshletOffsetsByLayer = new int[layers.length];
         int[] meshletCountsByLayer = new int[layers.length];
         int[] customIndexMeshletCountsByLayer = new int[layers.length];
         Map<SectionLayerKey, MeshletRange> meshletRanges = new HashMap<>();
         liveSections = SECTIONS.size();
-
         for (ChunkSectionLayer chunkLayer : layers) {
             int layerOrdinal = chunkLayer.ordinal();
             meshletOffsetsByLayer[layerOrdinal] = meshlets;
-            if (chunkLayer == ChunkSectionLayer.TRANSLUCENT
-                    && (!TerrainRendererDebugConfig.replaceVanillaTerrain() || !TerrainRendererDebugConfig.meshTranslucentTerrainEnabled())) {
+            if (chunkLayer == ChunkSectionLayer.TRANSLUCENT && (!TerrainRendererDebugConfig.replaceVanillaTerrain() || !TerrainRendererDebugConfig.meshTranslucentTerrainEnabled())) {
                 meshletCountsByLayer[layerOrdinal] = 0;
                 continue;
             }
@@ -259,7 +254,6 @@ public final class SectionMeshletStore {
                 int indexByteOffset = (int) indexBytesUploaded;
                 int layerVertexBytes = layer.buffers.vertexBytes();
                 int layerIndexBytes = layer.buffers.indexBytes();
-
                 if (vertexBytesUploaded + layerVertexBytes > meshletVertices.size() || indexBytesUploaded + layerIndexBytes > meshletIndices.size()) {
                     droppedSections++;
                     droppedMeshlets += layer.meshlets.size();
@@ -267,7 +261,6 @@ public final class SectionMeshletStore {
                     indexBytesDropped += layerIndexBytes;
                     continue;
                 }
-
                 if (layerVertexBytes > 0) {
                     ByteBuffer vertexSlice = meshletVertices.mappedSlice(vertexByteOffset, layerVertexBytes);
                     vertexSlice.put(layer.buffers.vertices().duplicate());
@@ -276,10 +269,8 @@ public final class SectionMeshletStore {
                     ByteBuffer indexSlice = meshletIndices.mappedSlice(indexByteOffset, layerIndexBytes);
                     indexSlice.put(layer.buffers.indices().duplicate());
                 }
-
                 vertexBytesUploaded += layerVertexBytes;
                 indexBytesUploaded += layerIndexBytes;
-
                 int firstMeshlet = meshlets;
                 int writtenMeshlets = 0;
                 for (TerrainMeshlet meshlet : layer.meshlets) {
@@ -291,7 +282,6 @@ public final class SectionMeshletStore {
                     meshlets++;
                     writtenMeshlets++;
                 }
-
                 if (sectionLayers >= maxSectionLayers || sectionMetadata.remaining() < TerrainGpuLayout.SECTION_METADATA_STRIDE) {
                     droppedSections++;
                     continue;
@@ -309,14 +299,13 @@ public final class SectionMeshletStore {
         }
         GPU_MESHLET_RANGES.clear();
         GPU_MESHLET_RANGES.putAll(meshletRanges);
-
         return previousStats.nextUpload(liveSections, sectionLayers, meshlets, droppedSections, droppedMeshlets, vertexBytesUploaded, indexBytesUploaded, vertexBytesDropped, indexBytesDropped, meshletOffsetsByLayer, meshletCountsByLayer, customIndexMeshletCountsByLayer);
     }
-
+    
     private static int remaining(@Nullable ByteBuffer buffer) {
         return buffer == null ? 0 : buffer.remaining();
     }
-
+    
     private static ByteBuffer copy(@Nullable ByteBuffer source) {
         if (source == null || source.remaining() == 0) {
             return ByteBuffer.allocateDirect(0);
@@ -327,7 +316,7 @@ public final class SectionMeshletStore {
         copy.flip();
         return copy;
     }
-
+    
     private static ByteBuffer copyIndexBuffer(@Nullable ByteBuffer source, int sourceElementBytes) {
         if (source == null || source.remaining() == 0 || sourceElementBytes <= 0) {
             return ByteBuffer.allocateDirect(0).order(ByteOrder.LITTLE_ENDIAN);
@@ -347,7 +336,7 @@ public final class SectionMeshletStore {
         copy.flip();
         return copy;
     }
-
+    
     static CaptureValidation validateCapture(ChunkSectionLayer layer, ByteBuffer vertices, ByteBuffer indices, int vertexBytes, int indexBytes, int indexCount, boolean customIndexBuffer, int indexElementBytes) {
         if (indexCount <= 0) {
             return CaptureValidation.invalid("non-positive index count for " + layer.label() + ": " + indexCount);
@@ -361,13 +350,11 @@ public final class SectionMeshletStore {
         if (vertices.remaining() != vertexBytes) {
             return CaptureValidation.invalid("vertex payload byte count mismatch for " + layer.label() + ": remaining=" + vertices.remaining() + ", expected=" + vertexBytes);
         }
-
         int vertexCount = vertexBytes / TerrainGpuLayout.BLOCK_VERTEX_STRIDE;
         CaptureValidation vertexValidation = validateVertexSamples(layer, vertices, vertexCount);
         if (!vertexValidation.valid()) {
             return vertexValidation;
         }
-
         if (!customIndexBuffer) {
             if (indexCount % 6 != 0) {
                 return CaptureValidation.invalid("non-indexed quad index count is not divisible by 6 for " + layer.label() + ": " + indexCount);
@@ -378,7 +365,6 @@ public final class SectionMeshletStore {
             }
             return CaptureValidation.ok();
         }
-
         if (indexElementBytes != TerrainGpuLayout.NORMALIZED_INDEX_STRIDE) {
             return CaptureValidation.invalid("custom index payload is not normalized for " + layer.label() + ": indexElementBytes=" + indexElementBytes);
         }
@@ -391,7 +377,6 @@ public final class SectionMeshletStore {
         if (indexCount % 3 != 0) {
             return CaptureValidation.invalid("custom index count is not triangle-aligned for " + layer.label() + ": " + indexCount);
         }
-
         ByteBuffer indexView = indices.duplicate().order(ByteOrder.LITTLE_ENDIAN);
         for (int i = 0; i < indexCount; i++) {
             int sourceVertex = indexView.getInt();
@@ -401,7 +386,7 @@ public final class SectionMeshletStore {
         }
         return CaptureValidation.ok();
     }
-
+    
     private static CaptureValidation validateVertexSamples(ChunkSectionLayer layer, ByteBuffer vertices, int vertexCount) {
         ByteBuffer view = vertices.duplicate().order(ByteOrder.LITTLE_ENDIAN);
         int sampleCount = Math.min(vertexCount, 512);
@@ -422,34 +407,34 @@ public final class SectionMeshletStore {
         }
         return CaptureValidation.ok();
     }
-
+    
     private static void removeLayerMappings(CompiledSectionMesh mesh, int layerOrdinal) {
         DRAW_SLICES.entrySet().removeIf(entry -> entry.getValue().mesh() == mesh && entry.getValue().layerOrdinal() == layerOrdinal);
         GPU_MESHLET_RANGES.keySet().removeIf(key -> key.mesh() == mesh && key.layerOrdinal() == layerOrdinal);
     }
-
+    
     private static void recordRejectedCapture(long sectionNode, ChunkSectionLayer layer, String reason) {
         REJECTED_CAPTURES.incrementAndGet();
         lastRejectedCapture = "sectionNode=" + sectionNode + ", layer=" + layer.label() + ", reason=" + reason;
     }
-
+    
     private static int estimateVertices(int indexCount) {
         return Math.max(1, indexCount / 6 * 4);
     }
-
+    
     private static int estimateIndexedVertices(int indexCount) {
         return Math.max(1, indexCount / 6 * 4);
     }
-
+    
     private static int estimateMeshlets(int estimatedVertices) {
         return Math.max(1, (estimatedVertices + TerrainGpuLayout.TARGET_VERTICES_PER_MESHLET - 1) / TerrainGpuLayout.TARGET_VERTICES_PER_MESHLET);
     }
-
+    
     private static int estimateIndexedMeshlets(int indexCount) {
         int triangles = Math.max(1, indexCount / 3);
         return Math.max(1, (triangles + TerrainGpuLayout.TARGET_TRIANGLES_PER_INDEXED_MESHLET - 1) / TerrainGpuLayout.TARGET_TRIANGLES_PER_INDEXED_MESHLET);
     }
-
+    
     private static List<TerrainMeshlet> buildMeshlets(long sectionNode, ChunkSectionLayer layer, int estimatedVertexCount, int indexCount, int meshletCount) {
         List<TerrainMeshlet> meshlets = new ArrayList<>(meshletCount);
         for (int i = 0; i < meshletCount; i++) {
@@ -457,7 +442,7 @@ public final class SectionMeshletStore {
         }
         return List.copyOf(meshlets);
     }
-
+    
     private static List<TerrainMeshlet> buildIndexedMeshlets(long sectionNode, ChunkSectionLayer layer, int indexCount, int meshletCount) {
         List<TerrainMeshlet> meshlets = new ArrayList<>(meshletCount);
         for (int i = 0; i < meshletCount; i++) {
@@ -465,7 +450,7 @@ public final class SectionMeshletStore {
         }
         return List.copyOf(meshlets);
     }
-
+    
     private static void writeSectionLayer(ByteBuffer target, long sectionNode, ChunkSectionLayer layer, int firstMeshlet, int meshletCount, LayerCapture capture, int vertexByteOffset, int indexByteOffset) {
         target.putLong(sectionNode);
         target.putInt(net.minecraft.core.SectionPos.x(sectionNode));
@@ -486,7 +471,7 @@ public final class SectionMeshletStore {
         target.putInt(0);
         target.putLong(0L);
     }
-
+    
     private static void writeMeshlet(ByteBuffer target, TerrainMeshlet meshlet, int vertexByteOffset, int indexByteOffset, int vertexBytes, int indexBytes) {
         target.putLong(meshlet.sectionNode());
         target.putInt(meshlet.sectionX());
@@ -504,14 +489,14 @@ public final class SectionMeshletStore {
         target.putInt(meshlet.indexCount() > 0 && indexBytes > 0 ? TerrainGpuLayout.INDEXED_TRIANGLES_FLAG : 0);
         target.putInt(meshlet.materialId());
     }
-
+    
     private static float visibilityForSection(long sectionNode) {
         if (!TerrainRendererDebugConfig.vanillaChunkVisibilityFadeEnabled()) {
             return 1.0F;
         }
         return SECTION_VISIBILITY.getOrDefault(sectionNode, 1.0F);
     }
-
+    
     private static Map<String, Object> visibilityStats() {
         int belowOne = 0;
         float min = 1.0F;
@@ -530,54 +515,54 @@ public final class SectionMeshletStore {
         map.put("max", max);
         return map;
     }
-
+    
     private static final class CapturedSection {
         private final long sectionNode;
         private final EnumMap<ChunkSectionLayer, LayerCapture> layers = new EnumMap<>(ChunkSectionLayer.class);
-
+        
         private CapturedSection(long sectionNode) {
             this.sectionNode = sectionNode;
         }
     }
-
+    
     private record LayerCapture(int vertexBytes, int indexBytes, int estimatedVertices, int estimatedMeshlets,
                                 boolean customIndexBuffer, int indexElementBytes, List<TerrainMeshlet> meshlets,
                                 MeshLayerBuffers buffers) {
     }
-
+    
     private record MeshLayerBuffers(ByteBuffer vertices, ByteBuffer indices) {
         private int vertexBytes() {
             return this.vertices.remaining();
         }
-
+        
         private int indexBytes() {
             return this.indices.remaining();
         }
     }
-
+    
     public record MeshletRange(long sectionNode, int offset, int count, float visibility) {
         private MeshletRange withVisibility(float visibility) {
             return new MeshletRange(this.sectionNode, this.offset, this.count, visibility);
         }
     }
-
+    
     private record SectionLayerKey(CompiledSectionMesh mesh, long sectionNode, int layerOrdinal) {
     }
-
+    
     private record DrawKey(GpuBuffer vertexBuffer, @Nullable GpuBuffer indexBuffer, @Nullable IndexType indexType,
                            int baseVertex, int firstIndex, int indexCount) {
     }
-
+    
     private static final class CaptureResult {
         private boolean accepted;
         private String reason = "";
     }
-
+    
     record CaptureValidation(boolean valid, String reason) {
         private static CaptureValidation ok() {
             return new CaptureValidation(true, "");
         }
-
+        
         private static CaptureValidation invalid(String reason) {
             return new CaptureValidation(false, reason);
         }

@@ -17,7 +17,7 @@ public record GpuWorldSectionUpdate(long sequence, GpuWorldSectionId section, Gp
             throw new IllegalArgumentException("GPU world update dirty mask must not be empty.");
         }
     }
-
+    
     public Map<String, Object> asMap() {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("sequence", this.sequence);

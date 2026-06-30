@@ -8,22 +8,20 @@ import net.minecraft.client.PreferredGraphicsApi;
 public final class VulkanImprovementRuntime {
     private VulkanImprovementRuntime() {
     }
-
+    
     public static boolean isVulkanBackendActive() {
         GpuDevice device = RenderSystem.tryGetDevice();
         return device != null && "Vulkan".equalsIgnoreCase(device.getDeviceInfo().backendName());
     }
-
+    
     public static boolean isModRendererActive() {
         if (!isVulkanBackendActive()) {
             return false;
         }
         RendererLifecycleState state = RendererCoreServices.get().currentLifecycleState();
-        return state == RendererLifecycleState.READY
-                || state == RendererLifecycleState.FAILED
-                || state == RendererLifecycleState.DEVICE_LOST;
+        return state == RendererLifecycleState.READY || state == RendererLifecycleState.FAILED || state == RendererLifecycleState.DEVICE_LOST;
     }
-
+    
     public static boolean shouldShowVideoOptions(Minecraft minecraft) {
         if (minecraft == null) {
             return false;

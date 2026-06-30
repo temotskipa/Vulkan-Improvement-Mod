@@ -9,9 +9,7 @@ public final class GpuWorldDatabase {
     static final int DIRTY_MATERIALS = 1 << 1;
     static final int DIRTY_VISIBILITY = 1 << 2;
     static final int DIRTY_REMOVED = 1 << 3;
-    
     private static final GpuWorldDatabase INSTANCE = new GpuWorldDatabase();
-    
     private final Map<Long, SectionRecord> sections = new LinkedHashMap<>();
     private final AtomicLong updateSequence = new AtomicLong();
     private final AtomicLong clearCount = new AtomicLong();

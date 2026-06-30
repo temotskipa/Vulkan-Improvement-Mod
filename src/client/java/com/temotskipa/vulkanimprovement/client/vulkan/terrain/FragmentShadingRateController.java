@@ -12,7 +12,6 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public final class FragmentShadingRateController {
     private static final FragmentShadingRateController INSTANCE = new FragmentShadingRateController();
-    
     private final AtomicLong terrainCommands = new AtomicLong();
     private volatile boolean available;
     private volatile boolean disabled;

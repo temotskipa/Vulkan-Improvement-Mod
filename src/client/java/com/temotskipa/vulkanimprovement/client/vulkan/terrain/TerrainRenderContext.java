@@ -6,11 +6,7 @@ import net.minecraft.client.renderer.chunk.ChunkSectionLayerGroup;
 import net.minecraft.client.renderer.chunk.ChunkSectionsToRender;
 import org.jspecify.annotations.Nullable;
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public final class TerrainRenderContext {
     private static final ThreadLocal<Integer> DEPTH = ThreadLocal.withInitial(() -> 0);
@@ -22,10 +18,10 @@ public final class TerrainRenderContext {
     private static final ThreadLocal<List<ArrayDeque<TerrainMeshTaskDispatch>>> PREPARED_LAYER_DISPATCHES = new ThreadLocal<>();
     private static final ThreadLocal<ChunkSectionsToRender> CURRENT_SECTIONS_TO_RENDER = new ThreadLocal<>();
     private static final ThreadLocal<ChunkSectionLayerGroup> CURRENT_GROUP = new ThreadLocal<>();
-
+    
     private TerrainRenderContext() {
     }
-
+    
     public static void enter() {
         int depth = DEPTH.get();
         DEPTH.set(depth + 1);
@@ -44,7 +40,7 @@ public final class TerrainRenderContext {
             CURRENT_GROUP.remove();
         }
     }
-
+    
     public static void exit() {
         int depth = DEPTH.get() - 1;
         if (depth <= 0) {
@@ -61,11 +57,11 @@ public final class TerrainRenderContext {
             DEPTH.set(depth);
         }
     }
-
+    
     public static boolean isTerrainPass() {
         return DEPTH.get() > 0;
     }
-
+    
     public static void setLayerForPipeline(RenderPipeline pipeline) {
         MESH_PIPELINE_BOUND.set(false);
         for (ChunkSectionLayer layer : ChunkSectionLayer.values()) {
@@ -76,53 +72,53 @@ public final class TerrainRenderContext {
         }
         CURRENT_LAYER_ORDINAL.set(-1);
     }
-
+    
     public static int currentLayerOrdinal() {
         return CURRENT_LAYER_ORDINAL.get();
     }
-
+    
     public static void setCurrentTerrainGroup(ChunkSectionsToRender sectionsToRender, ChunkSectionLayerGroup group) {
         CURRENT_SECTIONS_TO_RENDER.set(sectionsToRender);
         CURRENT_GROUP.set(group);
     }
-
+    
     @SuppressWarnings("unused")
     public static @Nullable ChunkSectionsToRender currentSectionsToRender() {
         return CURRENT_SECTIONS_TO_RENDER.get();
     }
-
+    
     @SuppressWarnings("unused")
     public static @Nullable ChunkSectionLayerGroup currentGroup() {
         return CURRENT_GROUP.get();
     }
-
+    
     @SuppressWarnings("unused")
     public static void setReplacementAllowed(boolean allowed) {
         REPLACEMENT_ALLOWED.set(allowed);
     }
-
+    
     @SuppressWarnings("unused")
     public static boolean replacementAllowed() {
         return REPLACEMENT_ALLOWED.get();
     }
-
+    
     @SuppressWarnings("unused")
     public static void markMeshPipelineBound() {
         MESH_PIPELINE_BOUND.set(true);
     }
-
+    
     @SuppressWarnings("unused")
     public static boolean meshPipelineBound() {
         return MESH_PIPELINE_BOUND.get();
     }
-
+    
     static void enqueuePreparedLayerDispatch(int layerOrdinal, TerrainMeshTaskDispatch dispatch) {
         List<ArrayDeque<TerrainMeshTaskDispatch>> preparedDispatches = PREPARED_LAYER_DISPATCHES.get();
         if (preparedDispatches != null && dispatch != null && layerOrdinal >= 0 && layerOrdinal < preparedDispatches.size()) {
             preparedDispatches.get(layerOrdinal).addLast(dispatch);
         }
     }
-
+    
     static @Nullable TerrainMeshTaskDispatch pollPreparedLayerDispatch(int layerOrdinal) {
         List<ArrayDeque<TerrainMeshTaskDispatch>> preparedDispatches = PREPARED_LAYER_DISPATCHES.get();
         if (preparedDispatches == null || layerOrdinal < 0 || layerOrdinal >= preparedDispatches.size()) {
@@ -130,12 +126,12 @@ public final class TerrainRenderContext {
         }
         return preparedDispatches.get(layerOrdinal).pollFirst();
     }
-
+    
     @SuppressWarnings("unused")
     public static void clearMeshPipelineBound() {
         MESH_PIPELINE_BOUND.set(false);
     }
-
+    
     public static Map<String, Object> preparedDispatchQueueDepths() {
         List<ArrayDeque<TerrainMeshTaskDispatch>> preparedDispatches = PREPARED_LAYER_DISPATCHES.get();
         Map<String, Object> depths = new LinkedHashMap<>();
@@ -151,7 +147,7 @@ public final class TerrainRenderContext {
         }
         return depths;
     }
-
+    
     public static int unconsumedPreparedDispatchCount() {
         List<ArrayDeque<TerrainMeshTaskDispatch>> preparedDispatches = PREPARED_LAYER_DISPATCHES.get();
         if (preparedDispatches == null) {
@@ -163,7 +159,7 @@ public final class TerrainRenderContext {
         }
         return remaining;
     }
-
+    
     public static boolean markDispatchRequired(int layerOrdinal) {
         if (layerOrdinal < 0) {
             if (DISPATCHED_WHOLE_SET.get()) {
@@ -172,7 +168,6 @@ public final class TerrainRenderContext {
             DISPATCHED_WHOLE_SET.set(true);
             return true;
         }
-
         boolean[] dispatchedLayers = DISPATCHED_LAYERS.get();
         if (dispatchedLayers == null || layerOrdinal >= dispatchedLayers.length) {
             return true;

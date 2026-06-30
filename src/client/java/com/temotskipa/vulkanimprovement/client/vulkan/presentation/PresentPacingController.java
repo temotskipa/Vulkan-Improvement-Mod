@@ -1,8 +1,8 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.presentation;
 
+import com.mojang.blaze3d.vulkan.VulkanDevice;
 import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanImprovementCapabilities;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
-import com.mojang.blaze3d.vulkan.VulkanDevice;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.*;
 
@@ -12,7 +12,6 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public final class PresentPacingController {
     private static final PresentPacingController INSTANCE = new PresentPacingController();
-
     private final AtomicLong presentCalls = new AtomicLong();
     private final AtomicLong presentIdsSubmitted = new AtomicLong();
     private final AtomicLong presentWaits = new AtomicLong();
@@ -27,31 +26,30 @@ public final class PresentPacingController {
     public static PresentPacingController get() {
         return INSTANCE;
     }
-
+    
     public void configure(VulkanImprovementCapabilities.Snapshot capabilities) {
         this.presentIdAvailable = capabilities.presentIdExtension();
         this.presentWaitAvailable = capabilities.presentWaitExtension();
         this.disabled = TerrainRendererDebugConfig.disablePresentPacing();
     }
-
+    
     public void beforePresent() {
         this.presentCalls.incrementAndGet();
         this.lastPresentStartedNanos.set(System.nanoTime());
     }
-
+    
     public void afterPresent() {
         long started = this.lastPresentStartedNanos.get();
         if (started != 0L) {
             this.lastPresentDurationNanos.set(System.nanoTime() - started);
         }
     }
-
+    
     public int present(VulkanDevice device, VkQueue queue, long swapchain, VkPresentInfoKHR presentInfo) {
         this.disabled = TerrainRendererDebugConfig.disablePresentPacing();
         if (this.disabled || !this.presentIdAvailable) {
             return KHRSwapchain.vkQueuePresentKHR(queue, presentInfo);
         }
-
         int result;
         long presentId = this.nextPresentId.getAndIncrement();
         long oldPNext = presentInfo.pNext();
@@ -65,7 +63,6 @@ public final class PresentPacingController {
             presentInfo.pNext(oldPNext);
         }
         this.presentIdsSubmitted.incrementAndGet();
-
         if (this.presentWaitAvailable && result >= VK10.VK_SUCCESS) {
             int waitResult = KHRPresentWait.vkWaitForPresentKHR(device.vkDevice(), swapchain, presentId, 50_000_000L);
             if (waitResult == VK10.VK_SUCCESS) {
@@ -76,7 +73,7 @@ public final class PresentPacingController {
         }
         return result;
     }
-
+    
     public Map<String, Object> asMap() {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("disabled", this.disabled);

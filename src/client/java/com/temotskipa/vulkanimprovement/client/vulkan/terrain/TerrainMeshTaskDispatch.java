@@ -6,8 +6,9 @@ import java.util.Objects;
 
 public record TerrainMeshTaskDispatch(int meshletOffset, int layerOrdinal, int requestedMeshlets, int taskCount,
                                       long visibleMeshletListAddress, long workQueueAddress, long indirectCommandBuffer,
-                                      long indirectCommandOffset, int indirectCommandStride, long indirectCommandAddress,
-                                      boolean indirectCommandGpuGenerated, Source source, String reason) {
+                                      long indirectCommandOffset, int indirectCommandStride,
+                                      long indirectCommandAddress, boolean indirectCommandGpuGenerated, Source source,
+                                      String reason) {
     static final int MAX_DIRECT_TASKS = 65_535;
     
     public TerrainMeshTaskDispatch {
@@ -137,7 +138,6 @@ public record TerrainMeshTaskDispatch(int meshletOffset, int layerOrdinal, int r
     
     public enum Source {
         UNAVAILABLE("unavailable", false, false), DIRECT_LAYER("direct-layer", false, false), CPU_VISIBLE_LIST("cpu-visible-list", true, false), CPU_WORK_QUEUE("cpu-work-queue", false, true);
-        
         private final String id;
         private final boolean requiresVisibleMeshletList;
         private final boolean requiresWorkQueue;

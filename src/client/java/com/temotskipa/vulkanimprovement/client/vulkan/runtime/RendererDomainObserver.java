@@ -3,7 +3,7 @@ package com.temotskipa.vulkanimprovement.client.vulkan.runtime;
 public final class RendererDomainObserver {
     private RendererDomainObserver() {
     }
-
+    
     public static void observeRendererReady() {
         RendererDomainRegistry registry = RendererDomainRegistry.get();
         registry.set(RendererDomain.TERRAIN, RendererDomainRegistry.DomainState.meshTerrainGpu("terrain mesh-shader path with GPU work queues configured"));

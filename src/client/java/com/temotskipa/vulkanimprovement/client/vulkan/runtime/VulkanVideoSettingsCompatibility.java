@@ -10,7 +10,7 @@ import java.util.Map;
 public final class VulkanVideoSettingsCompatibility {
     private VulkanVideoSettingsCompatibility() {
     }
-
+    
     public static Map<String, Object> snapshot() {
         Map<String, Object> map = new LinkedHashMap<>();
         Minecraft minecraft = Minecraft.getInstance();
@@ -21,7 +21,7 @@ public final class VulkanVideoSettingsCompatibility {
         map.put("terrainCompatibility", terrainCompatibility(minecraft));
         return map;
     }
-
+    
     private static Map<String, Object> qualitySettings(Minecraft minecraft) {
         Map<String, Object> map = new LinkedHashMap<>();
         var options = minecraft.options;
@@ -51,7 +51,7 @@ public final class VulkanVideoSettingsCompatibility {
         map.put("weatherRadius", options.weatherRadius().get());
         return map;
     }
-
+    
     private static Map<String, Object> displaySettings(Minecraft minecraft) {
         Map<String, Object> map = new LinkedHashMap<>();
         var options = minecraft.options;
@@ -66,7 +66,7 @@ public final class VulkanVideoSettingsCompatibility {
         map.put("restartRequiredToApplyVideoSettings", options.isRestartRequiredToApplyVideoSettings());
         return map;
     }
-
+    
     private static Map<String, Object> preferenceSettings(Minecraft minecraft) {
         Map<String, Object> map = new LinkedHashMap<>();
         var options = minecraft.options;
@@ -76,7 +76,7 @@ public final class VulkanVideoSettingsCompatibility {
         map.put("chunkSectionFadeInTime", options.chunkSectionFadeInTime().get());
         return map;
     }
-
+    
     private static Map<String, Object> modSettings() {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("vulkanBackendActive", VulkanImprovementRuntime.isVulkanBackendActive());
@@ -95,7 +95,7 @@ public final class VulkanVideoSettingsCompatibility {
         map.put("gpuGeneratedMeshTaskCommandsEnabled", TerrainRendererDebugConfig.enableGpuGeneratedMeshTaskCommands());
         return map;
     }
-
+    
     private static Map<String, Object> terrainCompatibility(Minecraft minecraft) {
         Map<String, Object> map = new LinkedHashMap<>();
         var options = minecraft.options;
@@ -113,7 +113,7 @@ public final class VulkanVideoSettingsCompatibility {
         map.put("graphicsBackendRequirement", TerrainRendererDebugConfig.requireVulkanBackend() ? "vulkan-required" : "vanilla-selection");
         return map;
     }
-
+    
     private static String enumName(Object value) {
         return value instanceof Enum<?> enumValue ? enumValue.name() : String.valueOf(value);
     }

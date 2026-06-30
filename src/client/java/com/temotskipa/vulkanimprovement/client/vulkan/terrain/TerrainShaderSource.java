@@ -16,14 +16,14 @@ final class TerrainShaderSource {
     static final String MESH_SHADER_SPIRV = "assets/vulkanimprovement/shaders/terrain/spirv/mesh_terrain.mesh.spv";
     static final String FRAGMENT_SHADER_SPIRV = "assets/vulkanimprovement/shaders/terrain/spirv/mesh_terrain.frag.spv";
     static final String MESH_TASK_COMMAND_SHADER_SPIRV = "assets/vulkanimprovement/shaders/terrain/spirv/mesh_task_command.comp.spv";
-
+    
     private TerrainShaderSource() {
     }
-
+    
     static String load(String path) {
         return loadText(path);
     }
-
+    
     static ByteBuffer loadSpirv(String path) {
         ClassLoader classLoader = TerrainShaderSource.class.getClassLoader();
         try (InputStream stream = classLoader.getResourceAsStream(path)) {
@@ -41,7 +41,7 @@ final class TerrainShaderSource {
             throw new IllegalStateException("Failed to read terrain SPIR-V resource " + Objects.requireNonNull(path), ex);
         }
     }
-
+    
     private static String loadText(String path) {
         ClassLoader classLoader = TerrainShaderSource.class.getClassLoader();
         try (InputStream stream = classLoader.getResourceAsStream(path)) {
