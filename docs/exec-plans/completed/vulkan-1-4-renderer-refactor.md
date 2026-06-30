@@ -2,7 +2,7 @@
 
 ## Outcome
 
-Phase 1 foundation and the terrain-path hardening increment are complete on **Minecraft 26.2-pre-3** / **Fabric API 0.150.2+26.2** / **Fabric Loader 0.19.2**.
+Phase 1 foundation and the terrain-path hardening increment are complete on **Minecraft 26.2-pre-4** / **Fabric API 0.150.3+26.2** / **Fabric Loader 0.19.3**. Baseline advanced to stable **26.2** / **0.153.0+26.2** in [minecraft-26-2-dependency-update.md](minecraft-26-2-dependency-update.md) (2026-06-23).
 
 Delivered:
 

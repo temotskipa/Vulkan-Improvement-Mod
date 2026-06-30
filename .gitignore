@@ -25,3 +25,6 @@ logs/
 # Agent / IDE harness (not mod sources)
 mcps/
 agent-tools/
+terminals/
+
+.vscode

@@ -22,6 +22,13 @@ GPU-assisted world generation is feasible for render-only distant terrain,
 height/noise previews, LOD fill, occlusion data, and custom opt-in worlds. It
 should not be the default source of gameplay chunk state.
 
+C2ME and its OpenCL acceleration module provide a separate optional route for
+GPU-authoritative world-generation experiments. That path should be an explicit
+optional dependency integration, not hidden default renderer behavior. When
+C2ME-OCL owns accelerated worldgen stages, this renderer can observe and
+consume the resulting Minecraft chunk state, but it must still label authority
+correctly and keep render-only predicted terrain separate.
+
 ## Future RT/PT Readiness
 
 The GPU-driven renderer should make later ray tracing and path tracing work
@@ -267,8 +274,9 @@ solved in pieces, but not as one unified Vulkan architecture.
 - C2ME demonstrates the compatibility boundary for generation. It improves
   chunk generation, I/O, and loading through CPU parallelism while treating
   vanilla behavior, datapacks, and mod compatibility as first-order constraints.
-  That supports the decision to keep authoritative generation CPU-owned for the
-  default path.
+  Its OpenCL acceleration module adds an explicit optional path for
+  GPU-accelerated authoritative worldgen stages, with driver and compatibility
+  risks that must be surfaced before enabling it.
 - Sodium demonstrates the importance of renderer correctness, broad hardware
   compatibility, and vanilla parity when replacing client rendering.
 - Iris demonstrates how compatibility goals can dominate renderer design,
@@ -292,7 +300,8 @@ authoritative worldgen behavior.
 | GPU-assisted render-only distant terrain generation | Medium-high | Optional                 | Useful for visual fill beyond generated chunks; must be labeled approximate.                           |
 | GPU lighting for render probes/AO                   | Medium      | Optional                 | Good for visuals; not a replacement for gameplay light engine.                                         |
 | GPU section data transcoding                        | High        | Yes                      | CPU uploads compact dirty input; GPU builds render pages and counters.                                 |
-| GPU authoritative vanilla noise terrain             | Low         | No                       | Exact `ChunkAccess` mutation, heightmaps, fluids, structures, and mods make this hard.                 |
+| GPU authoritative vanilla noise terrain via C2ME-OCL | Medium      | Optional only            | Feasible as explicit C2ME + OpenCL integration for supported stages; requires backups, driver-risk warnings, and compatibility gates. |
+| Native GPU authoritative vanilla noise terrain      | Low         | No                       | Exact `ChunkAccess` mutation, heightmaps, fluids, structures, and mods make this hard without delegating authority to a dedicated worldgen mod. |
 | GPU authoritative structures/features               | Very low    | No                       | Datapacks, registries, random streams, and mod hooks are CPU/object-heavy.                             |
 | GPU authoritative custom world type                 | Medium      | Experimental only        | Feasible if the world type is explicitly designed around GPU kernels.                                  |
 | GPU-driven entities and particles                   | Medium-high | Incremental              | Requires material, animation, sorting, and modded model boundaries.                                    |
@@ -363,12 +372,16 @@ events and built from the same geometry and material pages as raster rendering.
    lighting from mirrored chunks.
 3. Predictive/visual worldgen: GPU generates distant approximate terrain or
    height fields beyond loaded chunks, clearly separated from gameplay state.
-4. Custom GPU world type: GPU kernels produce canonical chunks only for a
+4. Optional C2ME-OCL integration: C2ME plus its OpenCL module owns accelerated
+   noise/biome-stage world generation through an explicit optional dependency
+   path with world-backup warnings and compatibility gates.
+5. Custom GPU world type: GPU kernels produce canonical chunks only for a
    deliberately opt-in world mode with strict limitations.
 
 The first two levels should be the mainline architecture. The third is useful
-for modern render distance expectations. The fourth is research, not a default
-mod feature.
+for modern render distance expectations. The fourth is a compatibility-bound
+optional integration with C2ME-OCL. The fifth is research, not a default mod
+feature.
 
 ## Required Vulkan Capabilities
 
@@ -422,14 +435,18 @@ Optional acceleration paths:
    clouds, weather, and post-processing handoff points.
 7. Add optional device-generated commands and descriptor heap paths after the
    descriptor-buffer path is stable.
-8. Investigate custom GPU-authoritative world types only after render-only GPU
+8. Add an optional C2ME/C2ME-OCL integration track for explicit
+   GPU-authoritative worldgen experiments after dependency detection and
+   compatibility diagnostics are in place.
+9. Investigate custom GPU-authoritative world types only after render-only GPU
    world data is stable and well instrumented.
 
 ## Decision
 
 Pursue a GPU-driven renderer and GPU-assisted visual world pipeline. Do not make
-GPU-authoritative vanilla world generation a default goal. Treat it as an
-experimental custom-world research track with explicit compatibility limits.
+GPU-authoritative vanilla world generation a default renderer goal. Treat it as
+an explicit optional path through C2ME/C2ME-OCL or as a later custom-world
+research track with clear compatibility limits.
 
 ## Sources
 
@@ -441,6 +458,10 @@ experimental custom-world research track with explicit compatibility limits.
   `https://github.com/xCollateral/VulkanMod/tree/dev/src/main/java/net/vulkanmod/render`
 - Sodium: `https://github.com/CaffeineMC/sodium`
 - C2ME: `https://github.com/RelativityMC/C2ME-fabric`
+- C2ME 26.2 branch:
+  `https://github.com/RelativityMC/C2ME-fabric/tree/dev/26.2.0`
+- C2ME release with OpenCL acceleration notes:
+  `https://github.com/RelativityMC/C2ME-fabric/releases/tag/0.4.1%2Bbeta.1`
 - Voxy: `https://github.com/MCRcortex/voxy`
 - Voxy LOD renderer and shaders:
   `https://github.com/MCRcortex/voxy/tree/dev/src/main`

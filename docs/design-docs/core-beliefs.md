@@ -8,7 +8,8 @@ Prefer short indexed documents over a single long instruction file.
 ## Boundaries Matter More Than Style
 
 The important boundary is that mixins adapt external Minecraft and Vulkan
-internals while reusable renderer behavior stays in `client.vulkan`.
+internals while reusable renderer behavior stays in the `client.vulkan.*`
+domain packages.
 
 ## Checks Should Carry Rules
 

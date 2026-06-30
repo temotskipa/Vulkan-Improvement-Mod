@@ -31,23 +31,36 @@ augmenting vanilla terrain rendering through modern Vulkan capabilities.
 
 ## Package Boundaries
 
-- `client.vulkan`: Owns Vulkan feature requirements, capability snapshots,
-  terrain meshlet storage, GPU buffer management, mesh shader dispatch,
-  descriptor resources, fragment shading rate, present pacing, and renderer
-  debug flags.
+- `client.vulkan.device`: Owns Vulkan feature requirements, capability
+  snapshots, runtime profile grouping, and requirement scope metadata.
+- `client.vulkan.runtime`: Owns renderer lifecycle services, domain registry
+  diagnostics, bug-report serialization, backend-active checks, and Video
+  Settings option construction.
+- `client.vulkan.terrain`: Owns terrain meshlet storage, GPU buffer layout,
+  mesh shader dispatch, descriptor resources, terrain material records,
+  fragment shading rate, and renderer debug flags.
+- `client.vulkan.gpuworld`: Owns the CPU-authoritative GPU-world mirror,
+  section identity, revisions, page-kind metadata, and dirty-update contracts.
+- `client.vulkan.rtpt`: Owns RT/PT acceleration-data diagnostics and fallback
+  accounting for future acceleration structure work.
+- `client.vulkan.presentation`: Owns Vulkan present pacing and present
+  ID/wait diagnostics.
 - `mixin.client`: Owns integration points into Minecraft and Mojang's Vulkan
-  classes. Keep mixin classes thin; move reusable behavior into `client.vulkan`.
+  classes. Keep mixin classes thin; move reusable behavior into the
+  `client.vulkan.*` packages.
 - `client`: Owns Fabric client initialization and top-level logging.
 
 The dependency direction should stay:
 
 ```text
-mixin.client -> client.vulkan -> Minecraft/LWJGL/Fabric APIs
-client       -> client.vulkan
+mixin.client -> client.vulkan.* -> Minecraft/LWJGL/Fabric APIs
+client       -> client.vulkan.runtime
 main         -> Fabric initializer only
 ```
 
-`client.vulkan` must not depend on `mixin.client`.
+Renderer packages under `client.vulkan.*` must not depend on `mixin.client`.
+They must also stay in one of the allowed renderer package directories so new
+renderer code does not drift back into a catch-all root package.
 
 ## Important Runtime Contracts
 
@@ -105,7 +118,8 @@ main         -> Fabric initializer only
 Use `.\gradlew.bat build` for the full build, `.\gradlew.bat checkRepoDocs`
 for repository-organization checks, `.\gradlew.bat checkClientMixinConfig` for
 client mixin config/source synchronization, and
-`.\gradlew.bat checkVulkanPackageBoundaries` for renderer package direction.
+`.\gradlew.bat checkVulkanPackageBoundaries` for renderer package layout and
+direction.
 `.\gradlew.bat checkTerrainShaders` validates terrain GLSL when
 `glslangValidator` is available. `.\gradlew.bat checkTerrainLayoutManifest`
 validates CPU/shader terrain layout assumptions, including the default terrain
