@@ -17,6 +17,7 @@ public final class VulkanImprovementVideoOptions {
     public static final Component HEADER = Component.translatable("options.vulkanimprovement.header");
 
     private static @Nullable OptionInstance<Boolean> meshTerrainRenderer;
+    private static @Nullable OptionInstance<Boolean> terrainCaptureBootstrap;
     private static @Nullable OptionInstance<Boolean> meshTranslucentTerrain;
     private static @Nullable OptionInstance<Boolean> meshletFrustumCulling;
     private static @Nullable OptionInstance<Boolean> strictMeshTerrainReplacement;
@@ -48,6 +49,7 @@ public final class VulkanImprovementVideoOptions {
         syncFromConfig();
         return new OptionInstance[]{
                 meshTerrainRenderer,
+                terrainCaptureBootstrap,
                 meshTranslucentTerrain,
                 meshletFrustumCulling,
                 strictMeshTerrainReplacement,
@@ -76,8 +78,10 @@ public final class VulkanImprovementVideoOptions {
         }
         ensureOptions();
         boolean meshTerrain = TerrainRendererDebugConfig.replaceVanillaTerrain();
+        boolean terrainCapture = TerrainRendererDebugConfig.terrainCaptureEnabled();
         boolean fragmentShadingRateSupported = FragmentShadingRateController.get().fragmentShadingRateAvailable();
         setWidgetActive(optionsList, meshTerrainRenderer, true);
+        setWidgetActive(optionsList, terrainCaptureBootstrap, true);
         setWidgetActive(optionsList, meshTranslucentTerrain, meshTerrain);
         setWidgetActive(optionsList, meshletFrustumCulling, meshTerrain);
         setWidgetActive(optionsList, strictMeshTerrainReplacement, meshTerrain);
@@ -85,7 +89,7 @@ public final class VulkanImprovementVideoOptions {
         setWidgetActive(optionsList, vanillaChunkVisibilityFade, meshTerrain);
         setWidgetActive(optionsList, terrainFragmentShadingRate, meshTerrain && fragmentShadingRateSupported);
         setWidgetActive(optionsList, terrainFragmentShadingRateSize, meshTerrain && fragmentShadingRateSupported && TerrainRendererDebugConfig.fragmentShadingRateEnabled());
-        setWidgetActive(optionsList, waitIdleBeforeTerrainUpload, meshTerrain);
+        setWidgetActive(optionsList, waitIdleBeforeTerrainUpload, terrainCapture);
         setWidgetActive(optionsList, allowCpuVisibleMeshletFallback, meshTerrain);
         setWidgetActive(optionsList, gpuGeneratedMeshTaskCommands, meshTerrain);
     }
@@ -99,6 +103,12 @@ public final class VulkanImprovementVideoOptions {
                 OptionInstance.cachedConstantTooltip(Component.translatable("options.vulkanimprovement.meshTerrainRenderer.tooltip")),
                 TerrainRendererDebugConfig.replaceVanillaTerrain(),
                 VulkanImprovementVideoOptions::onMeshTerrainChanged
+        );
+        terrainCaptureBootstrap = OptionInstance.createBoolean(
+                "options.vulkanimprovement.terrainCaptureBootstrap",
+                OptionInstance.cachedConstantTooltip(Component.translatable("options.vulkanimprovement.terrainCaptureBootstrap.tooltip")),
+                TerrainRendererDebugConfig.terrainCaptureBootstrapEnabled(),
+                TerrainRendererDebugConfig::setTerrainCaptureBootstrapEnabled
         );
         meshTranslucentTerrain = OptionInstance.createBoolean(
                 "options.vulkanimprovement.meshTranslucentTerrain",
@@ -224,6 +234,7 @@ public final class VulkanImprovementVideoOptions {
 
     private static void syncFromConfig() {
         requireOption(meshTerrainRenderer).set(TerrainRendererDebugConfig.replaceVanillaTerrain());
+        requireOption(terrainCaptureBootstrap).set(TerrainRendererDebugConfig.terrainCaptureBootstrapEnabled());
         requireOption(meshTranslucentTerrain).set(TerrainRendererDebugConfig.meshTranslucentTerrainEnabled());
         requireOption(meshletFrustumCulling).set(TerrainRendererDebugConfig.meshletFrustumCullingEnabled());
         requireOption(strictMeshTerrainReplacement).set(TerrainRendererDebugConfig.strictMeshTerrainReplacement());

@@ -2,6 +2,7 @@ package com.temotskipa.vulkanimprovement.mixin.client;
 
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.VulkanImprovementRuntime;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.SectionMeshletStore;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.chunk.CompiledSectionMesh;
 import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
@@ -27,7 +28,7 @@ public final class SectionRenderDispatcherRenderSectionMixin {
             @Nullable ByteBuffer indexBuffer,
             CallbackInfoReturnable<Boolean> cir
     ) {
-        if (!VulkanImprovementRuntime.isVulkanBackendActive()) {
+        if (!VulkanImprovementRuntime.isVulkanBackendActive() || !TerrainRendererDebugConfig.terrainCaptureEnabled()) {
             return;
         }
         SectionMeshletStore.capture(this.sectionNode, key, layer, vertexBuffer, indexBuffer);

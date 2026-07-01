@@ -35,8 +35,8 @@ public final class GpuMaterialRecordInvariantCheck {
 
     private static void checkUnavailableTerrainMaterialEncoding() {
         GpuMaterialRecord record = GpuMaterialRecord.vanillaTerrain(
-                GpuMaterialRecord.TextureInfo.unavailable(),
-                GpuMaterialRecord.TextureInfo.unavailable()
+                TextureInfo.unavailable(),
+                TextureInfo.unavailable()
         );
         int[] encoded = encode(record);
 
@@ -52,8 +52,8 @@ public final class GpuMaterialRecordInvariantCheck {
 
     private static void checkReadyTerrainMaterialEncoding() {
         GpuMaterialRecord record = GpuMaterialRecord.vanillaTerrain(
-                new GpuMaterialRecord.TextureInfo(true, 2048, 1024, 1, 5),
-                new GpuMaterialRecord.TextureInfo(true, 16, 16, 0, 1)
+                new TextureInfo(true, 2048, 1024, 1, 5),
+                new TextureInfo(true, 16, 16, 0, 1)
         );
         int[] encoded = encode(record);
 

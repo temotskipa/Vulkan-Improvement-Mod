@@ -59,12 +59,18 @@ public final class TerrainRuntimeValidationPlanInvariantCheck {
     private static void checkSafeDefaults(String meshPlan, String extensionPlan, String reliability) {
         requireContains(meshPlan, "`vim.replaceVanillaTerrain` remains `false` by default",
                 "mesh bugfix plan must keep visible replacement off by default");
+        requireContains(meshPlan, "`vim.enableTerrainCaptureBootstrap` remains `false` by default",
+                "mesh bugfix plan must keep diagnostic terrain capture/bootstrap off by default");
         requireContains(meshPlan, "Do not change the default value of `vim.replaceVanillaTerrain`",
                 "mesh bugfix plan must prohibit default promotion before runtime evidence");
-        requireContains(extensionPlan, "runtime mode is Vulkan capture/bootstrap until mesh replacement is stable",
-                "main renderer extension plan must keep capture/bootstrap as the default runtime mode");
+        requireContains(meshPlan, "Do not change the default value of `vim.enableTerrainCaptureBootstrap`",
+                "mesh bugfix plan must prohibit default capture/bootstrap promotion before runtime evidence");
+        requireContains(extensionPlan, "runtime mode is vanilla terrain with VIM terrain capture/bootstrap disabled",
+                "main renderer extension plan must keep terrain capture/bootstrap as an explicit opt-in");
         requireContains(reliability, "| `vim.replaceVanillaTerrain`            | `false`",
                 "reliability docs must record vim.replaceVanillaTerrain=false as the default");
+        requireContains(reliability, "| `vim.enableTerrainCaptureBootstrap`   | `false`",
+                "reliability docs must record vim.enableTerrainCaptureBootstrap=false as the default");
     }
 
     private static void checkReliabilityEvidence(String reliability) {

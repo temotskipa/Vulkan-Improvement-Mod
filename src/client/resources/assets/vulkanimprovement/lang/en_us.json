@@ -2,6 +2,8 @@
   "options.vulkanimprovement.header": "Vulkan Improvement",
   "options.vulkanimprovement.meshTerrainRenderer": "Mesh Terrain",
   "options.vulkanimprovement.meshTerrainRenderer.tooltip": "Replaces vanilla solid and cutout terrain with the mesh-shader path. Requires Vulkan and is off by default while visible work-queue draws are validation gated.",
+  "options.vulkanimprovement.terrainCaptureBootstrap": "Capture Bootstrap",
+  "options.vulkanimprovement.terrainCaptureBootstrap.tooltip": "Mirrors vanilla terrain into VIM GPU data without replacing visible terrain. Heavy diagnostic mode.",
   "options.vulkanimprovement.meshTranslucentTerrain": "Mesh Water",
   "options.vulkanimprovement.meshTranslucentTerrain.tooltip": "Routes translucent terrain through the mesh-shader path. Requires Mesh Terrain. Disabled by default until water ordering matches vanilla.",
   "options.vulkanimprovement.meshletFrustumCulling": "Meshlet Culling",

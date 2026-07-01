@@ -26,6 +26,7 @@ public final class TerrainRendererDebugConfig {
     private static volatile int terrainMirrorStabilizationMillis = intProperty("vim.terrainMirrorStabilizationMillis", 750, MIN_TERRAIN_MIRROR_STABILIZATION_MILLIS, MAX_TERRAIN_MIRROR_STABILIZATION_MILLIS);
     private static volatile boolean fragmentShadingRateEnabled = !booleanProperty("vim.disableFragmentShadingRate", false);
     private static volatile boolean replaceVanillaTerrain = booleanProperty("vim.replaceVanillaTerrain", false);
+    private static volatile boolean terrainCaptureBootstrap = booleanProperty("vim.enableTerrainCaptureBootstrap", false);
     private static volatile boolean meshTranslucentTerrainEnabled = booleanProperty("vim.enableMeshTranslucentTerrain", false);
     private static volatile boolean meshletFrustumCullingEnabled = booleanProperty("vim.enableMeshletFrustumCulling", false);
     private static volatile boolean strictMeshTerrainReplacement = booleanProperty("vim.strictMeshTerrainReplacement", true);
@@ -163,7 +164,10 @@ public final class TerrainRendererDebugConfig {
     }
 
     public static String rendererMode() {
-        return replaceVanillaTerrain() ? "mesh-required" : "mesh-capture-bootstrap";
+        if (replaceVanillaTerrain()) {
+            return "mesh-required";
+        }
+        return terrainCaptureBootstrapEnabled() ? "mesh-capture-bootstrap" : "vanilla";
     }
 
     public static boolean replaceVanillaTerrain() {
@@ -173,6 +177,19 @@ public final class TerrainRendererDebugConfig {
     public static void setReplaceVanillaTerrain(boolean enabled) {
         replaceVanillaTerrain = enabled;
         setBooleanProperty("vim.replaceVanillaTerrain", enabled);
+    }
+
+    public static boolean terrainCaptureBootstrapEnabled() {
+        return terrainCaptureBootstrap;
+    }
+
+    public static void setTerrainCaptureBootstrapEnabled(boolean enabled) {
+        terrainCaptureBootstrap = enabled;
+        setBooleanProperty("vim.enableTerrainCaptureBootstrap", enabled);
+    }
+
+    public static boolean terrainCaptureEnabled() {
+        return replaceVanillaTerrain() || terrainCaptureBootstrap;
     }
 
     public static boolean meshTranslucentTerrainEnabled() {
@@ -232,12 +249,13 @@ public final class TerrainRendererDebugConfig {
     public static String describe() {
         return "rendererMode=" + rendererMode()
                 + ", requireVulkanBackend=" + requireVulkanBackend()
+                + ", enableTerrainCaptureBootstrap=" + terrainCaptureBootstrapEnabled()
                 + ", enableMeshTranslucentTerrain=" + meshTranslucentTerrainEnabled()
                 + ", enableMeshletFrustumCulling=" + meshletFrustumCullingEnabled()
                 + ", strictMeshTerrainReplacement=" + strictMeshTerrainReplacement()
                 + ", enableVanillaChunkVisibilityFade=" + vanillaChunkVisibilityFadeEnabled()
                 + ", drawAllCapturedTerrainLayers=" + drawAllCapturedTerrainLayers()
-                + ", defaultSolidCutoutLayerMode=" + (replaceVanillaTerrain() ? "mesh" : "capture-bootstrap")
+                + ", defaultSolidCutoutLayerMode=" + solidCutoutLayerMode()
                 + ", defaultTranslucentLayerMode=" + (meshTranslucentTerrainEnabled() ? "mesh-experimental-translucent" : "vanilla-translucent-fallback")
                 + ", dumpCapabilities=" + dumpCapabilities()
                 + ", disableFragmentShadingRate=" + !fragmentShadingRateEnabled()
@@ -252,6 +270,13 @@ public final class TerrainRendererDebugConfig {
                 + ", initialMeshletCapacity=" + initialMeshletCapacity()
                 + ", initialVertexPayloadBytes=" + initialVertexPayloadBytes()
                 + ", initialIndexPayloadBytes=" + initialIndexPayloadBytes();
+    }
+
+    private static String solidCutoutLayerMode() {
+        if (replaceVanillaTerrain()) {
+            return "mesh";
+        }
+        return terrainCaptureBootstrapEnabled() ? "capture-bootstrap" : "vanilla";
     }
 
     private static boolean booleanProperty(String name, boolean fallback) {

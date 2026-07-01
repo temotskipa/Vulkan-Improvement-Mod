@@ -110,11 +110,11 @@ validation on real Vulkan hardware.
   renderer path diagnostics. It also reports the last terrain mesh-task
   dispatch record, including dispatch source, task count, task-limit truncation,
   whether a CPU-written visible meshlet list was used, and whether a CPU-filled
-  terrain work queue was used. Vulkan capture/bootstrap is the default mode:
-  terrain is captured and uploaded for diagnostics while vanilla terrain remains
-  visible. Visible draw-list replacement, work-queue mesh-task dispatch, and
-  GPU-generated indirect-command preparation are validation-gated opt-ins until
-  the device-loss path is fixed.
+  terrain work queue was used. Default Vulkan sessions keep vanilla terrain
+  visible and leave VIM terrain capture/bootstrap disabled. Diagnostic terrain
+  capture/bootstrap, visible draw-list replacement, work-queue mesh-task
+  dispatch, and GPU-generated indirect-command preparation are validation-gated
+  opt-ins until their runtime cost and device-loss risk are fixed.
 - `RendererDiagnostics.bugReport()` exposes `gpuWorldDatabase`, a CPU-authority
   GPU-world mirror contract with live section count, update sequence, clear
   count, material-table contract, page-kind authority labels, the last dirty
@@ -168,6 +168,7 @@ validation on real Vulkan hardware.
 | `vim.validationDescriptorBufferOnly`   | `false`     | Validate descriptor-buffer-only mode.                 |
 | `vim.waitIdleBeforeTerrainUpload`      | `false`     | Force device idle before terrain upload.              |
 | `vim.replaceVanillaTerrain`            | `false`     | Replace vanilla terrain with mesh rendering. Validation-gated opt-in while visible work-queue draws can device-loss on long runs. |
+| `vim.enableTerrainCaptureBootstrap`   | `false`     | Mirror vanilla terrain into VIM GPU data without visible replacement. Heavy diagnostic opt-in. |
 | `vim.enableMeshTranslucentTerrain`     | `false`     | Enable experimental translucent mesh terrain.         |
 | `vim.enableMeshletFrustumCulling`      | `false`     | Enable meshlet frustum culling.                       |
 | `vim.enableGpuGeneratedMeshTaskCommands` | `false`   | Enable experimental GPU-generated mesh-task indirect commands. |
@@ -198,11 +199,11 @@ Record manual validation results here before treating the mesh terrain path as g
 | 2026-06-06 | Windows      | not exercised | not exercised | not exercised | 26.2-pre-4 | 0.150.3+26.2 | build pass | `.\gradlew.bat build` passes with Fabric Loader 0.19.3 and Loom 1.17.0-alpha.19; runtime smoke pending |
 | 2026-06-23 | Windows 11   | RTX 4070 Ti | 610.62 / 1.4.341 | 1.4.341 | 26.2 | 0.153.0+26.2 | runtime pass | mcdev two-cycle dev-loop after MeshTerrainRenderer visible-dispatch fix; snapshot/screenshot/record in overworld; retest VIM x≈15974 manually |
 | 2026-06-29 | Windows 11   | RTX 4070 Ti | 610.62 / 1.4.341 | 1.4.341 | 26.2 | 0.153.0+26.2 | mesh replacement fail | `vim.replaceVanillaTerrain=true`, `vim.enableGpuGeneratedMeshTaskCommands=false`; device lost after visible work-queue mesh draws. Crash: `run/crash-reports/crash-2026-06-29_08.25.58-client.txt`. |
-| 2026-06-29 | Windows 11   | RTX 4070 Ti | 610.62 / 1.4.341 | 1.4.341 | 26.2 | 0.153.0+26.2 | capture/bootstrap pass | Default `vim.replaceVanillaTerrain=false`; survived past the prior crash window with zero mesh-task dispatches and vanilla terrain visible. Recording: `run/debugbridge-recordings/req_31/recording.jpg`. |
+| 2026-06-29 | Windows 11   | RTX 4070 Ti | 610.62 / 1.4.341 | 1.4.341 | 26.2 | 0.153.0+26.2 | capture/bootstrap pass | Historical implicit capture/bootstrap with `vim.replaceVanillaTerrain=false`; survived past the prior crash window with zero mesh-task dispatches and vanilla terrain visible. Recording: `run/debugbridge-recordings/req_31/recording.jpg`. As of 2026-07-01, repeat this mode with `vim.enableTerrainCaptureBootstrap=true`. |
 | 2026-06-29 | Windows 11   | RTX 4070 Ti | 610.62 / 1.4.341 | 1.4.341 | 26.2 | 0.153.0+26.2 | mesh replacement visual fail | Record-first camera jitter with `vim.replaceVanillaTerrain=true` reproduced dark/green slab-like terrain corruption before the render-pass/projection fixes. Recording: `run/debugbridge-recordings/req_17/recording.jpg`. |
 | 2026-06-29 | Windows 11   | RTX 4070 Ti | 610.62 / 1.4.341 | 1.4.341 | 26.2 | 0.153.0+26.2 | mesh replacement jitter smoke pass with texture-quality caveat | After native pipeline restoration and vanilla camera-projection push constants, record-first jitter no longer showed the slab corruption. Counters reached 37,257 mesh draw calls and 46.0M mesh tasks with zero descriptor misses; recordings: `run/debugbridge-recordings/req_34/recording.jpg`, `run/debugbridge-recordings/req_43/recording.jpg`. `req_43` close textures look blurred, but the run used `textureFiltering:2` / `mipmapLevels:4` and the artifact is a downscaled contact sheet. Keep mesh replacement opt-in until a longer soak and full-resolution nearest-filter texture capture validate device-loss and texture-quality risk. |
 
-Required JVM flags to record per run: `vim.replaceVanillaTerrain`, `vim.enableMeshTranslucentTerrain`, `vim.drawAllCapturedTerrainLayers`, `vim.disableFragmentShadingRate`, `vim.validationDescriptorBufferOnly`, `vim.allowCpuVisibleMeshletFallback`, `vim.enableGpuGeneratedMeshTaskCommands`.
+Required JVM flags to record per run: `vim.replaceVanillaTerrain`, `vim.enableTerrainCaptureBootstrap`, `vim.enableMeshTranslucentTerrain`, `vim.drawAllCapturedTerrainLayers`, `vim.disableFragmentShadingRate`, `vim.validationDescriptorBufferOnly`, `vim.allowCpuVisibleMeshletFallback`, `vim.enableGpuGeneratedMeshTaskCommands`.
 
 Required runtime counters to inspect: `meshReplacementDrawCalls`, `meshReplacementWorkQueueDrawCalls`, `meshReplacementTasks`, `meshReplacementPreparedGpuCommands`, `meshReplacementPreparedGpuCommandDisabled`, `meshReplacementPreparedDispatchQueueLeaks`, `meshReplacementVisibleMeshletFallbackRefusals`, `meshReplacementPreparedGpuCommandRefusals`.
 

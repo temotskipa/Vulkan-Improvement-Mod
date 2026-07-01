@@ -2,6 +2,7 @@ package com.temotskipa.vulkanimprovement.mixin.client;
 
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.VulkanImprovementRuntime;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.SectionMeshletStore;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.chunk.SectionMesh;
 import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
@@ -14,7 +15,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class SectionRenderDispatcherMixin {
     @Inject(method = "getRenderSectionSlice", at = @At("RETURN"))
     private void vim$recordTerrainDrawSlice(SectionMesh sectionMesh, ChunkSectionLayer layer, CallbackInfoReturnable<SectionRenderDispatcher.RenderSectionBufferSlice> cir) {
-        if (!VulkanImprovementRuntime.isVulkanBackendActive()) {
+        if (!VulkanImprovementRuntime.isVulkanBackendActive() || !TerrainRendererDebugConfig.terrainCaptureEnabled()) {
             return;
         }
         SectionRenderDispatcher.RenderSectionBufferSlice slice = cir.getReturnValue();

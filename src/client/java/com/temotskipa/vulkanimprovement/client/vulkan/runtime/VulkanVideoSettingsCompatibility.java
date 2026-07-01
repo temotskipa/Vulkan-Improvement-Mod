@@ -83,6 +83,8 @@ public final class VulkanVideoSettingsCompatibility {
         map.put("modRendererActive", VulkanImprovementRuntime.isModRendererActive());
         map.put("videoOptionsVisible", VulkanImprovementRuntime.shouldShowVideoOptions(Minecraft.getInstance()));
         map.put("replaceVanillaTerrain", TerrainRendererDebugConfig.replaceVanillaTerrain());
+        map.put("terrainCaptureBootstrapEnabled", TerrainRendererDebugConfig.terrainCaptureBootstrapEnabled());
+        map.put("terrainCaptureEnabled", TerrainRendererDebugConfig.terrainCaptureEnabled());
         map.put("meshTranslucentTerrainEnabled", TerrainRendererDebugConfig.meshTranslucentTerrainEnabled());
         map.put("meshletFrustumCullingEnabled", TerrainRendererDebugConfig.meshletFrustumCullingEnabled());
         map.put("vanillaChunkVisibilityFadeEnabled", TerrainRendererDebugConfig.vanillaChunkVisibilityFadeEnabled());

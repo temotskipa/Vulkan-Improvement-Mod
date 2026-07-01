@@ -84,6 +84,9 @@ public final class MeshTerrainRenderer {
     }
 
     public void observeTerrainGroup(ChunkSectionsToRender chunkSectionsToRender, ChunkSectionLayerGroup group) {
+        if (!TerrainRendererDebugConfig.terrainCaptureEnabled()) {
+            return;
+        }
         this.terrainGroupCalls.increment();
         TerrainRenderContext.setCurrentTerrainGroup(chunkSectionsToRender, group);
         DescriptorHeapTerrainResources.get().uploadDirtyTerrainData();

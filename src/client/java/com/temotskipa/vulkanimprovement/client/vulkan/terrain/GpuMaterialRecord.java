@@ -72,10 +72,4 @@ public record GpuMaterialRecord(int materialId, int flags, int blockAtlasWidth, 
         target.putInt(this.materialDomain);
         target.putInt(this.reserved0);
     }
-
-    record TextureInfo(boolean available, int width, int height, int baseMipLevel, int mipLevels) {
-        static TextureInfo unavailable() {
-            return new TextureInfo(false, 0, 0, 0, 0);
-        }
-    }
 }

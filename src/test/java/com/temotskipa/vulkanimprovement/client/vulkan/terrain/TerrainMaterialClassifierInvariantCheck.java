@@ -46,8 +46,8 @@ public final class TerrainMaterialClassifierInvariantCheck {
     }
 
     private static void checkTerrainLayerRecords() {
-        GpuMaterialRecord.TextureInfo blockAtlas = new GpuMaterialRecord.TextureInfo(true, 1024, 512, 0, 5);
-        GpuMaterialRecord.TextureInfo lightmap = new GpuMaterialRecord.TextureInfo(true, 16, 16, 0, 1);
+        TextureInfo blockAtlas = new TextureInfo(true, 1024, 512, 0, 5);
+        TextureInfo lightmap = new TextureInfo(true, 16, 16, 0, 1);
         ByteBuffer table = ByteBuffer.allocate(TerrainGpuLayout.MATERIAL_TABLE_CAPACITY * TerrainGpuLayout.MATERIAL_RECORD_STRIDE).order(ByteOrder.LITTLE_ENDIAN);
         TerrainMaterialClassifier.writeTerrainLayerRecords(table, blockAtlas, lightmap);
 

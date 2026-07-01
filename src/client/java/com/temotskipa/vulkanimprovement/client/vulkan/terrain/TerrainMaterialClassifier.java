@@ -36,7 +36,7 @@ final class TerrainMaterialClassifier {
         return GpuMaterialAlphaMode.OPAQUE;
     }
 
-    static GpuMaterialRecord recordForLayer(ChunkSectionLayer layer, GpuMaterialRecord.TextureInfo blockAtlas, GpuMaterialRecord.TextureInfo lightmap) {
+    static GpuMaterialRecord recordForLayer(ChunkSectionLayer layer, TextureInfo blockAtlas, TextureInfo lightmap) {
         return GpuMaterialRecord.terrainLayer(
                 materialIdForLayer(layer),
                 layer == null ? -1 : layer.ordinal(),
@@ -46,7 +46,7 @@ final class TerrainMaterialClassifier {
         );
     }
 
-    static void writeTerrainLayerRecords(ByteBuffer target, GpuMaterialRecord.TextureInfo blockAtlas, GpuMaterialRecord.TextureInfo lightmap) {
+    static void writeTerrainLayerRecords(ByteBuffer target, TextureInfo blockAtlas, TextureInfo lightmap) {
         for (ChunkSectionLayer layer : ChunkSectionLayer.values()) {
             int materialId = materialIdForLayer(layer);
             int position = materialId * TerrainGpuLayout.MATERIAL_RECORD_STRIDE;

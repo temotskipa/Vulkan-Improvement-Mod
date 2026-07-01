@@ -3,8 +3,8 @@
 ## Goal
 
 Fix or conclusively contain the visible mesh-terrain replacement device-loss
-and texture-quality risks on Minecraft 26.2 while keeping capture/bootstrap as
-the safe default.
+and texture-quality risks on Minecraft 26.2 while keeping vanilla terrain as
+the safe default and capture/bootstrap as an explicit diagnostic opt-in.
 
 ## Evidence
 
@@ -24,6 +24,8 @@ the safe default.
 
 - `vim.replaceVanillaTerrain` remains `false` by default until this plan has a
   longer runtime pass.
+- `vim.enableTerrainCaptureBootstrap` remains `false` by default until capture
+  cost is proven acceptable outside diagnostic runs.
 - VIM terrain capture, mesh replacement, and diagnostics must stay gated off
   when OpenGL is the active backend.
 - Runtime validation must call `mc_record_video` first with a long interval and
@@ -46,8 +48,9 @@ the safe default.
      `.\gradlew.bat checkTerrainRuntimeValidationPlanInvariants --console=plain`.
 
 2. Capture a new full-resolution texture baseline with mesh replacement off.
-   - Start from Vulkan capture/bootstrap mode:
+   - Start from explicit Vulkan capture/bootstrap diagnostic mode:
      `vim.replaceVanillaTerrain=false`,
+     `vim.enableTerrainCaptureBootstrap=true`,
      `vim.enableGpuGeneratedMeshTaskCommands=false`,
      `vim.validationCpuVisibleMeshletRing=false`.
    - Use Video Settings or `mc_execute` after confirming option setters with:
@@ -76,7 +79,8 @@ the safe default.
 
    - Immediately call:
      `mc_record_video(frames=300, interval=100, output="grid", downscale=1, quality=1.0)`.
-   - Run once with `vim.replaceVanillaTerrain=false` and once with
+   - Run once with `vim.replaceVanillaTerrain=false` and
+     `vim.enableTerrainCaptureBootstrap=true`, then once with
      `vim.replaceVanillaTerrain=true`.
 
 4. If device loss reproduces, narrow the failing path before editing renderer
@@ -101,6 +105,7 @@ the safe default.
 
 6. Keep mesh replacement opt-in until validation passes.
    - Do not change the default value of `vim.replaceVanillaTerrain`.
+   - Do not change the default value of `vim.enableTerrainCaptureBootstrap`.
    - Add a reliability row only after a no-device-loss pass exceeds the previous
      crash window and includes texture-quality evidence.
 
@@ -109,7 +114,8 @@ the safe default.
 - `.\gradlew.bat checkTerrainRuntimeValidationPlanInvariants --console=plain`
 - `.\gradlew.bat check --console=plain`
 - `.\gradlew.bat build --console=plain`
-- mcdev record-first jitter pass with `vim.replaceVanillaTerrain=false`
+- mcdev record-first jitter pass with `vim.replaceVanillaTerrain=false` and
+  `vim.enableTerrainCaptureBootstrap=true`
 - mcdev record-first jitter pass with `vim.replaceVanillaTerrain=true`
 - Full-resolution nearest-filter capture with diagnostics proving sampler and
   mipmap state
@@ -117,8 +123,8 @@ the safe default.
 ## Decisions
 
 - Visible mesh replacement is still validation-gated.
-- The current safe default is Vulkan capture/bootstrap, not vanilla terrain
-  replacement.
+- The current safe default is vanilla terrain. Vulkan capture/bootstrap and
+  mesh replacement are both explicit opt-in paths.
 - Texture blur in `req_43` is treated as unproven until a full-resolution
   nearest-filter capture rules out expected mipmapping or contact-sheet scaling.
 

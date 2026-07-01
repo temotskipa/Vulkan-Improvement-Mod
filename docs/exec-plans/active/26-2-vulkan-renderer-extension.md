@@ -17,8 +17,9 @@ LOD, and RT/PT work can share.
 ## Current Baseline
 
 - The project now targets stable Minecraft `26.2`, Fabric API
-  `0.153.0+26.2`, Fabric Loader `0.19.3`, and Loom `1.17.12`.
-- The Gradle wrapper is `9.6.1`; the 2026-06-28 and 2026-06-29 dependency
+  `0.153.0+26.2`, Fabric Loader `0.19.3`, and Loom `1.17.13`.
+- The Gradle wrapper is `9.6.1`; the 2026-06-28, 2026-06-29, and
+  2026-07-01 dependency
   checks found no newer stable 26.2 Fabric/Minecraft pins to take.
 - The completed dependency update is recorded in
   [../completed/minecraft-26-2-dependency-update.md](../completed/minecraft-26-2-dependency-update.md).
@@ -68,11 +69,15 @@ LOD, and RT/PT work can share.
   mesh work-queue replacement path still device-loses after ~30 seconds even
   with GPU-generated mesh-task command preparation disabled. The crash report
   is `run/crash-reports/crash-2026-06-29_08.25.58-client.txt`.
-- 2026-06-29: `vim.replaceVanillaTerrain` now defaults to `false`, making
-  Vulkan capture/bootstrap the safe default. A follow-up mcdev smoke survived
-  past the previous crash window with zero mesh-task dispatches and normal
-  vanilla terrain visible; evidence is
+- 2026-06-29: `vim.replaceVanillaTerrain` now defaults to `false`. A follow-up
+  mcdev smoke survived past the previous crash window with zero mesh-task
+  dispatches and normal vanilla terrain visible; evidence is
   `run/debugbridge-recordings/req_31/recording.jpg`.
+- 2026-07-01: The default runtime mode is vanilla terrain with VIM terrain
+  capture/bootstrap disabled. `vim.enableTerrainCaptureBootstrap=false` keeps
+  section capture, draw-slice recording, terrain metadata upload, and terrain
+  cache reset hooks idle unless diagnostic capture/bootstrap or visible mesh
+  replacement is explicitly enabled.
 - 2026-06-29: Record-first camera-jitter validation reproduced the mesh
   replacement visual failure before the latest fix: the contact sheet at
   `run/debugbridge-recordings/req_17/recording.jpg` showed large dark/green
@@ -277,9 +282,10 @@ compatibility gates.
 
 ### 7. Extend the Terrain GPU Work Pipeline
 
-- Keep Vulkan terrain capture/bootstrap as the default path until visible
-  work-queue replacement has runtime proof that it no longer device-loses over
-  a longer soak than the current record-first jitter smoke.
+- Keep default Vulkan sessions on vanilla terrain; require explicit
+  `vim.enableTerrainCaptureBootstrap=true` for terrain mirror diagnostics and
+  explicit `vim.replaceVanillaTerrain=true` for visible mesh replacement until
+  runtime validation proves either path is safe to promote.
 - Keep visible mesh replacement, work-queue mesh-task dispatch, and
   GPU-generated mesh-task indirect commands behind explicit user/developer
   opt-in flags.
@@ -370,7 +376,8 @@ compatibility gates.
   - include video-settings and texture-binding diagnostics when investigating
     texture quality, especially `textureFiltering`, `mipmapLevels`, and
     captured sampler `maxAnisotropy`;
-  - enter an overworld scene with Vulkan capture/bootstrap active;
+  - enter an overworld scene with `vim.enableTerrainCaptureBootstrap=true` or
+    `vim.replaceVanillaTerrain=true`;
   - test mesh terrain replacement only as an explicit opt-in validation path;
   - capture screenshot/video evidence;
   - test fallback flags and validation-only flags;
@@ -384,7 +391,8 @@ compatibility gates.
 - The mod owns its feature-set abstraction for `26.2`; it does not backport
   Mojang snapshot classes.
 - GPU-driven rendering is the mainline renderer direction, but the default
-  runtime mode is Vulkan capture/bootstrap until mesh replacement is stable.
+  runtime mode is vanilla terrain with VIM terrain capture/bootstrap disabled
+  until capture cost and mesh replacement stability are validated.
 - Mesh replacement is validation-gated after the 2026-06-29 device-loss
   reproduction in the visible work-queue path. The later render-pass state and
   vanilla camera-projection fixes improve the path, but they are not yet enough
@@ -401,8 +409,8 @@ This plan is complete when:
 - the Vulkan mixins are validated against mcdev `26.2` targets;
 - renderer-wide services no longer live only inside terrain code;
 - the first GPU world database contracts exist with pure checks;
-- terrain capture/bootstrap remains runtime-validated on the stable `26.2`
-  baseline, and mesh replacement either has a fixed runtime pass or
+- terrain capture/bootstrap remains an explicit runtime-validated opt-in on the
+  stable `26.2` baseline, and mesh replacement either has a fixed runtime pass or
   [a dedicated active bugfix plan with crash evidence](mesh-replacement-device-loss-bugfix.md);
 - follow-up non-terrain and RT/PT work has explicit domain contracts or new
   active plans:

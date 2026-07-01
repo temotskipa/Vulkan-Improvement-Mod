@@ -2,6 +2,7 @@ package com.temotskipa.vulkanimprovement.mixin.client;
 
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.VulkanImprovementRuntime;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.SectionMeshletStore;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Options;
 import net.minecraft.client.color.block.BlockColors;
@@ -18,28 +19,28 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public final class LevelRendererMixin {
     @Inject(method = "prepareChunkRenders", at = @At("HEAD"))
     private void vim$beginChunkVisibilityFrame(Matrix4fc modelViewMatrix, CallbackInfoReturnable<?> cir) {
-        if (VulkanImprovementRuntime.isVulkanBackendActive()) {
+        if (VulkanImprovementRuntime.isVulkanBackendActive() && TerrainRendererDebugConfig.terrainCaptureEnabled()) {
             SectionMeshletStore.clearSectionVisibilityFrame();
         }
     }
 
     @Inject(method = "invalidateCompiledGeometry", at = @At("HEAD"))
     private void vim$clearMeshletCacheForGeometryInvalidation(ClientLevel level, Options options, Camera camera, BlockColors blockColors, CallbackInfo ci) {
-        if (VulkanImprovementRuntime.isVulkanBackendActive()) {
+        if (VulkanImprovementRuntime.isVulkanBackendActive() && TerrainRendererDebugConfig.terrainCaptureEnabled()) {
             SectionMeshletStore.clearAll("invalidateCompiledGeometry");
         }
     }
 
     @Inject(method = "resetLevelRenderData", at = @At("HEAD"))
     private void vim$clearMeshletCacheForLevelReset(CallbackInfo ci) {
-        if (VulkanImprovementRuntime.isVulkanBackendActive()) {
+        if (VulkanImprovementRuntime.isVulkanBackendActive() && TerrainRendererDebugConfig.terrainCaptureEnabled()) {
             SectionMeshletStore.clearAll("resetLevelRenderData");
         }
     }
 
     @Inject(method = "close", at = @At("HEAD"))
     private void vim$clearMeshletCacheForRendererClose(CallbackInfo ci) {
-        if (VulkanImprovementRuntime.isVulkanBackendActive()) {
+        if (VulkanImprovementRuntime.isVulkanBackendActive() && TerrainRendererDebugConfig.terrainCaptureEnabled()) {
             SectionMeshletStore.clearAll("close");
         }
     }

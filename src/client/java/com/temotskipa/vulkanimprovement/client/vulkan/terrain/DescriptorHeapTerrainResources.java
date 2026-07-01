@@ -95,11 +95,11 @@ public final class DescriptorHeapTerrainResources {
         return duplicate.slice().order(ByteOrder.LITTLE_ENDIAN);
     }
 
-    private static GpuMaterialRecord.TextureInfo textureInfo(TextureBinding binding) {
+    private static TextureInfo textureInfo(TextureBinding binding) {
         if (binding == null || binding.unavailable() || binding.closed()) {
-            return GpuMaterialRecord.TextureInfo.unavailable();
+            return TextureInfo.unavailable();
         }
-        return new GpuMaterialRecord.TextureInfo(true, binding.width(), binding.height(), binding.baseMipLevel(), binding.mipLevels());
+        return new TextureInfo(true, binding.width(), binding.height(), binding.baseMipLevel(), binding.mipLevels());
     }
 
     private static int visibleMeshletRecordCapacity(TerrainGpuBuffer visibleMeshlets) {
