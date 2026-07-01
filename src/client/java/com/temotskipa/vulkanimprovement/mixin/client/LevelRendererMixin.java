@@ -22,21 +22,21 @@ public final class LevelRendererMixin {
             SectionMeshletStore.clearSectionVisibilityFrame();
         }
     }
-    
+
     @Inject(method = "invalidateCompiledGeometry", at = @At("HEAD"))
     private void vim$clearMeshletCacheForGeometryInvalidation(ClientLevel level, Options options, Camera camera, BlockColors blockColors, CallbackInfo ci) {
         if (VulkanImprovementRuntime.isVulkanBackendActive()) {
             SectionMeshletStore.clearAll("invalidateCompiledGeometry");
         }
     }
-    
+
     @Inject(method = "resetLevelRenderData", at = @At("HEAD"))
     private void vim$clearMeshletCacheForLevelReset(CallbackInfo ci) {
         if (VulkanImprovementRuntime.isVulkanBackendActive()) {
             SectionMeshletStore.clearAll("resetLevelRenderData");
         }
     }
-    
+
     @Inject(method = "close", at = @At("HEAD"))
     private void vim$clearMeshletCacheForRendererClose(CallbackInfo ci) {
         if (VulkanImprovementRuntime.isVulkanBackendActive()) {

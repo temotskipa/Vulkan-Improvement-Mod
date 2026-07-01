@@ -3,7 +3,8 @@
   "minVersion": "0.8",
   "package": "com.temotskipa.vulkanimprovement.mixin",
   "compatibilityLevel": "JAVA_25",
-  "mixins": [],
+  "mixins": [
+  ],
   "injectors": {
     "defaultRequire": 1
   },

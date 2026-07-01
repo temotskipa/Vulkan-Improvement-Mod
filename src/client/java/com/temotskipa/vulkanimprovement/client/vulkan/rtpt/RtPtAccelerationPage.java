@@ -3,7 +3,6 @@ package com.temotskipa.vulkanimprovement.client.vulkan.rtpt;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldPageKind;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldRevision;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldSectionId;
-
 import java.util.LinkedHashMap;
 import java.util.Map;
 

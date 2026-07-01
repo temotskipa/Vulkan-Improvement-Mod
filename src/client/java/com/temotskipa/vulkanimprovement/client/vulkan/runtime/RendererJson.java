@@ -16,7 +16,7 @@ final class RendererJson {
         }
         return builder.append('}').toString();
     }
-    
+
     private static void appendValue(StringBuilder builder, Object value) {
         if (value instanceof Number || value instanceof Boolean) {
             builder.append(value);
@@ -36,7 +36,7 @@ final class RendererJson {
             builder.append('"').append(escape(String.valueOf(value))).append('"');
         }
     }
-    
+
     private static String escape(String value) {
         return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }

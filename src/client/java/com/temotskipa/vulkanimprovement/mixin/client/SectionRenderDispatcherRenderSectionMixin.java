@@ -18,9 +18,15 @@ import java.nio.ByteBuffer;
 public final class SectionRenderDispatcherRenderSectionMixin {
     @Shadow
     private long sectionNode;
-    
+
     @Inject(method = "addSectionBuffersToUberBuffer", at = @At("HEAD"))
-    private void vim$captureSectionMeshletInput(ChunkSectionLayer layer, CompiledSectionMesh key, @Nullable ByteBuffer vertexBuffer, @Nullable ByteBuffer indexBuffer, CallbackInfoReturnable<Boolean> cir) {
+    private void vim$captureSectionMeshletInput(
+            ChunkSectionLayer layer,
+            CompiledSectionMesh key,
+            @Nullable ByteBuffer vertexBuffer,
+            @Nullable ByteBuffer indexBuffer,
+            CallbackInfoReturnable<Boolean> cir
+    ) {
         if (!VulkanImprovementRuntime.isVulkanBackendActive()) {
             return;
         }

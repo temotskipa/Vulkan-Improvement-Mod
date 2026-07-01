@@ -3,7 +3,25 @@ package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 public interface TerrainGpuLayout {
     int SECTION_METADATA_STRIDE = 80;
     @SuppressWarnings("unused")
-    String MESHLET_HEADER_SHADER_MANIFEST = """            struct MeshletHeader {                uint64_t sectionNode;                int sectionX;                int sectionY;                int sectionZ;                int layer;                int firstVertex;                int vertexCount;                int firstIndex;                int indexCount;                uint vertexByteOffset;                uint indexByteOffset;                int vertexBytes;                int indexBytes;                int flags0;                int materialId;            };            """;
+    String MESHLET_HEADER_SHADER_MANIFEST = """
+            struct MeshletHeader {
+                uint64_t sectionNode;
+                int sectionX;
+                int sectionY;
+                int sectionZ;
+                int layer;
+                int firstVertex;
+                int vertexCount;
+                int firstIndex;
+                int indexCount;
+                uint vertexByteOffset;
+                uint indexByteOffset;
+                int vertexBytes;
+                int indexBytes;
+                int flags0;
+                int materialId;
+            };
+            """;
     int MESHLET_HEADER_STRIDE = 64;
     int VISIBLE_MESHLET_RECORD_STRIDE = 8;
     int VISIBLE_MESHLET_RING_MULTIPLIER = 8;

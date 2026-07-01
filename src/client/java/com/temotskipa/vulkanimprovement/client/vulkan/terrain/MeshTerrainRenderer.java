@@ -1,26 +1,31 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
-import com.mojang.blaze3d.systems.RenderPass;
-import com.mojang.blaze3d.vulkan.VulkanDevice;
-import com.mojang.blaze3d.vulkan.VulkanRenderPipeline;
 import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanImprovementCapabilities;
 import com.temotskipa.vulkanimprovement.client.vulkan.presentation.PresentPacingController;
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.RendererCoreServices;
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.RendererDomainObserver;
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.RendererDomainRegistry;
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.RendererLifecycleState;
+import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.blaze3d.systems.RenderPass;
+import com.mojang.blaze3d.vulkan.VulkanDevice;
+import com.mojang.blaze3d.vulkan.VulkanRenderPipeline;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayerGroup;
 import net.minecraft.client.renderer.chunk.ChunkSectionsToRender;
 import org.jspecify.annotations.Nullable;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.LongAdder;
 
 public final class MeshTerrainRenderer {
     private static final MeshTerrainRenderer INSTANCE = new MeshTerrainRenderer();
+
     private final LongAdder terrainGroupCalls = new LongAdder();
     private final LongAdder capturedSections = new LongAdder();
     private final LongAdder releasedSections = new LongAdder();
@@ -52,14 +57,14 @@ public final class MeshTerrainRenderer {
     private final LongAdder[] meshReplacementIndexedDrawCallsByLayer = createLayerCounters();
     private final LongAdder[] meshReplacementDrawCallsByLayer = createLayerCounters();
     private volatile TerrainMeshTaskDispatch lastTerrainDispatch = TerrainMeshTaskDispatch.unavailable("not dispatched");
-    
+
     private MeshTerrainRenderer() {
     }
-    
+
     public static MeshTerrainRenderer get() {
         return INSTANCE;
     }
-    
+
     private static LongAdder[] createLayerCounters() {
         ChunkSectionLayer[] layers = ChunkSectionLayer.values();
         LongAdder[] counters = new LongAdder[layers.length];
@@ -68,7 +73,7 @@ public final class MeshTerrainRenderer {
         }
         return counters;
     }
-    
+
     private static Map<String, Object> layerCounterMap(LongAdder[] counters) {
         Map<String, Object> map = new LinkedHashMap<>();
         for (ChunkSectionLayer layer : ChunkSectionLayer.values()) {
@@ -77,21 +82,21 @@ public final class MeshTerrainRenderer {
         }
         return map;
     }
-    
+
     public void observeTerrainGroup(ChunkSectionsToRender chunkSectionsToRender, ChunkSectionLayerGroup group) {
         this.terrainGroupCalls.increment();
         TerrainRenderContext.setCurrentTerrainGroup(chunkSectionsToRender, group);
         DescriptorHeapTerrainResources.get().uploadDirtyTerrainData();
         prepareTerrainCommands(chunkSectionsToRender, group);
     }
-    
+
     public void finalizeTerrainGroupObservation() {
         int unconsumedPreparedDispatches = TerrainRenderContext.unconsumedPreparedDispatchCount();
         if (unconsumedPreparedDispatches > 0) {
             this.meshReplacementPreparedDispatchQueueLeaks.add(unconsumedPreparedDispatches);
         }
     }
-    
+
     public void recordSectionCapture(int vertexBytes, int indexBytes, int meshlets, long cpuNanos) {
         this.capturedSections.increment();
         this.capturedVertexBytes.add(vertexBytes);
@@ -99,11 +104,11 @@ public final class MeshTerrainRenderer {
         this.captureCpuNanos.add(Math.max(cpuNanos, 0L));
         this.estimatedMeshlets.add(meshlets);
     }
-    
+
     public void recordSectionRelease() {
         this.releasedSections.increment();
     }
-    
+
     public boolean tryDrawMeshTerrain(TerrainDrawContext context) {
         if (!canAttemptMeshTerrain(context)) {
             return false;
@@ -112,11 +117,13 @@ public final class MeshTerrainRenderer {
         if (context.useVisibleDrawList()) {
             return tryDrawVisibleMeshTerrain(context, terrainResources);
         }
+
         return tryDrawLayerMeshTerrain(context, terrainResources);
     }
-    
+
     private boolean tryDrawLayerMeshTerrain(TerrainDrawContext context, DescriptorHeapTerrainResources terrainResources) {
         int totalMeshletCount = terrainResources.meshletsUploaded();
+
         int layerOrdinal = context.layerOrdinal();
         int meshletOffset = layerOrdinal < 0 ? 0 : terrainResources.meshletOffsetForLayer(layerOrdinal);
         int meshletCount = layerOrdinal < 0 ? totalMeshletCount : terrainResources.meshletCountForLayer(layerOrdinal);
@@ -128,6 +135,7 @@ public final class MeshTerrainRenderer {
             this.meshReplacementDuplicateCancellations.increment();
             return false;
         }
+
         TerrainMeshTaskDispatch dispatch = TerrainRenderContext.pollPreparedLayerDispatch(layerOrdinal);
         if (dispatch == null || !dispatch.ready()) {
             dispatch = TerrainMeshTaskDispatch.fullLayer(meshletOffset, layerOrdinal, meshletCount);
@@ -139,21 +147,24 @@ public final class MeshTerrainRenderer {
         if (drawMeshTerrain(context, dispatch, terrainResources)) {
             return true;
         }
+
         this.meshReplacementRefusals.increment();
         return false;
     }
-    
+
     private boolean tryDrawVisibleMeshTerrain(TerrainDrawContext context, DescriptorHeapTerrainResources terrainResources) {
         int layerOrdinal = context.layerOrdinal();
         if (layerOrdinal < 0) {
             this.meshReplacementRefusals.increment();
             return false;
         }
+
         List<SectionMeshletStore.MeshletRange> ranges = visibleMeshletRanges(context.draws(), layerOrdinal);
         if (ranges == null || ranges.isEmpty()) {
             this.meshReplacementRefusals.increment();
             return false;
         }
+
         TerrainMeshTaskDispatch dispatch = buildVisibleMeshDispatch(terrainResources, ranges, layerOrdinal);
         if (dispatch == null) {
             this.meshReplacementRefusals.increment();
@@ -162,10 +173,11 @@ public final class MeshTerrainRenderer {
         if (drawMeshTerrain(context, dispatch, terrainResources)) {
             return true;
         }
+
         this.meshReplacementRefusals.increment();
         return false;
     }
-    
+
     private boolean canAttemptMeshTerrain(TerrainDrawContext context) {
         if (!TerrainRendererDebugConfig.replaceVanillaTerrain() || !context.terrainPass()) {
             return false;
@@ -177,7 +189,7 @@ public final class MeshTerrainRenderer {
         }
         return true;
     }
-    
+
     private List<SectionMeshletStore.MeshletRange> visibleMeshletRanges(Collection<? extends RenderPass.Draw<?>> draws, int layerOrdinal) {
         List<SectionMeshletStore.MeshletRange> ranges = new ArrayList<>(draws.size());
         int drawCount = 0;
@@ -194,7 +206,7 @@ public final class MeshTerrainRenderer {
         }
         return drawCount == 0 ? List.of() : ranges;
     }
-    
+
     private void prepareTerrainCommands(ChunkSectionsToRender chunkSectionsToRender, ChunkSectionLayerGroup group) {
         if (group == null || !TerrainRendererDebugConfig.replaceVanillaTerrain()) {
             return;
@@ -203,15 +215,18 @@ public final class MeshTerrainRenderer {
             this.meshReplacementPreparedGpuCommandDisabled.increment();
             return;
         }
+
         DescriptorHeapTerrainResources terrainResources = DescriptorHeapTerrainResources.get();
         if (!RendererCoreServices.get().currentLifecycleState().drawable() || !terrainResources.hasGpuTerrainData() || !MeshShaderTerrainProgram.get().ready() || terrainResources.meshletsUploaded() <= 0) {
             this.meshReplacementPreparedGpuCommandRefusals.increment();
             return;
         }
+
         if (!TerrainRendererDebugConfig.drawAllCapturedTerrainLayers()) {
             prepareVisibleTerrainCommands(chunkSectionsToRender, group, terrainResources);
             return;
         }
+
         for (ChunkSectionLayer layer : group.layers()) {
             int layerOrdinal = layer.ordinal();
             int meshletOffset = terrainResources.meshletOffsetForLayer(layerOrdinal);
@@ -219,6 +234,7 @@ public final class MeshTerrainRenderer {
             if (meshletCount <= 0) {
                 continue;
             }
+
             DescriptorHeapTerrainResources.TerrainWorkQueueUpload workQueue = terrainResources.writeLayerWorkQueue(meshletOffset, layerOrdinal, Math.min(meshletCount, TerrainMeshTaskDispatch.MAX_DIRECT_TASKS));
             TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.cpuWorkQueue(workQueue, layerOrdinal, meshletCount);
             DescriptorHeapTerrainResources.TerrainMeshTaskCommandUpload commandUpload = terrainResources.reserveMeshTaskCommand(dispatch.taskCount());
@@ -232,18 +248,20 @@ public final class MeshTerrainRenderer {
             }
         }
     }
-    
+
     private void prepareVisibleTerrainCommands(ChunkSectionsToRender chunkSectionsToRender, ChunkSectionLayerGroup group, DescriptorHeapTerrainResources terrainResources) {
         if (chunkSectionsToRender == null) {
             this.meshReplacementPreparedGpuCommandRefusals.increment();
             return;
         }
+
         for (ChunkSectionLayer layer : group.layers()) {
             int layerOrdinal = layer.ordinal();
             Int2ObjectOpenHashMap<List<RenderPass.Draw<GpuBufferSlice[]>>> drawGroup = chunkSectionsToRender.drawGroupsPerLayer().get(layer);
             if (drawGroup == null || drawGroup.isEmpty()) {
                 continue;
             }
+
             for (List<RenderPass.Draw<GpuBufferSlice[]>> draws : drawGroup.values()) {
                 if (draws.isEmpty()) {
                     continue;
@@ -257,6 +275,7 @@ public final class MeshTerrainRenderer {
                 if (ranges.isEmpty()) {
                     continue;
                 }
+
                 DescriptorHeapTerrainResources.TerrainWorkQueueUpload workQueue = terrainResources.writeVisibleWorkQueue(ranges, layerOrdinal);
                 TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.cpuWorkQueue(workQueue, layerOrdinal, workQueue.count());
                 DescriptorHeapTerrainResources.TerrainMeshTaskCommandUpload commandUpload = terrainResources.reserveMeshTaskCommand(dispatch.taskCount());
@@ -271,7 +290,7 @@ public final class MeshTerrainRenderer {
             }
         }
     }
-    
+
     private @Nullable TerrainMeshTaskDispatch buildVisibleMeshDispatch(DescriptorHeapTerrainResources terrainResources, List<SectionMeshletStore.MeshletRange> ranges, int layerOrdinal) {
         DescriptorHeapTerrainResources.TerrainWorkQueueUpload workQueue = terrainResources.writeVisibleWorkQueue(ranges, layerOrdinal);
         TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.cpuWorkQueue(workQueue, layerOrdinal, workQueue.count());
@@ -288,7 +307,7 @@ public final class MeshTerrainRenderer {
         }
         return dispatch.ready() ? dispatch : null;
     }
-    
+
     private boolean drawMeshTerrain(TerrainDrawContext context, TerrainMeshTaskDispatch dispatch, DescriptorHeapTerrainResources terrainResources) {
         VulkanRenderPipeline vanillaPipeline = context.vanillaPipeline();
         if (vanillaPipeline == null) {
@@ -337,7 +356,7 @@ public final class MeshTerrainRenderer {
         }
         return false;
     }
-    
+
     public void configure(VulkanDevice device, VulkanImprovementCapabilities.Snapshot capabilities) {
         RendererCoreServices.get().beginConfiguration("configuring Vulkan renderer services");
         try {
@@ -351,12 +370,12 @@ public final class MeshTerrainRenderer {
             throw ex;
         }
     }
-    
+
     @SuppressWarnings("unused")
     public void markDeviceLost(String reason) {
         RendererCoreServices.get().markDeviceLost(reason);
     }
-    
+
     @SuppressWarnings("unused")
     public void shutdown() {
         RendererCoreServices.get().beginShutdown("deferred renderer shutdown requested");
@@ -364,14 +383,14 @@ public final class MeshTerrainRenderer {
         DescriptorHeapTerrainResources.get().shutdown();
         RendererCoreServices.get().completeShutdown("renderer shutdown complete");
     }
-    
+
     public void shutdownNow() {
         RendererCoreServices.get().beginShutdown("immediate renderer shutdown requested");
         MeshShaderTerrainProgram.get().shutdown();
         DescriptorHeapTerrainResources.get().shutdownNow();
         RendererCoreServices.get().completeShutdown("renderer immediate shutdown complete");
     }
-    
+
     public Map<String, Object> asMap() {
         Map<String, Object> map = new LinkedHashMap<>();
         RendererCoreServices coreServices = RendererCoreServices.get();
@@ -419,7 +438,7 @@ public final class MeshTerrainRenderer {
         map.put("fragmentShadingRate", FragmentShadingRateController.get().asMap());
         return map;
     }
-    
+
     @SuppressWarnings("unused")
     RendererLifecycleState currentLifecycleState() {
         return RendererCoreServices.get().currentLifecycleState();

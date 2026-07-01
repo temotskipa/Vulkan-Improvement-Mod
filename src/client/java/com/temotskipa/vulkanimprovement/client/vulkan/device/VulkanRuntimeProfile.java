@@ -1,7 +1,6 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.device;
 
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
-
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -37,8 +36,11 @@ public final class VulkanRuntimeProfile {
         hardRequirements.put("dynamicRenderingLocalRead", snapshot.dynamicRenderingLocalRead());
         hardRequirements.put("maintenance5", snapshot.maintenance5());
         hardRequirements.put("maintenance6", snapshot.maintenance6());
+        
         Map<String, Object> preferredFeatures = preferredFeatures(snapshot);
+        
         Map<String, Object> rtReadiness = rtReadiness(snapshot);
+        
         Map<String, Object> selectedPaths = new LinkedHashMap<>();
         boolean descriptorBufferSelected = snapshot.descriptorBufferExtension();
         boolean descriptorHeapSelected = !TerrainRendererDebugConfig.validationDescriptorBufferOnly() && snapshot.descriptorHeapExtension();
@@ -56,6 +58,7 @@ public final class VulkanRuntimeProfile {
         selectedPaths.put("presentPacing", snapshot.presentIdExtension() && snapshot.presentWaitExtension() && !TerrainRendererDebugConfig.disablePresentPacing());
         selectedPaths.put("fragmentShadingRate", snapshot.fragmentShadingRateExtension() && TerrainRendererDebugConfig.fragmentShadingRateEnabled());
         selectedPaths.put("terrainRendererMode", snapshot.terrainRendererMode());
+        
         Map<String, Object> disabledReasons = new LinkedHashMap<>();
         preferredFeatures.forEach((name, enabled) -> addDisabledReason(disabledReasons, name, enabled, "optional extension not enabled by Minecraft/Vulkan device"));
         rtReadiness.forEach((name, enabled) -> addDisabledReason(disabledReasons, name, enabled, "RT/PT readiness extension not enabled by Minecraft/Vulkan device"));
@@ -94,13 +97,14 @@ public final class VulkanRuntimeProfile {
         } else if (!snapshot.fragmentShadingRateExtension()) {
             disabledReasons.put("fragmentShadingRate", "requires fragment shading-rate extension");
         }
+        
         return new VulkanRuntimeProfile(hardRequirements, preferredFeatures, rtReadiness, selectedPaths, disabledReasons);
     }
-    
+
     private static String selectedState(boolean selected) {
         return selected ? "selected" : "unavailable";
     }
-    
+
     private static Map<String, Object> preferredFeatures(VulkanImprovementCapabilities.Snapshot snapshot) {
         Map<String, Object> preferredFeatures = new LinkedHashMap<>();
         preferredFeatures.put("deviceGeneratedCommandsExtension", snapshot.deviceGeneratedCommandsExtension());
@@ -114,7 +118,7 @@ public final class VulkanRuntimeProfile {
         preferredFeatures.put("hostImageCopyExtension", snapshot.hostImageCopyExtension());
         return preferredFeatures;
     }
-    
+
     private static Map<String, Object> rtReadiness(VulkanImprovementCapabilities.Snapshot snapshot) {
         Map<String, Object> rtReadiness = new LinkedHashMap<>();
         rtReadiness.put("accelerationStructureExtension", snapshot.accelerationStructureExtension());
@@ -126,9 +130,15 @@ public final class VulkanRuntimeProfile {
         rtReadiness.put("rayTracingInvocationReorderExtension", snapshot.rayTracingInvocationReorderExtension());
         return rtReadiness;
     }
-    
+
     private static boolean rtPtReady(VulkanImprovementCapabilities.Snapshot snapshot) {
-        return snapshot.accelerationStructureExtension() && snapshot.rayQueryExtension() && snapshot.rayTracingPipelineExtension() && snapshot.rayTracingMaintenance1Extension() && snapshot.rayTracingPositionFetchExtension() && snapshot.opacityMicromapExtension() && snapshot.rayTracingInvocationReorderExtension();
+        return snapshot.accelerationStructureExtension()
+                && snapshot.rayQueryExtension()
+                && snapshot.rayTracingPipelineExtension()
+                && snapshot.rayTracingMaintenance1Extension()
+                && snapshot.rayTracingPositionFetchExtension()
+                && snapshot.opacityMicromapExtension()
+                && snapshot.rayTracingInvocationReorderExtension();
     }
     
     private static void addDisabledReason(Map<String, Object> disabledReasons, String name, Object enabled, String reason) {
