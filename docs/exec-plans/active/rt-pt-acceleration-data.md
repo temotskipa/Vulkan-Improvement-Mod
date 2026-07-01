@@ -56,6 +56,12 @@ experiments can consume VIM terrain or future non-terrain GPU world data.
      `GpuWorldSectionId` and `GpuWorldRevision`.
    - Implement only invalidation bookkeeping first; do not build Vulkan AS
      objects in the same change.
+   - Status: done for bookkeeping. `RtPtAccelerationDataRegistry` now accepts
+     `GpuWorldSectionUpdate` source invalidations, removes stale live pages for
+     the same section and page kind when their source revision no longer
+     matches, counts affected pages as pending rebuilds, and exposes the last
+     source invalidation in diagnostics. No Vulkan acceleration-structure
+     allocation is introduced.
 
 5. Add capability gates for future allocation.
    - Use `VulkanRuntimeProfile` to require acceleration-structure,

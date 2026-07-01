@@ -1,6 +1,6 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.rtpt;
 
-enum RtPtAccelerationDomain {
+public enum RtPtAccelerationDomain {
     TERRAIN("terrain"),
     BLOCK_ENTITIES("blockEntities"),
     ENTITIES("entities"),
@@ -12,7 +12,7 @@ enum RtPtAccelerationDomain {
         this.diagnosticName = diagnosticName;
     }
 
-    String diagnosticName() {
+    public String diagnosticName() {
         return this.diagnosticName;
     }
 }

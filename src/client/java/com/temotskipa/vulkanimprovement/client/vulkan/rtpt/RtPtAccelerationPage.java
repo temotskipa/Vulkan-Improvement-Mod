@@ -6,10 +6,10 @@ import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldSectionId
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-record RtPtAccelerationPage(RtPtAccelerationDomain domain, GpuWorldSectionId sectionId, GpuWorldRevision sourceRevision,
-                            GpuWorldPageKind sourcePageKind, long blasHandle, long tlasInstanceHandle,
-                            String fallbackReason) {
-    RtPtAccelerationPage {
+public record RtPtAccelerationPage(RtPtAccelerationDomain domain, GpuWorldSectionId sectionId,
+                                   GpuWorldRevision sourceRevision, GpuWorldPageKind sourcePageKind,
+                                   long blasHandle, long tlasInstanceHandle, String fallbackReason) {
+    public RtPtAccelerationPage {
         if (blasHandle < 0L) {
             throw new IllegalArgumentException("BLAS handle must be opaque or zero, not negative: " + blasHandle);
         }
@@ -19,7 +19,7 @@ record RtPtAccelerationPage(RtPtAccelerationDomain domain, GpuWorldSectionId sec
         fallbackReason = fallbackReason == null ? "" : fallbackReason;
     }
     
-    Map<String, Object> asMap() {
+    public Map<String, Object> asMap() {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("domain", this.domain.diagnosticName());
         map.put("sectionId", this.sectionId.asMap());

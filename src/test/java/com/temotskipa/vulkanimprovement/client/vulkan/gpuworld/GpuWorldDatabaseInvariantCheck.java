@@ -1,5 +1,8 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.gpuworld;
 
+import com.temotskipa.vulkanimprovement.client.vulkan.rtpt.RtPtAccelerationDataRegistry;
+import com.temotskipa.vulkanimprovement.client.vulkan.rtpt.RtPtAccelerationDomain;
+import com.temotskipa.vulkanimprovement.client.vulkan.rtpt.RtPtAccelerationPage;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.GpuMaterialRecord;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainGpuLayout;
 import net.minecraft.core.SectionPos;
@@ -17,6 +20,7 @@ public final class GpuWorldDatabaseInvariantCheck {
         checkMaterialTableContract();
         checkPageKindAuthority();
         checkCaptureReleaseAndClearDiagnostics();
+        checkCanonicalUpdatesInvalidateAccelerationPages();
         checkInvalidUpdatesRejected();
     }
 
@@ -108,7 +112,38 @@ public final class GpuWorldDatabaseInvariantCheck {
 
         database.resetForTests();
     }
-
+    
+    private static void checkCanonicalUpdatesInvalidateAccelerationPages() {
+        GpuWorldDatabase database = GpuWorldDatabase.get();
+        RtPtAccelerationDataRegistry accelerationData = RtPtAccelerationDataRegistry.get();
+        database.resetForTests();
+        accelerationData.resetForTests();
+        long sectionNode = SectionPos.asLong(6, 7, 8);
+        long otherSectionNode = SectionPos.asLong(6, 7, 9);
+        GpuWorldSectionUpdate first = database.recordTerrainLayerCapture(sectionNode, 0, 0);
+        GpuWorldSectionUpdate second = database.recordTerrainLayerCapture(sectionNode, 1, 1);
+        GpuWorldSectionUpdate other = database.recordTerrainLayerCapture(otherSectionNode, 0, 0);
+        accelerationData.registerPage(accelerationPage(first, 101L, "old canonical page"));
+        accelerationData.registerPage(accelerationPage(second, 102L, "current canonical page"));
+        accelerationData.registerPage(accelerationPage(other, 103L, "other section canonical page"));
+        accelerationData.invalidateSource(second, "canonical source revision advanced");
+        Map<String, Object> diagnostics = accelerationData.asMap();
+        require(diagnostics.get("registeredPageCount").equals(3L), "registry must count pages registered before invalidation");
+        require(diagnostics.get("livePageCount").equals(2L), "source invalidation must leave current-revision and other-section pages live");
+        require(diagnostics.get("pendingRebuildCount").equals(1L), "source invalidation must mark stale pages pending rebuild");
+        require(diagnostics.get("sourceInvalidationCount").equals(1L), "registry must count source invalidation events");
+        require(diagnostics.get("sourceInvalidatedPageCount").equals(1L), "registry must count stale pages invalidated by source updates");
+        Map<?, ?> lastInvalidation = child(diagnostics, "lastSourceInvalidation");
+        require(lastInvalidation.get("updateSequence").equals(2L), "source invalidation must preserve the GPU world update sequence");
+        require(lastInvalidation.get("sourceRevision").equals(2L), "source invalidation must preserve the canonical source revision");
+        require(lastInvalidation.get("pageKind").equals("canonical-mirror"), "source invalidation must preserve canonical page kind");
+        require(lastInvalidation.get("invalidatedPageCount").equals(1L), "last source invalidation must expose affected page count");
+        Map<?, ?> fallbackReasons = child(diagnostics, "fallbackReasonCounts");
+        require(fallbackReasons.get("canonical source revision advanced").equals(1L), "source invalidation reason must be counted");
+        accelerationData.resetForTests();
+        database.resetForTests();
+    }
+    
     private static void checkInvalidUpdatesRejected() {
         long sectionNode = SectionPos.asLong(0, 0, 0);
         GpuWorldSectionId section = GpuWorldSectionId.fromSectionNode(sectionNode);
@@ -121,7 +156,11 @@ public final class GpuWorldDatabaseInvariantCheck {
         database.resetForTests();
         requireThrows(() -> database.recordTerrainLayerCapture(sectionNode, 0, TerrainGpuLayout.MATERIAL_TABLE_CAPACITY), "material ids outside table must be rejected");
     }
-
+    
+    private static RtPtAccelerationPage accelerationPage(GpuWorldSectionUpdate update, long handle, String fallbackReason) {
+        return new RtPtAccelerationPage(RtPtAccelerationDomain.TERRAIN, update.section(), update.revision(), update.pageKind(), handle, handle + 1000L, fallbackReason);
+    }
+    
     private static Map<?, ?> child(Map<?, ?> map, String key) {
         Object value = map.get(key);
         require(value instanceof Map<?, ?>, key + " diagnostics must be a map");
