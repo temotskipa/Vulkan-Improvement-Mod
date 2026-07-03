@@ -157,6 +157,13 @@ LOD, and RT/PT work can share.
   toward `GpuWorldTerrainLayerDirectory`, persistent section pages, dirty-event
   updates, visibility compaction, explicit residency budget diagnostics, and
   indirect command generation.
+- 2026-07-04: Official source inspection filled only the missing architecture
+  gaps left by the earlier pass. The public lesson is still generic: optional
+  accelerated worldgen paths are diagnostics and scheduling hints, renderer
+  integration should keep a thin typed Java boundary over backend capability
+  gates, and terrain replacement should prioritize contention/residency
+  counters before deeper cancellation work. `GpuWorldResidencyStats` now
+  records live page counts, used bytes, evictions, and over-budget refusals.
 - 2026-06-29: `RendererCoreServices` now owns renderer-wide lifecycle state,
   domain reset, present pacing, and fragment shading-rate controller
   configuration. `MeshTerrainRenderer` delegates those shared services while

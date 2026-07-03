@@ -20,6 +20,7 @@ public final class GpuWorldDatabaseInvariantCheck {
         checkMaterialTableContract();
         checkPageKindAuthority();
         checkResidencyBudgetAndPipelineDiagnostics();
+        checkResidencyStatsContract();
         checkCaptureReleaseAndClearDiagnostics();
         checkCanonicalUpdatesInvalidateAccelerationPages();
         checkInvalidUpdatesRejected();
@@ -92,7 +93,35 @@ public final class GpuWorldDatabaseInvariantCheck {
 
         Map<String, Object> databaseDiagnostics = GpuWorldDatabase.get().asMap();
         require(databaseDiagnostics.containsKey("residencyBudget"), "GPU world diagnostics must expose the residency budget");
+        require(databaseDiagnostics.containsKey("residencyStats"), "GPU world diagnostics must expose residency usage stats");
         require(databaseDiagnostics.containsKey("pipelineStages"), "GPU world diagnostics must expose pipeline stages");
+    }
+
+    private static void checkResidencyStatsContract() {
+        GpuWorldResidencyBudget budget = new GpuWorldResidencyBudget(64L, 16L, 16L, 8L, 8L, 112L);
+        GpuWorldResidencyStats stats = GpuWorldResidencyStats.empty(budget);
+
+        require(stats.tryReservePage(GpuWorldPageKind.CANONICAL_MIRROR, 16L), "first canonical page must fit");
+        require(stats.tryReservePage(GpuWorldPageKind.CANONICAL_MIRROR, 48L), "second canonical page must fill the budget");
+        require(!stats.tryReservePage(GpuWorldPageKind.CANONICAL_MIRROR, 1L), "over-budget canonical page must be refused");
+        stats.recordEviction(GpuWorldPageKind.CANONICAL_MIRROR, 16L);
+
+        Map<String, Object> diagnostics = stats.asMap();
+        require(diagnostics.get("livePageCount").equals(1L), "eviction must reduce live page count");
+        require(diagnostics.get("usedResidentBytes").equals(48L), "eviction must reduce used resident bytes");
+        require(diagnostics.get("evictedPageCount").equals(1L), "eviction count must be reported");
+        require(diagnostics.get("evictedBytes").equals(16L), "evicted bytes must be reported");
+        require(diagnostics.get("overBudgetRefusals").equals(1L), "over-budget refusals must be reported");
+        require(diagnostics.get("overBudgetRefusedBytes").equals(1L), "over-budget refused bytes must be reported");
+        require(diagnostics.get("reservedBytes").equals(budget.reservedBytes()), "stats must expose reserved budget bytes");
+
+        Map<?, ?> livePageCounts = child(diagnostics, "livePageCountsByKind");
+        Map<?, ?> usedBytes = child(diagnostics, "usedBytesByKind");
+        require(livePageCounts.get("canonical-mirror").equals(1L), "canonical live page count must be reported by kind");
+        require(usedBytes.get("canonical-mirror").equals(48L), "canonical used bytes must be reported by kind");
+
+        requireThrows(() -> stats.tryReservePage(GpuWorldPageKind.RENDER_ONLY_LOD, -1L), "negative page bytes must be rejected");
+        requireThrows(() -> stats.releasePage(GpuWorldPageKind.RENDER_ONLY_LOD, 1L), "releasing a missing page must be rejected");
     }
 
     private static void checkCaptureReleaseAndClearDiagnostics() {
@@ -115,6 +144,10 @@ public final class GpuWorldDatabaseInvariantCheck {
         require("cpu-chunk-state".equals(diagnostics.get("authority")), "GPU world database must report CPU chunk authority");
         require(diagnostics.get("liveSections").equals(1), "one captured section must be live");
         require(diagnostics.get("updateSequence").equals(2L), "diagnostics must expose update sequence");
+        Map<?, ?> residencyStats = child(diagnostics, "residencyStats");
+        Map<?, ?> livePageCounts = child(residencyStats, "livePageCountsByKind");
+        require(residencyStats.get("livePageCount").equals(1L), "recapturing a section must not duplicate resident pages");
+        require(livePageCounts.get("canonical-mirror").equals(1L), "database residency stats must count canonical mirror pages");
 
         Map<?, ?> samples = child(diagnostics, "sampleSections");
         Map<?, ?> section = child(samples, Long.toString(sectionNode));
@@ -126,6 +159,7 @@ public final class GpuWorldDatabaseInvariantCheck {
         require(release.reason() == GpuWorldDirtyReason.SECTION_RELEASED, "release reason must be explicit");
         require(release.dirtyMask() == GpuWorldDatabase.DIRTY_REMOVED, "release must mark removal dirty");
         require(database.asMap().get("liveSections").equals(0), "release must remove the live section");
+        require(child(database.asMap(), "residencyStats").get("livePageCount").equals(0L), "release must remove the resident page");
 
         database.clear("test clear");
         Map<String, Object> afterClear = database.asMap();

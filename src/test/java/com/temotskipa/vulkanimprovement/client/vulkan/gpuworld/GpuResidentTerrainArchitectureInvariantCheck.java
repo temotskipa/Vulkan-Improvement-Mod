@@ -14,6 +14,7 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
     private static final Path GITIGNORE = Path.of(".gitignore");
     private static final Path DATABASE_SOURCE = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/gpuworld/GpuWorldDatabase.java");
     private static final Path RESIDENCY_BUDGET_SOURCE = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/gpuworld/GpuWorldResidencyBudget.java");
+    private static final Path RESIDENCY_STATS_SOURCE = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/gpuworld/GpuWorldResidencyStats.java");
     private static final Path PIPELINE_STAGE_SOURCE = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/gpuworld/GpuWorldPipelineStage.java");
     private static final Path LAYER_DIRECTORY_SOURCE = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/gpuworld/GpuWorldTerrainLayerDirectory.java");
 
@@ -29,6 +30,7 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
         String gitignore = read(GITIGNORE);
         String databaseSource = read(DATABASE_SOURCE);
         String residencyBudgetSource = read(RESIDENCY_BUDGET_SOURCE);
+        String residencyStatsSource = read(RESIDENCY_STATS_SOURCE);
         String pipelineStageSource = read(PIPELINE_STAGE_SOURCE);
         String layerDirectorySource = read(LAYER_DIRECTORY_SOURCE);
 
@@ -37,7 +39,8 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
         checkPublicDocsOnlyDescribeInferredArchitecture();
         checkGpuResidentRequirements(architecturePlan);
         checkRuntimeSafetyBoundaries(architecturePlan);
-        checkCodeContracts(databaseSource, residencyBudgetSource, pipelineStageSource, layerDirectorySource);
+        checkCodeContracts(databaseSource, residencyBudgetSource, residencyStatsSource,
+                pipelineStageSource, layerDirectorySource);
     }
 
     private static void checkPlanWiring(String architecturePlan, String extensionPlan, String activeReadme) {
@@ -101,6 +104,8 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
     private static void checkGpuResidentRequirements(String architecturePlan) {
         requireContains(architecturePlan, "GpuWorldResidencyBudget",
                 "architecture plan must name the residency-budget contract");
+        requireContains(architecturePlan, "GpuWorldResidencyStats",
+                "architecture plan must name the residency-stats contract");
         requireContains(architecturePlan, "GpuWorldPipelineStage",
                 "architecture plan must name the pipeline-stage contract");
         requireContains(architecturePlan, "GpuWorldTerrainLayerDirectory",
@@ -133,6 +138,7 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
     }
 
     private static void checkCodeContracts(String databaseSource, String residencyBudgetSource,
+                                           String residencyStatsSource,
                                            String pipelineStageSource, String layerDirectorySource) {
         requireContains(residencyBudgetSource, "public record GpuWorldResidencyBudget",
                 "GPU world residency budget contract must exist");
@@ -142,6 +148,18 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
                 "residency budget must validate the explicit budget cap");
         requireContains(residencyBudgetSource, "asMap()",
                 "residency budget must expose diagnostics");
+        requireContains(residencyStatsSource, "public final class GpuWorldResidencyStats",
+                "GPU world residency usage stats contract must exist");
+        requireContains(residencyStatsSource, "tryReservePage",
+                "residency stats must refuse over-budget page reservations");
+        requireContains(residencyStatsSource, "recordEviction",
+                "residency stats must expose eviction accounting");
+        requireContains(residencyStatsSource, "overBudgetRefusals",
+                "residency stats must expose over-budget refusal diagnostics");
+        requireContains(residencyStatsSource, "livePageCountsByKind",
+                "residency stats must expose live page counts by page kind");
+        requireContains(residencyStatsSource, "usedBytesByKind",
+                "residency stats must expose used bytes by page kind");
         requireContains(pipelineStageSource, "public enum GpuWorldPipelineStage",
                 "GPU world pipeline stage contract must exist");
         requireContains(pipelineStageSource, "PERSISTENT_RESIDENCY",
@@ -158,6 +176,8 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
                 "resident terrain layer directory diagnostics must reject vanilla draw keying");
         requireContains(databaseSource, "GpuWorldResidencyBudget.conservativeDefault()",
                 "GPU world diagnostics must expose the residency budget");
+        requireContains(databaseSource, "residencyStats",
+                "GPU world diagnostics must expose residency usage stats");
         requireContains(databaseSource, "GpuWorldPipelineStage.asDiagnostics()",
                 "GPU world diagnostics must expose the pipeline stages");
         requireContains(databaseSource, "terrainLayerDirectory",

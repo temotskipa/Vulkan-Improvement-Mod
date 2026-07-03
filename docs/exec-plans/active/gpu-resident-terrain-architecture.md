@@ -22,15 +22,17 @@ The first contract-level code for this direction is:
 - `GpuWorldResidencyBudget`, which exposes the explicit residency budget for
   canonical section mirrors, render-only LOD pages, predictive distant pages,
   visibility compaction work, and indirect command generation work.
+- `GpuWorldResidencyStats`, which reports live page counts, used resident
+  bytes, eviction totals, and over-budget refusals by page kind.
 - `GpuWorldPipelineStage`, which documents the pipeline stages that move from
   authoritative ingest to persistent residency, visibility compaction, and
   indirect command generation.
 - `GpuWorldTerrainLayerDirectory`, which exposes resident terrain layer records
   keyed by section node and layer ordinal instead of transient vanilla draw
   objects.
-- `GpuWorldDatabase.asMap()`, which reports the residency budget and pipeline
-  stages, resident terrain layer directory, and existing page-kind, authority,
-  material-table, and dirty update diagnostics.
+- `GpuWorldDatabase.asMap()`, which reports the residency budget, residency
+  usage stats, pipeline stages, resident terrain layer directory, and existing
+  page-kind, authority, material-table, and dirty update diagnostics.
 
 ## External Reference Boundary
 
@@ -71,8 +73,8 @@ dedicated integration plan decides what belongs in committed docs.
 ## Steps
 
 1. Keep the current mesh terrain path as overlay/fallback diagnostics.
-2. Extend GPU-world diagnostics with an explicit residency budget and pipeline
-   stage map.
+2. Extend GPU-world diagnostics with an explicit residency budget, residency
+   usage stats, and pipeline stage map.
 3. Route new terrain work toward persistent section pages instead of transient
    per-draw queues.
 4. Add GPU visibility compaction counters before allowing GPU compaction to
@@ -103,6 +105,9 @@ camera jitter, then call `mc_record_video` with a long recording interval.
 - Persistent GPU-world state, visibility compaction, indirect command
   generation, and explicit residency budget diagnostics are the next mainline
   architecture direction.
+- Residency usage stats are a diagnostic contract now; byte-accurate resident
+  allocation values are filled in when real GPU-world page allocation owns the
+  backing memory.
 - Strict terrain cancellation cannot be enabled by default until the GPU path
   proves coverage and vanilla parity under record-first jitter captures.
 - Optional accelerated-worldgen providers are an authoritative-worldgen
@@ -126,8 +131,8 @@ This plan is complete when:
 
 ## Follow-Up
 
-- Add byte-accurate used/reserved/evicted page counters once allocation owns
-  real GPU-world pages.
+- Connect residency byte counters to real GPU allocation sizes once allocation
+  owns real GPU-world pages.
 - Add GPU compaction counters for input sections, culled sections, visible
   sections, emitted commands, overflowed commands, and fallback commands.
 - Open an accelerated-worldgen provider integration plan before changing loader

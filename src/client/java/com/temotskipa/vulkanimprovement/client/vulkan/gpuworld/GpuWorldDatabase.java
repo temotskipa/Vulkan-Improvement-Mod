@@ -11,12 +11,14 @@ public final class GpuWorldDatabase {
     static final int DIRTY_VISIBILITY = 1 << 2;
     static final int DIRTY_REMOVED = 1 << 3;
     
-    private static final GpuWorldDatabase INSTANCE = new GpuWorldDatabase();
     private static final GpuWorldResidencyBudget DEFAULT_RESIDENCY_BUDGET = GpuWorldResidencyBudget.conservativeDefault();
+    private static final long SECTION_PAGE_BYTES_PENDING_REAL_ALLOCATION = 0L;
+    private static final GpuWorldDatabase INSTANCE = new GpuWorldDatabase();
     
     private final Map<Long, SectionRecord> sections = new LinkedHashMap<>();
     private final AtomicLong updateSequence = new AtomicLong();
     private final AtomicLong clearCount = new AtomicLong();
+    private final GpuWorldResidencyStats residencyStats = GpuWorldResidencyStats.empty(DEFAULT_RESIDENCY_BUDGET);
     private GpuWorldMaterialTableContract materialTable = GpuWorldMaterialTableContract.terrainDefault();
     private GpuWorldSectionUpdate lastUpdate;
     private String lastClearReason = "not cleared";
@@ -43,6 +45,7 @@ public final class GpuWorldDatabase {
         this.materialTable = GpuWorldMaterialTableContract.terrainDefault();
         this.lastUpdate = null;
         this.lastClearReason = "not cleared";
+        this.residencyStats.resetForTests();
         GpuWorldTerrainLayerDirectory.get().resetForTests();
     }
     
@@ -52,6 +55,10 @@ public final class GpuWorldDatabase {
         }
         GpuWorldSectionId id = GpuWorldSectionId.fromSectionNode(sectionNode);
         SectionRecord previous = this.sections.get(sectionNode);
+        if (previous == null && !this.residencyStats.tryReservePage(GpuWorldPageKind.CANONICAL_MIRROR,
+                SECTION_PAGE_BYTES_PENDING_REAL_ALLOCATION)) {
+            throw new IllegalStateException("GPU world residency budget refused canonical section page");
+        }
         GpuWorldRevision revision = previous == null ? GpuWorldRevision.initial().next() : previous.revision().next();
         int capturedLayerMask = previous == null ? 0 : previous.capturedLayerMask();
         if (layerOrdinal >= 0 && layerOrdinal < Integer.SIZE) {
@@ -73,6 +80,9 @@ public final class GpuWorldDatabase {
     
     public synchronized GpuWorldSectionUpdate recordSectionRelease(long sectionNode) {
         SectionRecord previous = this.sections.remove(sectionNode);
+        if (previous != null) {
+            this.residencyStats.releasePage(previous.pageKind(), SECTION_PAGE_BYTES_PENDING_REAL_ALLOCATION);
+        }
         GpuWorldSectionId id = previous == null ? GpuWorldSectionId.fromSectionNode(sectionNode) : previous.section();
         GpuWorldRevision revision = previous == null ? GpuWorldRevision.initial().next() : previous.revision().next();
         long sequence = this.updateSequence.incrementAndGet();
@@ -85,6 +95,7 @@ public final class GpuWorldDatabase {
     
     public synchronized void clear(String reason) {
         this.sections.clear();
+        this.residencyStats.resetLivePages();
         this.clearCount.incrementAndGet();
         this.updateSequence.incrementAndGet();
         this.lastClearReason = reason == null || reason.isBlank() ? "unspecified" : reason;
@@ -120,6 +131,7 @@ public final class GpuWorldDatabase {
         map.put("dirtyRemovedBit", DIRTY_REMOVED);
         map.put("materialTable", this.materialTable.asMap());
         map.put("residencyBudget", DEFAULT_RESIDENCY_BUDGET.asMap());
+        map.put("residencyStats", this.residencyStats.asMap());
         map.put("pipelineStages", GpuWorldPipelineStage.asDiagnostics());
         map.put("terrainLayerDirectory", GpuWorldTerrainLayerDirectory.get().asMap());
         map.put("pageKinds", pageKindsMap());
