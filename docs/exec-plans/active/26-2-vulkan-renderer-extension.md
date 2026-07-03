@@ -228,6 +228,8 @@ at the inferred-architecture level: GPU-authoritative worldgen remains outside
 the default Vulkan renderer path, but a future optional provider integration can
 add explicit dependency detection, user opt-in, backup warnings, and
 compatibility gates.
+The dedicated public plan is
+[accelerated-worldgen provider integration](accelerated-worldgen-provider-integration.md).
 
 ## Constraints
 
@@ -501,7 +503,8 @@ This plan is complete when:
 - Open a separate snapshot-port plan if `26.3` or later becomes the supported
   target.
 - Open a dedicated accelerated-worldgen provider integration plan before
-  implementing optional GPU-authoritative worldgen behavior.
+  implementing optional GPU-authoritative worldgen behavior:
+  [accelerated-worldgen provider integration](accelerated-worldgen-provider-integration.md).
 - Open domain-specific plans for entity, block-entity, particle, sky, cloud,
   weather, and post-processing replacement.
 - Open a dedicated RT/PT acceleration-data plan after the shared GPU world

@@ -135,5 +135,6 @@ This plan is complete when:
   owns real GPU-world pages.
 - Add GPU compaction counters for input sections, culled sections, visible
   sections, emitted commands, overflowed commands, and fallback commands.
-- Open an accelerated-worldgen provider integration plan before changing loader
-  metadata or runtime dependency behavior.
+- Use the dedicated
+  [accelerated-worldgen provider integration](accelerated-worldgen-provider-integration.md)
+  plan before changing loader metadata or runtime dependency behavior.

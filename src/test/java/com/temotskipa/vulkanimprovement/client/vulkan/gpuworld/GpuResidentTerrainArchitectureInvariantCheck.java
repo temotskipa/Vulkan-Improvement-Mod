@@ -9,6 +9,7 @@ import java.util.stream.Stream;
 public final class GpuResidentTerrainArchitectureInvariantCheck {
     private static final Path ARCHITECTURE_PLAN = Path.of("docs/exec-plans/active/gpu-resident-terrain-architecture.md");
     private static final Path EXTENSION_PLAN = Path.of("docs/exec-plans/active/26-2-vulkan-renderer-extension.md");
+    private static final Path PROVIDER_PLAN = Path.of("docs/exec-plans/active/accelerated-worldgen-provider-integration.md");
     private static final Path ACTIVE_README = Path.of("docs/exec-plans/active/README.md");
     private static final Path FABRIC_MOD_JSON = Path.of("src/main/resources/fabric.mod.json");
     private static final Path GITIGNORE = Path.of(".gitignore");
@@ -25,6 +26,7 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
     static void main(String[] args) throws IOException {
         String architecturePlan = read(ARCHITECTURE_PLAN);
         String extensionPlan = read(EXTENSION_PLAN);
+        String providerPlan = read(PROVIDER_PLAN);
         String activeReadme = read(ACTIVE_README);
         String fabricModJson = read(FABRIC_MOD_JSON);
         String gitignore = read(GITIGNORE);
@@ -34,7 +36,7 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
         String pipelineStageSource = read(PIPELINE_STAGE_SOURCE);
         String layerDirectorySource = read(LAYER_DIRECTORY_SOURCE);
 
-        checkPlanWiring(architecturePlan, extensionPlan, activeReadme);
+        checkPlanWiring(architecturePlan, extensionPlan, providerPlan, activeReadme);
         checkLocalOnlyExternalReferenceBoundary(gitignore, fabricModJson);
         checkPublicDocsOnlyDescribeInferredArchitecture();
         checkGpuResidentRequirements(architecturePlan);
@@ -43,15 +45,28 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
                 pipelineStageSource, layerDirectorySource);
     }
 
-    private static void checkPlanWiring(String architecturePlan, String extensionPlan, String activeReadme) {
+    private static void checkPlanWiring(String architecturePlan, String extensionPlan,
+                                        String providerPlan, String activeReadme) {
         requireContains(activeReadme, "[GPU Resident Terrain Architecture](gpu-resident-terrain-architecture.md)",
                 "active README must list the GPU-resident terrain architecture plan");
+        requireContains(activeReadme, "[Accelerated Worldgen Provider Integration](accelerated-worldgen-provider-integration.md)",
+                "active README must list the optional accelerated-worldgen provider integration plan");
         requireContains(extensionPlan, "[GPU-resident terrain architecture](gpu-resident-terrain-architecture.md)",
                 "26.2 renderer extension plan must link the GPU-resident terrain architecture plan");
+        requireContains(extensionPlan, "[accelerated-worldgen provider integration](accelerated-worldgen-provider-integration.md)",
+                "26.2 renderer extension plan must link the dedicated optional-provider integration plan");
         requireContains(architecturePlan, "# GPU Resident Terrain Architecture",
                 "architecture plan must use the expected title");
         requireContains(architecturePlan, "## Exit Criteria",
                 "architecture plan must define exit criteria");
+        requireContains(providerPlan, "# Accelerated Worldgen Provider Integration",
+                "provider integration plan must use the expected title");
+        requireContains(providerPlan, "diagnostics-only detection",
+                "provider integration plan must keep initial integration diagnostic-only");
+        requireContains(providerPlan, "must not add `suggests` or `recommends`",
+                "provider integration plan must not change Fabric metadata before explicit approval");
+        requireContains(providerPlan, "CPU-authoritative Minecraft chunk state remains the renderer default",
+                "provider integration plan must preserve renderer authority boundaries");
     }
 
     private static void checkLocalOnlyExternalReferenceBoundary(String gitignore, String fabricModJson) {
