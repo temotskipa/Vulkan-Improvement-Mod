@@ -8,16 +8,16 @@ Baseline advanced from `26.2-pre-4` to stable **Minecraft 26.2** (2026-06-23).
 |------------|-------|
 | Minecraft | `26.2` (latest stable) |
 | Fabric Loader | `0.19.3` (latest stable for 26.2) |
-| Fabric API | `0.153.0+26.2` (latest release) |
+| Fabric API | `0.154.0+26.2` (latest release after 2026-07-03 audit) |
 | Loom | `1.17.13` (release) |
 
 ## Delivered
 
 - `gradle.properties`, `build.gradle` (Loom plugin), and `fabric.mod.json` updated to stable 26.2 pins.
 - `TerrainGpuLayout` constants declared `static final` so `checkTerrainLayoutManifest` passes without widening its regex.
-- `build.gradle` adds `sourcesJar` → `compileTerrainSpirv` (Gradle 9.5 implicit-dependency validation; Loom refreshed to 1.17.13 during the 2026-07-01 dependency audit).
+- `build.gradle` adds `sourcesJar` → `compileTerrainSpirv` (Gradle 9.5 implicit-dependency validation; Loom refreshed to 1.17.13 during the 2026-07-01 dependency audit, and Fabric API refreshed to `0.154.0+26.2` during the 2026-07-03 audit).
 - `MeshTerrainRenderer` visible-path fix: build mesh dispatch from current draw batch (fixes wrong prepared-dispatch FIFO corruption).
-- `docs/RELIABILITY.md` GPU matrix row for 26.2 / `0.153.0+26.2`.
+- `docs/RELIABILITY.md` keeps the historical 26.2 / `0.153.0+26.2` runtime rows, while later 2026-07-03 rows record the current `0.154.0+26.2` Fabric API baseline.
 - DebugBridge `debugbridge-26.2-2.0.0.jar` only in `run/mods`; mod loads from Loom classpath during `runClient`.
 
 ## Validation

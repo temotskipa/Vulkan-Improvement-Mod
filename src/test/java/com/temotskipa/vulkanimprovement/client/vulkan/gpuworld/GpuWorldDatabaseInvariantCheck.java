@@ -19,6 +19,7 @@ public final class GpuWorldDatabaseInvariantCheck {
         checkRevisionRollover();
         checkMaterialTableContract();
         checkPageKindAuthority();
+        checkResidencyBudgetAndPipelineDiagnostics();
         checkCaptureReleaseAndClearDiagnostics();
         checkCanonicalUpdatesInvalidateAccelerationPages();
         checkInvalidUpdatesRejected();
@@ -70,6 +71,28 @@ public final class GpuWorldDatabaseInvariantCheck {
         require(Boolean.FALSE.equals(lod.get("gameplayAuthoritative")), "LOD pages must not claim gameplay authority");
         require(Boolean.FALSE.equals(predictive.get("mirrorsCpuChunkState")), "predictive pages must not claim CPU chunk mirroring");
         require(Boolean.FALSE.equals(predictive.get("gameplayAuthoritative")), "predictive pages must not claim gameplay authority");
+    }
+
+    private static void checkResidencyBudgetAndPipelineDiagnostics() {
+        GpuWorldResidencyBudget budget = GpuWorldResidencyBudget.conservativeDefault();
+
+        require(budget.fitsWithinMaxResidentBytes(), "conservative GPU world residency budget must fit inside its cap");
+        require(budget.pageKindBudgetBytes(GpuWorldPageKind.CANONICAL_MIRROR) > budget.pageKindBudgetBytes(GpuWorldPageKind.RENDER_ONLY_LOD),
+                "canonical mirror pages must receive the primary residency budget");
+        require(budget.derivedWorkBudgetBytes() > 0L, "derived visibility and command work must have a budget");
+
+        Map<String, Object> budgetDiagnostics = budget.asMap();
+        require(Boolean.TRUE.equals(budgetDiagnostics.get("fitsWithinMaxResidentBytes")), "budget diagnostics must report cap fit");
+        require(budgetDiagnostics.get("maxResidentBytes").equals(budget.maxResidentBytes()), "budget diagnostics must expose max bytes");
+
+        Map<String, Object> stageDiagnostics = GpuWorldPipelineStage.asDiagnostics();
+        require(stageDiagnostics.containsKey("persistent-residency"), "pipeline diagnostics must include persistent residency");
+        require(stageDiagnostics.containsKey("visibility-compaction"), "pipeline diagnostics must include visibility compaction");
+        require(stageDiagnostics.containsKey("indirect-command-generation"), "pipeline diagnostics must include indirect command generation");
+
+        Map<String, Object> databaseDiagnostics = GpuWorldDatabase.get().asMap();
+        require(databaseDiagnostics.containsKey("residencyBudget"), "GPU world diagnostics must expose the residency budget");
+        require(databaseDiagnostics.containsKey("pipelineStages"), "GPU world diagnostics must expose pipeline stages");
     }
 
     private static void checkCaptureReleaseAndClearDiagnostics() {

@@ -40,7 +40,8 @@ augmenting vanilla terrain rendering through modern Vulkan capabilities.
   mesh shader dispatch, descriptor resources, terrain material records,
   fragment shading rate, and renderer debug flags.
 - `client.vulkan.gpuworld`: Owns the CPU-authoritative GPU-world mirror,
-  section identity, revisions, page-kind metadata, and dirty-update contracts.
+  section identity, revisions, page-kind metadata, residency-budget diagnostics,
+  pipeline-stage contracts, and dirty-update contracts.
 - `client.vulkan.rtpt`: Owns RT/PT acceleration-data diagnostics and fallback
   accounting for future acceleration structure work.
 - `client.vulkan.presentation`: Owns Vulkan present pacing and present
@@ -94,6 +95,14 @@ renderer code does not drift back into a catch-all root package.
 - `TerrainMeshTaskCommandLayout` owns the CPU/GPU layout for terrain
   mesh-task indirect command records and the compute push constants used to
   generate them from work queues.
+- `GpuWorldResidencyBudget` and `GpuWorldPipelineStage` describe the next
+  GPU-resident terrain contract: persistent section pages, visibility
+  compaction, and indirect command generation should replace per-draw CPU
+  terrain work-queue uploads before strict terrain replacement is promoted.
+- `GpuWorldTerrainLayerDirectory` is the current resident terrain index. It is
+  keyed by section node and chunk layer, not by vanilla draw objects, so later
+  GPU visibility work can consume resident section-layer records without
+  depending on transient render-pass draw slices.
 - `TerrainGpuLayout` is the CPU-side source of truth for terrain buffer,
   meshlet, visible-list, and push-constant layout constants that shaders depend
   on.

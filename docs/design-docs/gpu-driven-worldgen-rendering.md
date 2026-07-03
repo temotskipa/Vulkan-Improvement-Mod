@@ -22,12 +22,12 @@ GPU-assisted world generation is feasible for render-only distant terrain,
 height/noise previews, LOD fill, occlusion data, and custom opt-in worlds. It
 should not be the default source of gameplay chunk state.
 
-C2ME and its OpenCL acceleration module provide a separate optional route for
-GPU-authoritative world-generation experiments. That path should be an explicit
-optional dependency integration, not hidden default renderer behavior. When
-C2ME-OCL owns accelerated worldgen stages, this renderer can observe and
-consume the resulting Minecraft chunk state, but it must still label authority
-correctly and keep render-only predicted terrain separate.
+An optional accelerated world-generation provider can offer a separate route
+for GPU-authoritative world-generation experiments. That path should be an
+explicit optional dependency integration, not hidden default renderer behavior.
+When an external provider owns accelerated worldgen stages, this renderer can
+observe and consume the resulting Minecraft chunk state, but it must still
+label authority correctly and keep render-only predicted terrain separate.
 
 ## Future RT/PT Readiness
 
@@ -67,19 +67,19 @@ The likely path is:
 RT/PT should consume the renderer's canonical GPU asset representation, not
 replace it.
 
-## Radiance Design Reference
+## RT/PT Module Design Pattern
 
-Radiance is a useful design reference because it is already trying to solve the
-Minecraft Vulkan + hardware RT problem as a real mod. The public repository
-split is important:
+External renderer implementations suggest that Minecraft Vulkan + hardware RT
+work benefits from a split between high-level mod integration and renderer
+module execution. The useful inferred shape is:
 
-- The Java mod repository handles Fabric integration, options, pipeline-module
-  configuration, texture/resource hooks, and JNI-facing glue.
-- The native MCVR repository owns the C++ Vulkan renderer, shader tree, ray
-  tracing, denoising, upscaling, and post-processing implementation.
-- The Java module system describes passes with named inputs, outputs, image
-  formats, and attributes. Current modules include ray tracing, NRD denoising,
-  temporal accumulation, tone mapping, DLSS, FSR, XeSS, and post-render steps.
+- Java-side integration handles Fabric entrypoints, options, module
+  configuration, texture/resource hooks, and any native bridge if one is needed.
+- Renderer-side modules own the Vulkan renderer, shader tree, ray tracing,
+  denoising, upscaling, and post-processing implementation.
+- The module system describes passes with named inputs, outputs, image formats,
+  and attributes. Typical modules include ray tracing, denoising, temporal
+  accumulation, tone mapping, vendor upscalers, and post-render steps.
 - The ray-tracing module emits radiance, albedo/metallic, specular albedo,
   normal/roughness, motion vector, depth, hit-depth, direct/indirect light,
   emission, fog, and refraction buffers.
@@ -243,49 +243,45 @@ cannot silently replace canonical chunk generation for gameplay or multiplayer.
 Any default GPU path must be a derived cache with explicit invalidation and
 fallback.
 
-## Existing Mod Precedents
+## Inferred Architecture Precedents
 
-The useful lesson from existing projects is that the problem has already been
-solved in pieces, but not as one unified Vulkan architecture.
+External implementations show that this problem has already been solved in
+pieces, but not as one unified Vulkan architecture. Named project references
+and source links stay in ignored local notes under `docs/local/`; public docs
+only record the architecture inferred from those references.
 
-- Nvidium demonstrates the closest existing shape to GPU-driven terrain. Its
-  world renderer owns upload and download streams, a section manager, a render
-  pipeline, an asynchronous occlusion tracker, GPU terrain memory budgeting, and
-  Sodium chunk-build ingestion. Its terrain shaders use mesh/task shader style
-  work distribution, subgroup operations, bindless texture access, screen-space
-  triangle rejection, and per-section visibility decisions. The limits are just
-  as important: the implementation is OpenGL/NVIDIA-extension based, terrain
-  focused, and not a Vulkan renderer-wide domain model.
-- VulkanMod demonstrates that a broad Minecraft Vulkan renderer can cover more
-  than terrain. Its renderer packages are split across chunk, engine, model,
-  shader, sky, texture, vertex, and profiling areas. Its world renderer owns
-  section grids, section graphs, chunk build dispatch, render region caching,
-  indirect buffers, terrain-layer rendering, translucent sorting, and block
-  entity render-state extraction. This is useful architecture evidence for
-  renderer-wide ownership, but it still depends heavily on CPU chunk building
-  and vanilla/Minecraft render-state flow for non-terrain domains.
-- Voxy demonstrates the right direction for render-only world databases and
-  distant-world rendering. Its world engine tracks LOD-section identities,
-  section storage, dirty/save callbacks, and active-section references. Its
-  render-generation service is still CPU/service-thread based, but it can emit
-  meshlets and decouples render data from ordinary chunk sections. Its shaders
-  show GPU hierarchical traversal, HIZ/frustum culling, render/request queues,
-  visibility buffers, and compute-generated indirect draw commands.
-- C2ME demonstrates the compatibility boundary for generation. It improves
-  chunk generation, I/O, and loading through CPU parallelism while treating
-  vanilla behavior, datapacks, and mod compatibility as first-order constraints.
-  Its OpenCL acceleration module adds an explicit optional path for
-  GPU-accelerated authoritative worldgen stages, with driver and compatibility
-  risks that must be surfaced before enabling it.
-- Sodium demonstrates the importance of renderer correctness, broad hardware
-  compatibility, and vanilla parity when replacing client rendering.
-- Iris demonstrates how compatibility goals can dominate renderer design,
-  especially once shader packs and modded render paths enter the picture.
+- GPU-driven terrain benefits from a world renderer that owns upload and
+  download streams, a section manager, a render pipeline, asynchronous
+  occlusion tracking, GPU terrain memory budgeting, chunk-build ingestion,
+  mesh/task-style work distribution, subgroup operations, bindless-style
+  texture access, screen-space triangle rejection, and per-section visibility.
+  The limits are just as important: a terrain-only or vendor-specific renderer
+  is not a Vulkan renderer-wide domain model.
+- Broad Minecraft Vulkan rendering benefits from renderer packages split across
+  chunk, engine, model, shader, sky, texture, vertex, and profiling areas.
+  A world renderer should own section grids, section graphs, chunk build
+  dispatch, render region caching, indirect buffers, terrain-layer rendering,
+  translucent sorting, and block entity render-state extraction. This is useful
+  architecture evidence for renderer-wide ownership, but CPU chunk building and
+  vanilla render-state flow still define many non-terrain boundaries.
+- Render-only distant-world systems show the value of LOD-section identities,
+  section storage, dirty/save callbacks, active-section references, meshlet
+  emission, and decoupling render data from ordinary chunk sections. Their
+  shaders suggest GPU hierarchical traversal, HIZ/frustum culling, render
+  request queues, visibility buffers, and compute-generated indirect draw
+  commands.
+- Accelerated world-generation providers define the compatibility boundary for
+  generation: vanilla behavior, datapacks, and mod compatibility remain
+  first-order constraints, while GPU-accelerated authoritative worldgen stages
+  must surface driver and compatibility risks before enabling them.
+- Mature replacement renderers show that correctness, broad hardware
+  compatibility, vanilla parity, shader-pack compatibility, and modded render
+  paths can dominate renderer design.
 
-The unified Vulkan architecture should combine these lessons: VulkanMod's broad
-renderer domain coverage, Nvidium's GPU-resident terrain dispatch model, Voxy's
-LOD world database and GPU command generation, and C2ME's strict boundary around
-authoritative worldgen behavior.
+The unified Vulkan architecture should combine these inferred lessons: broad
+renderer domain coverage, GPU-resident terrain dispatch, LOD world databases,
+GPU command generation, and strict authority boundaries around optional
+worldgen acceleration.
 
 ## Feasibility Matrix
 
@@ -300,7 +296,7 @@ authoritative worldgen behavior.
 | GPU-assisted render-only distant terrain generation | Medium-high | Optional                 | Useful for visual fill beyond generated chunks; must be labeled approximate.                           |
 | GPU lighting for render probes/AO                   | Medium      | Optional                 | Good for visuals; not a replacement for gameplay light engine.                                         |
 | GPU section data transcoding                        | High        | Yes                      | CPU uploads compact dirty input; GPU builds render pages and counters.                                 |
-| GPU authoritative vanilla noise terrain via C2ME-OCL | Medium      | Optional only            | Feasible as explicit C2ME + OpenCL integration for supported stages; requires backups, driver-risk warnings, and compatibility gates. |
+| GPU authoritative vanilla noise terrain via external provider | Medium      | Optional only            | Feasible as explicit accelerated-worldgen integration for supported stages; requires backups, driver-risk warnings, and compatibility gates. |
 | Native GPU authoritative vanilla noise terrain      | Low         | No                       | Exact `ChunkAccess` mutation, heightmaps, fluids, structures, and mods make this hard without delegating authority to a dedicated worldgen mod. |
 | GPU authoritative structures/features               | Very low    | No                       | Datapacks, registries, random streams, and mod hooks are CPU/object-heavy.                             |
 | GPU authoritative custom world type                 | Medium      | Experimental only        | Feasible if the world type is explicitly designed around GPU kernels.                                  |
@@ -372,16 +368,16 @@ events and built from the same geometry and material pages as raster rendering.
    lighting from mirrored chunks.
 3. Predictive/visual worldgen: GPU generates distant approximate terrain or
    height fields beyond loaded chunks, clearly separated from gameplay state.
-4. Optional C2ME-OCL integration: C2ME plus its OpenCL module owns accelerated
-   noise/biome-stage world generation through an explicit optional dependency
-   path with world-backup warnings and compatibility gates.
+4. Optional accelerated-worldgen provider integration: an external provider
+   owns accelerated noise/biome-stage world generation through an explicit
+   optional dependency path with world-backup warnings and compatibility gates.
 5. Custom GPU world type: GPU kernels produce canonical chunks only for a
    deliberately opt-in world mode with strict limitations.
 
 The first two levels should be the mainline architecture. The third is useful
 for modern render distance expectations. The fourth is a compatibility-bound
-optional integration with C2ME-OCL. The fifth is research, not a default mod
-feature.
+optional integration with an external provider. The fifth is research, not a
+default mod feature.
 
 ## Required Vulkan Capabilities
 
@@ -435,7 +431,7 @@ Optional acceleration paths:
    clouds, weather, and post-processing handoff points.
 7. Add optional device-generated commands and descriptor heap paths after the
    descriptor-buffer path is stable.
-8. Add an optional C2ME/C2ME-OCL integration track for explicit
+8. Add an optional accelerated-worldgen provider integration track for explicit
    GPU-authoritative worldgen experiments after dependency detection and
    compatibility diagnostics are in place.
 9. Investigate custom GPU-authoritative world types only after render-only GPU
@@ -445,30 +441,15 @@ Optional acceleration paths:
 
 Pursue a GPU-driven renderer and GPU-assisted visual world pipeline. Do not make
 GPU-authoritative vanilla world generation a default renderer goal. Treat it as
-an explicit optional path through C2ME/C2ME-OCL or as a later custom-world
-research track with clear compatibility limits.
+an explicit optional provider path or as a later custom-world research track
+with clear compatibility limits.
 
 ## Sources
 
-- Nvidium: `https://github.com/MCRcortex/nvidium`
-- Nvidium renderer and shaders:
-  `https://github.com/MCRcortex/nvidium/tree/dev/src/main`
-- VulkanMod: `https://github.com/xCollateral/VulkanMod`
-- VulkanMod renderer packages:
-  `https://github.com/xCollateral/VulkanMod/tree/dev/src/main/java/net/vulkanmod/render`
-- Sodium: `https://github.com/CaffeineMC/sodium`
-- C2ME: `https://github.com/RelativityMC/C2ME-fabric`
-- C2ME 26.2 branch:
-  `https://github.com/RelativityMC/C2ME-fabric/tree/dev/26.2.0`
-- C2ME release with OpenCL acceleration notes:
-  `https://github.com/RelativityMC/C2ME-fabric/releases/tag/0.4.1%2Bbeta.1`
-- Voxy: `https://github.com/MCRcortex/voxy`
-- Voxy LOD renderer and shaders:
-  `https://github.com/MCRcortex/voxy/tree/dev/src/main`
-- Iris: `https://github.com/IrisShaders/Iris`
-- Radiance Java mod: `https://github.com/Minecraft-Radiance/Radiance`
-- Radiance native renderer: `https://github.com/Minecraft-Radiance/MCVR`
-- Radiance project site: `https://www.minecraft-radiance.com/`
+Named external mod references and source links stay in ignored local notes
+under `docs/local/`. The public design doc records only inferred architecture
+patterns.
+
 - Vulkan mesh shader: `https://docs.vulkan.org/refpages/latest/refpages/source/VK_EXT_mesh_shader.html`
 - Vulkan descriptor buffer guide:
   `https://docs.vulkan.org/guide/latest/descriptor_buffer.html`

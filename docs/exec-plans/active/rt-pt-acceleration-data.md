@@ -10,8 +10,8 @@ experiments can consume VIM terrain or future non-terrain GPU world data.
 - RT/PT readiness is optional and must not become a startup requirement.
 - GPU world pages derived from Minecraft chunk state are render data, not
   gameplay-authoritative world state.
-- Acceleration data must not share authority labels with optional C2ME-OCL
-  world-generation output.
+- Acceleration data must not share authority labels with optional
+  accelerated-worldgen provider output.
 - Device support must come from `VulkanRuntimeProfile` selected and disabled
   states, not ad hoc extension checks.
 - No RT/PT draw path starts until diagnostics prove the acceleration-data

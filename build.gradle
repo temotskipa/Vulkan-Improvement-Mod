@@ -675,6 +675,24 @@ tasks.register("checkGpuWorldDatabaseInvariants", JavaExec) {
     mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldDatabaseInvariantCheck"
 }
 
+tasks.register("checkGpuResidentTerrainArchitectureInvariants", JavaExec) {
+    group = "verification"
+    description = "Runs pure Java GPU-resident terrain architecture plan and contract invariant checks."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuResidentTerrainArchitectureInvariantCheck"
+}
+
+tasks.register("checkGpuWorldTerrainLayerDirectoryInvariants", JavaExec) {
+    group = "verification"
+    description = "Runs pure Java GPU-world resident terrain layer directory invariant checks."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldTerrainLayerDirectoryInvariantCheck"
+}
+
 tasks.register("checkTerrainDispatchInvariants", JavaExec) {
     group = "verification"
     description = "Runs pure Java terrain mesh-task dispatch invariant checks."
@@ -738,6 +756,15 @@ tasks.register("checkVulkanVideoOptionsInvariants", JavaExec) {
     mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.runtime.VulkanVideoOptionsInvariantCheck"
 }
 
+tasks.register("checkDependencyBaselineInvariants", JavaExec) {
+    group = "verification"
+    description = "Runs pure Java dependency baseline and renderer-plan alignment invariant checks."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.runtime.DependencyBaselineInvariantCheck"
+}
+
 tasks.register("checkMinecraft26MixinTargetManifest", JavaExec) {
     group = "verification"
     description = "Runs pure Java 26.2 mcdev mixin target manifest invariant checks."
@@ -774,6 +801,8 @@ tasks.named("check") {
     dependsOn tasks.named("checkVulkanRequirementInvariants")
     dependsOn tasks.named("checkGpuResourceRetirementInvariants")
     dependsOn tasks.named("checkGpuWorldDatabaseInvariants")
+    dependsOn tasks.named("checkGpuResidentTerrainArchitectureInvariants")
+    dependsOn tasks.named("checkGpuWorldTerrainLayerDirectoryInvariants")
     dependsOn tasks.named("checkTerrainDispatchInvariants")
     dependsOn tasks.named("checkVisibleMeshletRingInvariants")
     dependsOn tasks.named("checkTerrainWorkQueueLayoutInvariants")
@@ -781,6 +810,7 @@ tasks.named("check") {
     dependsOn tasks.named("checkTerrainRenderPassStateInvariants")
     dependsOn tasks.named("checkTerrainRuntimeValidationPlanInvariants")
     dependsOn tasks.named("checkVulkanVideoOptionsInvariants")
+    dependsOn tasks.named("checkDependencyBaselineInvariants")
     dependsOn tasks.named("checkMinecraft26MixinTargetManifest")
 }
 

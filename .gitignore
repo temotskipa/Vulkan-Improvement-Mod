@@ -28,3 +28,6 @@ agent-tools/
 terminals/
 
 .vscode
+
+# Local-only research notes that must not be published with plans
+docs/local/

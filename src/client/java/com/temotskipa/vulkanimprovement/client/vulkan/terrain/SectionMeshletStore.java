@@ -1,6 +1,8 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
 import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldDatabase;
+import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldTerrainLayerDirectory;
+import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldTerrainLayerRecord;
 import com.mojang.blaze3d.IndexType;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.systems.RenderPass;
@@ -70,6 +72,7 @@ public final class SectionMeshletStore {
             GpuWorldDatabase.get().recordTerrainLayerCapture(sectionNode, layer.ordinal(), TerrainMaterialClassifier.materialIdForLayer(layer));
             DescriptorHeapTerrainResources.get().markTerrainDataDirty();
         } else {
+            GpuWorldTerrainLayerDirectory.get().removeLayer(sectionNode, layer.ordinal());
             recordRejectedCapture(sectionNode, layer, result.reason);
             DescriptorHeapTerrainResources.get().markTerrainDataDirty();
         }
@@ -161,6 +164,7 @@ public final class SectionMeshletStore {
 
     static void clearGpuMeshletRanges() {
         GPU_MESHLET_RANGES.clear();
+        GpuWorldTerrainLayerDirectory.get().clear("clearGpuMeshletRanges");
     }
 
     @SuppressWarnings("unused")
@@ -239,6 +243,7 @@ public final class SectionMeshletStore {
         int[] meshletCountsByLayer = new int[layers.length];
         int[] customIndexMeshletCountsByLayer = new int[layers.length];
         Map<SectionLayerKey, MeshletRange> meshletRanges = new HashMap<>();
+        List<GpuWorldTerrainLayerRecord> residentLayerRecords = new ArrayList<>();
         liveSections = SECTIONS.size();
 
         for (ChunkSectionLayer chunkLayer : layers) {
@@ -301,7 +306,13 @@ public final class SectionMeshletStore {
                     customIndexMeshletCountsByLayer[layerOrdinal] += writtenMeshlets;
                 }
                 if (writtenMeshlets > 0) {
-                    meshletRanges.put(new SectionLayerKey(sectionEntry.getKey(), section.sectionNode, layerOrdinal), new MeshletRange(section.sectionNode, firstMeshlet, writtenMeshlets, visibilityForSection(section.sectionNode)));
+                    float visibility = visibilityForSection(section.sectionNode);
+                    int residentMeshlets = writtenMeshlets;
+                    meshletRanges.put(new SectionLayerKey(sectionEntry.getKey(), section.sectionNode, layerOrdinal), new MeshletRange(section.sectionNode, firstMeshlet, residentMeshlets, visibility));
+                    GpuWorldDatabase.get()
+                            .currentTerrainLayerUpdate(section.sectionNode, layerOrdinal)
+                            .map(update -> GpuWorldTerrainLayerRecord.from(update, firstMeshlet, residentMeshlets, visibility))
+                            .ifPresent(residentLayerRecords::add);
                 }
                 sectionLayers++;
             }
@@ -309,6 +320,7 @@ public final class SectionMeshletStore {
         }
         GPU_MESHLET_RANGES.clear();
         GPU_MESHLET_RANGES.putAll(meshletRanges);
+        GpuWorldTerrainLayerDirectory.get().replaceSnapshot(residentLayerRecords, "terrain metadata snapshot");
 
         return previousStats.nextUpload(liveSections, sectionLayers, meshlets, droppedSections, droppedMeshlets, vertexBytesUploaded, indexBytesUploaded, vertexBytesDropped, indexBytesDropped, meshletOffsetsByLayer, meshletCountsByLayer, customIndexMeshletCountsByLayer);
     }

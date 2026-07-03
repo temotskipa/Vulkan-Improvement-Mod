@@ -150,6 +150,13 @@ LOD, and RT/PT work can share.
   the current visible mesh path is still too expensive and should be replaced by
   a GPU-resident visibility/residency architecture rather than tuned further as
   the final design.
+- 2026-07-03: The next architecture step is now split into
+  [GPU-resident terrain architecture](gpu-resident-terrain-architecture.md).
+  It keeps named external source references in ignored local notes, preserves
+  `vim.strictMeshTerrainReplacement=false`, and points future terrain work
+  toward `GpuWorldTerrainLayerDirectory`, persistent section pages, dirty-event
+  updates, visibility compaction, explicit residency budget diagnostics, and
+  indirect command generation.
 - 2026-06-29: `RendererCoreServices` now owns renderer-wide lifecycle state,
   domain reset, present pacing, and fragment shading-rate controller
   configuration. `MeshTerrainRenderer` delegates those shared services while
@@ -203,25 +210,13 @@ Therefore this plan targets `26.2` directly. The snapshot is useful design
 evidence for feature-set grouping, but code must not assume snapshot classes or
 constructor shapes exist on the stable `26.2` target.
 
-## C2ME GitHub Findings
+## Optional Worldgen Provider Findings
 
-GitHub inspection on 2026-06-28 adds an optional route for GPU-authoritative
-world-generation experiments:
-
-- [RelativityMC/C2ME-fabric](https://github.com/RelativityMC/C2ME-fabric)
-  is the public GitHub repository for base C2ME.
-- [The `dev/26.2.0` branch](https://github.com/RelativityMC/C2ME-fabric/tree/dev/26.2.0)
-  provides the relevant stable-Minecraft-26.2 C2ME source line.
-- [The `0.4.1+beta.1` GitHub release](https://github.com/RelativityMC/C2ME-fabric/releases/tag/0.4.1%2Bbeta.1)
-  explicitly mentions an OpenCL C backend, experimental OpenCL-accelerated
-  world generation, and 26.2-compatible Fabric plus OCL builds.
-- GitHub repository search did not find a standalone public `c2me-ocl` source
-  repository. Treat the C2ME release page as the GitHub-side source of truth
-  for the separate OCL project until a dedicated public GitHub repo appears.
-
-This means GPU-authoritative worldgen should remain outside the default Vulkan
-renderer path, but it can become an optional C2ME/C2ME-OCL integration track
-with explicit dependency detection, user opt-in, backup warnings, and
+Local external-reference notes describe an optional route for
+GPU-authoritative world-generation experiments. Public plans keep that evidence
+at the inferred-architecture level: GPU-authoritative worldgen remains outside
+the default Vulkan renderer path, but a future optional provider integration can
+add explicit dependency detection, user opt-in, backup warnings, and
 compatibility gates.
 
 ## Constraints
@@ -240,8 +235,8 @@ compatibility gates.
 - Do not make GPU-authoritative vanilla world generation part of the default
   renderer path. CPU-authoritative Minecraft chunk state remains the default
   source of truth.
-- Treat C2ME plus `c2me-ocl` as an optional integration path, not a hard
-  dependency and not a substitute for the renderer's mirror-derived GPU world
+- Treat optional accelerated-worldgen providers as integration paths, not hard
+  dependencies and not substitutes for the renderer's mirror-derived GPU world
   database.
 - Preserve a safe fallback story for renderer domains whose Minecraft semantics
   are not yet represented by the GPU path.
@@ -366,23 +361,23 @@ compatibility gates.
 - Do not replace a non-terrain domain simply to satisfy the roadmap. Replacement
   starts when a domain has its compatibility contract and runtime evidence.
 
-### 9. Plan Optional C2ME OpenCL Worldgen Integration
+### 9. Plan Optional Accelerated-Worldgen Provider Integration
 
-- Add dependency detection for C2ME and `c2me-ocl` without making either a
-  required mod dependency.
+- Add dependency detection for an optional accelerated-worldgen provider without
+  making it a required mod dependency.
 - Decide whether Fabric metadata should use a soft relationship such as
   suggested/recommended dependencies, then verify the exact loader metadata
   behavior before editing `fabric.mod.json`.
 - Gate GPU-authoritative worldgen experiments behind explicit user opt-in,
   clear diagnostics, and world-backup warnings.
-- Treat C2ME-OCL output as authoritative only inside worlds/configurations where
-  C2ME-OCL itself owns that worldgen path. The renderer still consumes generated
-  chunk state through Minecraft/C2ME boundaries instead of silently inventing
-  gameplay chunk state.
-- Capture compatibility state in diagnostics: base C2ME present, C2ME-OCL
-  present, OpenCL path active, worldgen stages accelerated, and known
-  incompatibility/fallback reason.
-- Keep render-only distant terrain and LOD pages separate from C2ME-OCL
+- Treat provider output as authoritative only inside worlds/configurations where
+  that provider itself owns the worldgen path. The renderer still consumes
+  generated chunk state through Minecraft/provider boundaries instead of
+  silently inventing gameplay chunk state.
+- Capture compatibility state in diagnostics: provider present, accelerated
+  path active, worldgen stages accelerated, and known incompatibility/fallback
+  reason.
+- Keep render-only distant terrain and LOD pages separate from provider-owned
   gameplay chunk generation. They solve different contracts and must not share
   authority labels.
 
@@ -461,16 +456,19 @@ compatibility gates.
 - Full-layer `drawAll` is a diagnostic solid/cutout path. It must not use the
   shared terrain work queue because the layer meshlet range is already
   contiguous and the work queue can wrap heavily under all-on stress.
-- Strict visible replacement is still unsafe after `req_63`; the current
-  Nvidium-inspired GPU-driven direction should replace per-draw cancellation
-  with GPU-resident scene data, visibility/compaction, explicit residency, and
-  indirect command production before vanilla terrain is canceled by default.
+- Strict visible replacement is still unsafe after `req_63`; the inferred
+  GPU-driven direction should replace per-draw cancellation with GPU-resident
+  scene data, visibility/compaction, explicit residency, and indirect command
+  production before vanilla terrain is canceled by default.
+  The active [GPU-resident terrain architecture](gpu-resident-terrain-architecture.md)
+  plan records this direction and the local-only external-reference boundary.
 - VIM mesh replacement must sample the block atlas with texel fetch and strict
   cutout alpha until runtime evidence proves parity with vanilla texture
   sharpness and vegetation masking.
 - GPU-authoritative vanilla world generation remains out of scope for the
-  default client mod path, but C2ME plus `c2me-ocl` is an acceptable optional
-  integration track for explicit GPU-authoritative worldgen experiments.
+  default client mod path, but an optional accelerated-worldgen provider is an
+  acceptable integration track for explicit GPU-authoritative worldgen
+  experiments.
 
 ## Exit Criteria
 
@@ -492,8 +490,8 @@ This plan is complete when:
 
 - Open a separate snapshot-port plan if `26.3` or later becomes the supported
   target.
-- Open a dedicated C2ME/C2ME-OCL integration plan before implementing optional
-  GPU-authoritative worldgen behavior.
+- Open a dedicated accelerated-worldgen provider integration plan before
+  implementing optional GPU-authoritative worldgen behavior.
 - Open domain-specific plans for entity, block-entity, particle, sky, cloud,
   weather, and post-processing replacement.
 - Open a dedicated RT/PT acceleration-data plan after the shared GPU world
