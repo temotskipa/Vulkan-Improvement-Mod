@@ -31,6 +31,7 @@ public final class RendererDiagnostics {
         report.put("videoSettings", VulkanVideoSettingsCompatibility.snapshot());
         report.put("capabilities", VulkanImprovementCapabilities.asMap());
         report.put("rendererServices", RendererCoreServices.get().asMap());
+        report.put("acceleratedWorldgenProvider", AcceleratedWorldgenProviderCompatibility.snapshot());
         report.put("terrainRenderer", MeshTerrainRenderer.get().asMap());
         report.put("gpuWorldDatabase", GpuWorldDatabase.get().asMap());
         report.put("rtPtAccelerationData", RtPtAccelerationDataRegistry.get().asMap());

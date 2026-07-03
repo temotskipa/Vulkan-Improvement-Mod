@@ -30,6 +30,8 @@
   "options.vulkanimprovement.dumpCapabilities.tooltip": "Logs Vulkan Improvement capability and runtime-profile JSON when the Vulkan device is captured.",
   "options.vulkanimprovement.requireVulkanBackend": "Require Vulkan",
   "options.vulkanimprovement.requireVulkanBackend.tooltip": "Forbids OpenGL fallback after Vulkan backend creation fails or is not selected. Debug/development option.",
+  "options.vulkanimprovement.acceleratedWorldgenProviderIntegration": "Worldgen Provider",
+  "options.vulkanimprovement.acceleratedWorldgenProviderIntegration.tooltip": "Enables diagnostics for an optional accelerated worldgen provider. Does not change renderer or worldgen authority yet.",
   "options.vulkanimprovement.validationDescriptorBufferOnly": "Descriptor Buffer Only",
   "options.vulkanimprovement.validationDescriptorBufferOnly.tooltip": "Validation mode that disables the descriptor-heap requirement. Applies to Vulkan device selection.",
   "options.vulkanimprovement.initialSectionCapacity": "Section Capacity",

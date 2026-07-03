@@ -80,6 +80,10 @@ validation on real Vulkan hardware.
   checks that the Video Settings integration keeps VIM options visible for an
   active Vulkan session even if the pending restart preference is OpenGL, and
   that OpenGL-active sessions keep terrain capture/reset services gated off.
+- `.\gradlew.bat checkAcceleratedWorldgenProviderIntegrationInvariants` runs
+  pure Java checks that optional accelerated-worldgen provider diagnostics stay
+  diagnostics-only, default off, Video Settings-visible, and free of Fabric
+  hard or soft dependency metadata.
 - `.\gradlew.bat checkMinecraft26MixinTargetManifest` runs pure Java source
   checks that the mcdev-confirmed Minecraft `26.2` mixin target manifest,
   client mixin config, and source-level hook tokens stay aligned.
@@ -168,6 +172,7 @@ validation on real Vulkan hardware.
 | `vim.disableFragmentShadingRate`       | `false`     | Disable fragment shading-rate integration.            |
 | `vim.disablePresentPacing`             | `false`     | Disable present pacing controls.                      |
 | `vim.requireVulkanBackend`             | `false`     | Require Vulkan backend behavior where checked.        |
+| `vim.enableAcceleratedWorldgenProviderIntegration` | `false` | Enable diagnostics for an optional accelerated worldgen provider; does not change renderer or worldgen authority. |
 | `vim.validationDescriptorBufferOnly`   | `false`     | Validate descriptor-buffer-only mode.                 |
 | `vim.waitIdleBeforeTerrainUpload`      | `false`     | Force device idle before terrain upload.              |
 | `vim.replaceVanillaTerrain`            | `false`     | Draw mesh-shader solid/cutout terrain diagnostics; vanilla remains visible unless strict cancellation is enabled. |

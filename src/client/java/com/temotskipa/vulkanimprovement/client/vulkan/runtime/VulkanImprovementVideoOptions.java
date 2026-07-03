@@ -27,6 +27,7 @@ public final class VulkanImprovementVideoOptions {
     private static @Nullable OptionInstance<Boolean> dumpCapabilities;
     private static @Nullable OptionInstance<Boolean> presentPacing;
     private static @Nullable OptionInstance<Boolean> requireVulkanBackend;
+    private static @Nullable OptionInstance<Boolean> acceleratedWorldgenProviderIntegration;
     private static @Nullable OptionInstance<Boolean> validationDescriptorBufferOnly;
     private static @Nullable OptionInstance<Boolean> waitIdleBeforeTerrainUpload;
     private static @Nullable OptionInstance<Boolean> allowCpuVisibleMeshletFallback;
@@ -63,6 +64,7 @@ public final class VulkanImprovementVideoOptions {
                 gpuGeneratedMeshTaskCommands,
                 dumpCapabilities,
                 requireVulkanBackend,
+                acceleratedWorldgenProviderIntegration,
                 validationDescriptorBufferOnly,
                 initialSectionCapacity,
                 initialMeshletCapacity,
@@ -92,6 +94,7 @@ public final class VulkanImprovementVideoOptions {
         setWidgetActive(optionsList, waitIdleBeforeTerrainUpload, terrainCapture);
         setWidgetActive(optionsList, allowCpuVisibleMeshletFallback, meshTerrain);
         setWidgetActive(optionsList, gpuGeneratedMeshTaskCommands, meshTerrain);
+        setWidgetActive(optionsList, acceleratedWorldgenProviderIntegration, true);
     }
 
     private static void ensureOptions() {
@@ -189,6 +192,12 @@ public final class VulkanImprovementVideoOptions {
                 TerrainRendererDebugConfig.requireVulkanBackend(),
                 TerrainRendererDebugConfig::setRequireVulkanBackend
         );
+        acceleratedWorldgenProviderIntegration = OptionInstance.createBoolean(
+                "options.vulkanimprovement.acceleratedWorldgenProviderIntegration",
+                OptionInstance.cachedConstantTooltip(Component.translatable("options.vulkanimprovement.acceleratedWorldgenProviderIntegration.tooltip")),
+                TerrainRendererDebugConfig.acceleratedWorldgenProviderIntegrationEnabled(),
+                TerrainRendererDebugConfig::setAcceleratedWorldgenProviderIntegrationEnabled
+        );
         validationDescriptorBufferOnly = OptionInstance.createBoolean(
                 "options.vulkanimprovement.validationDescriptorBufferOnly",
                 OptionInstance.cachedConstantTooltip(Component.translatable("options.vulkanimprovement.validationDescriptorBufferOnly.tooltip")),
@@ -248,6 +257,7 @@ public final class VulkanImprovementVideoOptions {
         requireOption(gpuGeneratedMeshTaskCommands).set(TerrainRendererDebugConfig.enableGpuGeneratedMeshTaskCommands());
         requireOption(dumpCapabilities).set(TerrainRendererDebugConfig.dumpCapabilities());
         requireOption(requireVulkanBackend).set(TerrainRendererDebugConfig.requireVulkanBackend());
+        requireOption(acceleratedWorldgenProviderIntegration).set(TerrainRendererDebugConfig.acceleratedWorldgenProviderIntegrationEnabled());
         requireOption(validationDescriptorBufferOnly).set(TerrainRendererDebugConfig.validationDescriptorBufferOnly());
         requireOption(initialSectionCapacity).set(TerrainRendererDebugConfig.initialSectionCapacity());
         requireOption(initialMeshletCapacity).set(TerrainRendererDebugConfig.initialMeshletCapacity());

@@ -92,6 +92,7 @@ public final class VulkanVideoSettingsCompatibility {
         map.put("drawAllCapturedTerrainLayers", TerrainRendererDebugConfig.drawAllCapturedTerrainLayers());
         map.put("fragmentShadingRateEnabled", TerrainRendererDebugConfig.fragmentShadingRateEnabled());
         map.put("requireVulkanBackend", TerrainRendererDebugConfig.requireVulkanBackend());
+        map.put("acceleratedWorldgenProviderIntegrationEnabled", TerrainRendererDebugConfig.acceleratedWorldgenProviderIntegrationEnabled());
         map.put("presentPacingEnabled", !TerrainRendererDebugConfig.disablePresentPacing());
         map.put("waitIdleBeforeTerrainUpload", TerrainRendererDebugConfig.waitIdleBeforeTerrainUpload());
         map.put("allowCpuVisibleMeshletFallback", TerrainRendererDebugConfig.allowCpuVisibleMeshletFallback());

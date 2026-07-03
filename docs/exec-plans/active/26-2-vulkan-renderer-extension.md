@@ -167,6 +167,11 @@ LOD, and RT/PT work can share.
   gates, and terrain replacement should prioritize contention/residency
   counters before deeper cancellation work. `GpuWorldResidencyStats` now
   records live page counts, used bytes, evictions, and over-budget refusals.
+- 2026-07-04: Optional accelerated-worldgen provider integration now has a
+  diagnostics-only runtime contract. Bug reports expose provider presence,
+  opt-in state, renderer/worldgen authority labels, fallback reason, and
+  metadata relationship without adding Fabric metadata relationships or changing
+  terrain capture, mesh replacement, or GPU-world page authority.
 - 2026-06-29: `RendererCoreServices` now owns renderer-wide lifecycle state,
   domain reset, present pacing, and fragment shading-rate controller
   configuration. `MeshTerrainRenderer` delegates those shared services while

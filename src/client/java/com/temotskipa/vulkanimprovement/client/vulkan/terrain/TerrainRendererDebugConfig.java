@@ -14,6 +14,7 @@ public final class TerrainRendererDebugConfig {
     private static volatile boolean dumpCapabilities = booleanProperty("vim.dumpCapabilities", true);
     private static volatile boolean disablePresentPacing = booleanProperty("vim.disablePresentPacing", false);
     private static volatile boolean requireVulkanBackend = booleanProperty("vim.requireVulkanBackend", false);
+    private static volatile boolean acceleratedWorldgenProviderIntegrationEnabled = booleanProperty("vim.enableAcceleratedWorldgenProviderIntegration", false);
     private static volatile boolean validationDescriptorBufferOnly = booleanProperty("vim.validationDescriptorBufferOnly", false);
     private static volatile boolean waitIdleBeforeTerrainUpload = booleanProperty("vim.waitIdleBeforeTerrainUpload", false);
     private static volatile boolean allowCpuVisibleMeshletFallback = booleanProperty("vim.allowCpuVisibleMeshletFallback", false);
@@ -61,6 +62,15 @@ public final class TerrainRendererDebugConfig {
     public static void setRequireVulkanBackend(boolean required) {
         requireVulkanBackend = required;
         setBooleanProperty("vim.requireVulkanBackend", required);
+    }
+
+    public static boolean acceleratedWorldgenProviderIntegrationEnabled() {
+        return acceleratedWorldgenProviderIntegrationEnabled;
+    }
+
+    public static void setAcceleratedWorldgenProviderIntegrationEnabled(boolean enabled) {
+        acceleratedWorldgenProviderIntegrationEnabled = enabled;
+        setBooleanProperty("vim.enableAcceleratedWorldgenProviderIntegration", enabled);
     }
 
     public static boolean validationDescriptorBufferOnly() {
@@ -262,6 +272,7 @@ public final class TerrainRendererDebugConfig {
                 + ", defaultSolidCutoutLayerMode=" + solidCutoutLayerMode()
                 + ", defaultTranslucentLayerMode=" + translucentLayerMode()
                 + ", dumpCapabilities=" + dumpCapabilities()
+                + ", enableAcceleratedWorldgenProviderIntegration=" + acceleratedWorldgenProviderIntegrationEnabled()
                 + ", disableFragmentShadingRate=" + !fragmentShadingRateEnabled()
                 + ", disablePresentPacing=" + disablePresentPacing()
                 + ", validationDescriptorBufferOnly=" + validationDescriptorBufferOnly()

@@ -50,6 +50,9 @@ license-sensitive source details stay in ignored local notes under
      `rendererAuthority="cpu-chunk-state"`.
    - Run `.\gradlew.bat check --console=plain` and confirm the new invariant
      fails before production code exists.
+   - Status: done through
+     `AcceleratedWorldgenProviderCompatibilityInvariantCheck`, which was first
+     observed failing on missing provider diagnostics symbols.
 
 2. Add a small runtime compatibility contract.
    - Create a focused runtime class that exposes provider diagnostics as a
@@ -59,6 +62,9 @@ license-sensitive source details stay in ignored local notes under
    - Configuration must default off.
    - The map must include `present`, `integrationEnabled`, `rendererAuthority`,
      `worldgenAuthority`, `fallbackReason`, and `metadataRelationship`.
+   - Status: done through `AcceleratedWorldgenProviderCompatibility`. It uses
+     configured provider mod IDs with Fabric loader mod-container presence and
+     keeps renderer authority on CPU chunk state.
 
 3. Add diagnostics to bug reports.
    - Include the compatibility map under a stable key in
@@ -66,6 +72,7 @@ license-sensitive source details stay in ignored local notes under
    - Keep diagnostics visible even when the provider is absent.
    - Do not change terrain capture, mesh replacement, GPU-world page authority,
      or Fabric metadata in this task.
+   - Status: done under the `acceleratedWorldgenProvider` bug-report key.
 
 4. Add Video Settings and live-debug flag exposure only after diagnostics exist.
    - Add a config flag that enables the optional provider integration track.
@@ -73,6 +80,8 @@ license-sensitive source details stay in ignored local notes under
      used by other VIM config flags.
    - The flag must only change diagnostics until a later implementation plan
      defines provider-owned worldgen behavior.
+   - Status: done for the diagnostics-only flag
+     `vim.enableAcceleratedWorldgenProviderIntegration`.
 
 5. Add runtime validation notes.
    - Capture bug-report diagnostics with the provider absent.
