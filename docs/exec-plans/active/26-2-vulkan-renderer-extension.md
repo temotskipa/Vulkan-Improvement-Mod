@@ -21,6 +21,9 @@ LOD, and RT/PT work can share.
 - The Gradle wrapper is `9.6.1`; the 2026-07-03 dependency check found Gradle,
   Fabric Loader, and Loom release pins current, kept Minecraft on the stable
   26.2 target, and bumped Fabric API from `0.153.0+26.2` to `0.154.0+26.2`.
+- The 2026-07-04 dependency recheck found no pin changes: Gradle remains
+  `9.6.1`, Fabric Loader remains `0.19.3`, Loom remains `1.17.13`, and the
+  latest Fabric API build for Minecraft `26.2` remains `0.154.0+26.2`.
 - The completed dependency update is recorded in
   [../completed/minecraft-26-2-dependency-update.md](../completed/minecraft-26-2-dependency-update.md).
 - The previous terrain renderer foundation is recorded in

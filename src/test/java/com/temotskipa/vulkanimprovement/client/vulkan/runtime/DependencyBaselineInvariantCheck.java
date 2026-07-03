@@ -41,8 +41,14 @@ public final class DependencyBaselineInvariantCheck {
                 "active renderer extension plan must record the current dependency baseline");
         requireContains(extensionPlan, "The Gradle wrapper is `9.6.1`",
                 "active renderer extension plan must record the current Gradle wrapper baseline");
+        requireContains(extensionPlan, "The 2026-07-04 dependency recheck found no pin changes",
+                "active renderer extension plan must record the latest dependency recheck result");
         requireContains(completedDependencyPlan, "| Fabric API | `0.154.0+26.2`",
                 "completed dependency plan must record the latest 26.2 Fabric API audit result");
+        requireContains(completedDependencyPlan, "| Gradle wrapper | `9.6.1`",
+                "completed dependency plan must record the latest Gradle wrapper audit result");
+        requireContains(completedDependencyPlan, "the 2026-07-04 audit found no pin changes",
+                "completed dependency plan must record the latest no-change dependency audit");
     }
 
     private static String requiredProperty(Properties properties, String key) {
