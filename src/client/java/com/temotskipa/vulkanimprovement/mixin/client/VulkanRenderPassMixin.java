@@ -59,8 +59,11 @@ public class VulkanRenderPassMixin {
     @Inject(method = "drawMultipleIndexed", at = @At("HEAD"), cancellable = true)
     private <T> void vim$drawMeshTerrain(Collection<RenderPass.Draw<T>> draws, @Nullable GpuBuffer defaultIndexBuffer, @Nullable IndexType defaultIndexType, Collection<String> dynamicUniforms, T uniformArgument, CallbackInfo ci) {
         TerrainDrawContext context = TerrainDrawContext.current(this.commandBuffer(), this.pipeline, this.hasDepth, draws);
-        if (MeshTerrainRenderer.get().tryDrawMeshTerrain(context)) {
+        MeshTerrainRenderer.DrawResult drawResult = MeshTerrainRenderer.get().tryDrawMeshTerrain(context);
+        if (drawResult.drewMeshTerrain()) {
             vim$restoreVanillaPipelineState();
+        }
+        if (drawResult.cancelVanillaDraw()) {
             ci.cancel();
         }
     }

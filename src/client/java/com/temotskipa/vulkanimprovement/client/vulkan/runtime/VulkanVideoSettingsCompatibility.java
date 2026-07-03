@@ -87,6 +87,7 @@ public final class VulkanVideoSettingsCompatibility {
         map.put("terrainCaptureEnabled", TerrainRendererDebugConfig.terrainCaptureEnabled());
         map.put("meshTranslucentTerrainEnabled", TerrainRendererDebugConfig.meshTranslucentTerrainEnabled());
         map.put("meshletFrustumCullingEnabled", TerrainRendererDebugConfig.meshletFrustumCullingEnabled());
+        map.put("strictMeshTerrainReplacement", TerrainRendererDebugConfig.strictMeshTerrainReplacement());
         map.put("vanillaChunkVisibilityFadeEnabled", TerrainRendererDebugConfig.vanillaChunkVisibilityFadeEnabled());
         map.put("drawAllCapturedTerrainLayers", TerrainRendererDebugConfig.drawAllCapturedTerrainLayers());
         map.put("fragmentShadingRateEnabled", TerrainRendererDebugConfig.fragmentShadingRateEnabled());
@@ -109,7 +110,7 @@ public final class VulkanVideoSettingsCompatibility {
         map.put("chunkSectionFade", TerrainRendererDebugConfig.vanillaChunkVisibilityFadeEnabled() ? "vanilla" : "mesh-stable");
         map.put("terrainSamplerSource", "vanilla ChunkSectionsToRender sampler");
         map.put("translucentTargetSource", "vanilla ChunkSectionLayerGroup output target");
-        map.put("translucentTerrainMode", TerrainRendererDebugConfig.meshTranslucentTerrainEnabled() ? "mesh-experimental" : "vanilla-fallback");
+        map.put("translucentTerrainMode", TerrainRendererDebugConfig.translucentLayerMode());
         map.put("nonTerrainPasses", "vanilla");
         map.put("displayPacing", TerrainRendererDebugConfig.disablePresentPacing() ? "vanilla-only" : "vanilla-plus-present-id-wait");
         map.put("graphicsBackendRequirement", TerrainRendererDebugConfig.requireVulkanBackend() ? "vulkan-required" : "vanilla-selection");

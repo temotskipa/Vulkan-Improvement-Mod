@@ -11,14 +11,17 @@ layout(set = 0, binding = 3) uniform sampler lightmapSampler;
 layout(location = 0) out vec4 fragColor;
 
 void main() {
-    vec4 atlas = texture(sampler2D(blockAtlasTexture, blockAtlasSampler), meshUv0);
+    ivec2 atlasSize = textureSize(sampler2D(blockAtlasTexture, blockAtlasSampler), 0);
+    ivec2 atlasTexel = clamp(ivec2(floor(meshUv0 * vec2(atlasSize))), ivec2(0), atlasSize - ivec2(1));
+    vec4 atlas = texelFetch(sampler2D(blockAtlasTexture, blockAtlasSampler), atlasTexel, 0);
     float alpha = atlas.a * meshColor.a;
-    if (alpha < 0.05) {
+    bool alphaMasked = (meshMaterialFlags & 4u) != 0u;
+    bool alphaBlended = (meshMaterialFlags & 8u) != 0u;
+    float alphaCutoff = alphaMasked ? 0.5 : 0.05;
+    if (alpha < alphaCutoff) {
         discard;
     }
     vec3 light = max(texture(sampler2D(lightmapTexture, lightmapSampler), clamp(meshLightUv, vec2(0.0), vec2(0.99))).rgb, vec3(0.35));
-    bool alphaMasked = (meshMaterialFlags & 4u) != 0u;
-    bool alphaBlended = (meshMaterialFlags & 8u) != 0u;
-    float materialAlpha = (alphaMasked || alphaBlended) ? alpha : 1.0;
+    float materialAlpha = alphaBlended ? alpha : 1.0;
     fragColor = vec4(atlas.rgb * light * meshColor.rgb, materialAlpha);
 }

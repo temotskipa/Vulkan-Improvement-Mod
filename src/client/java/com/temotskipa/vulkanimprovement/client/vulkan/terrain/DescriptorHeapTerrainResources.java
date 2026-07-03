@@ -251,7 +251,7 @@ public final class DescriptorHeapTerrainResources {
             return;
         }
 
-        this.textureBindings.put(name, new TextureBinding(name, vulkanView.vkImageView(), vulkanSampler.vkSampler(), view.getWidth(0), view.getHeight(0), view.baseMipLevel(), view.mipLevels(), sampler.getMaxAnisotropy(), view.isClosed(), false));
+        this.textureBindings.put(name, new TextureBinding(name, vulkanView.vkImageView(), vulkanSampler.vkSampler(), view.getWidth(0), view.getHeight(0), view.baseMipLevel(), view.mipLevels(), sampler.getMaxAnisotropy(), String.valueOf(sampler.getMinFilter()), String.valueOf(sampler.getMagFilter()), String.valueOf(sampler.getMaxLod()), view.isClosed(), false));
         writeTerrainMaterialRecords(this.resources, this.textureBindings.get("Sampler0"), this.textureBindings.get("Sampler2"));
     }
 
@@ -1373,9 +1373,10 @@ public final class DescriptorHeapTerrainResources {
     }
 
     private record TextureBinding(String name, long imageView, long sampler, int width, int height, int baseMipLevel,
-                                  int mipLevels, int maxAnisotropy, boolean closed, boolean unavailable) {
+                                  int mipLevels, int maxAnisotropy, String minFilter, String magFilter, String maxLod,
+                                  boolean closed, boolean unavailable) {
         private static TextureBinding unavailable(String name, GpuTextureView view, GpuSampler sampler) {
-            return new TextureBinding(name, 0L, 0L, view == null ? 0 : view.getWidth(0), view == null ? 0 : view.getHeight(0), view == null ? 0 : view.baseMipLevel(), view == null ? 0 : view.mipLevels(), sampler == null ? 0 : sampler.getMaxAnisotropy(), view == null || view.isClosed(), true);
+            return new TextureBinding(name, 0L, 0L, view == null ? 0 : view.getWidth(0), view == null ? 0 : view.getHeight(0), view == null ? 0 : view.baseMipLevel(), view == null ? 0 : view.mipLevels(), sampler == null ? 0 : sampler.getMaxAnisotropy(), sampler == null ? "unavailable" : String.valueOf(sampler.getMinFilter()), sampler == null ? "unavailable" : String.valueOf(sampler.getMagFilter()), sampler == null ? "unavailable" : String.valueOf(sampler.getMaxLod()), view == null || view.isClosed(), true);
         }
 
         private Map<String, Object> asMap() {
@@ -1388,6 +1389,9 @@ public final class DescriptorHeapTerrainResources {
             map.put("baseMipLevel", this.baseMipLevel);
             map.put("mipLevels", this.mipLevels);
             map.put("maxAnisotropy", this.maxAnisotropy);
+            map.put("minFilter", this.minFilter);
+            map.put("magFilter", this.magFilter);
+            map.put("maxLod", this.maxLod);
             map.put("closed", this.closed);
             map.put("unavailable", this.unavailable);
             return map;

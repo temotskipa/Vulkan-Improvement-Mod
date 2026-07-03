@@ -1,5 +1,7 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
+import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
+
 import java.util.Map;
 
 public final class TerrainMeshTaskDispatchInvariantCheck {
@@ -14,6 +16,8 @@ public final class TerrainMeshTaskDispatchInvariantCheck {
         checkCpuVisibleListDispatch();
         checkCpuWorkQueueDispatch();
         checkIndirectCommandDispatch();
+        checkLayerReplacementPolicy();
+        checkFullLayerSegmentationPolicy();
         checkInvalidDispatchesRejected();
     }
 
@@ -80,6 +84,29 @@ public final class TerrainMeshTaskDispatchInvariantCheck {
         requireMap(dispatch.asMap(), "direct-layer", 4, 1, 32, 32, false, false, false);
         require(dispatch.asMap().get("usesIndirectCommand").equals(true), "dispatch diagnostics must include indirect command use");
         require(dispatch.asMap().get("usesGpuGeneratedIndirectCommand").equals(true), "dispatch diagnostics must include GPU-generated indirect command use");
+    }
+
+    private static void checkLayerReplacementPolicy() {
+        require(TerrainLayerReplacementPolicy.canReplaceLayer(ChunkSectionLayer.SOLID.ordinal()), "solid layer must remain mesh-replaceable");
+        require(TerrainLayerReplacementPolicy.canReplaceLayer(ChunkSectionLayer.CUTOUT.ordinal()), "cutout layer must remain mesh-replaceable");
+        require(!TerrainLayerReplacementPolicy.canReplaceLayer(ChunkSectionLayer.TRANSLUCENT.ordinal()), "translucent terrain must stay on vanilla until translucent effects are contracted");
+        require(TerrainLayerReplacementPolicy.canReplaceLayer(ChunkSectionLayer.SOLID), "solid layer object must remain mesh-replaceable");
+        require(TerrainLayerReplacementPolicy.canReplaceLayer(ChunkSectionLayer.CUTOUT), "cutout layer object must remain mesh-replaceable");
+        require(!TerrainLayerReplacementPolicy.canReplaceLayer(ChunkSectionLayer.TRANSLUCENT), "translucent layer object must fall back to vanilla");
+        require(!TerrainLayerReplacementPolicy.canReplaceLayer((ChunkSectionLayer) null), "missing layer object must fall back to vanilla");
+        require(!TerrainLayerReplacementPolicy.canReplaceLayer(-1), "unknown layer must fall back to vanilla");
+    }
+
+    private static void checkFullLayerSegmentationPolicy() {
+        int limit = TerrainMeshTaskDispatch.MAX_DIRECT_TASKS;
+
+        require(TerrainLayerReplacementPolicy.dispatchCountForMeshlets(0) == 0, "empty layers must not dispatch");
+        require(TerrainLayerReplacementPolicy.dispatchCountForMeshlets(limit) == 1, "one full task-limit segment must use one dispatch");
+        require(TerrainLayerReplacementPolicy.dispatchCountForMeshlets(limit + 1) == 2, "layers above the task limit must split instead of truncating");
+        require(TerrainLayerReplacementPolicy.segmentMeshletOffset(10, 1) == 10 + limit, "segment offset must advance by the direct task limit");
+        require(TerrainLayerReplacementPolicy.segmentMeshletCount(limit + 7, 0) == limit, "first segment must fill the direct task limit");
+        require(TerrainLayerReplacementPolicy.segmentMeshletCount(limit + 7, 1) == 7, "last segment must contain the remaining meshlets");
+        require(TerrainLayerReplacementPolicy.segmentMeshletCount(limit + 7, 2) == 0, "segments past the layer end must be empty");
     }
 
     private static void checkInvalidDispatchesRejected() {

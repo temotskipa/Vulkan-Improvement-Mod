@@ -4,8 +4,8 @@
 #extension GL_EXT_scalar_block_layout : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
-layout(local_size_x = 1) in;
-layout(triangles, max_vertices = 64, max_primitives = 32) out;
+layout(local_size_x = 32) in;
+layout(triangles, max_vertices = 128, max_primitives = 64) out;
 
 struct MeshletHeader {
     uint64_t sectionNode;
@@ -130,20 +130,24 @@ bool cullMeshlet(MeshletHeader header) {
 }
 
 void main() {
+    uint lane = gl_LocalInvocationID.x;
     MeshletHeaders meshlets = MeshletHeaders(pc.meshletHeaders);
     TerrainDebugCounters counters = TerrainDebugCounters(pc.debugCounters);
     MeshletHeader header = meshlets.headers[taskPayload.visibleMeshlet];
     bool indexedTriangles = (header.flags0 & INDEXED_TRIANGLES_FLAG) != 0 && header.indexBytes > 0;
-    atomicAdd(counters.candidateMeshlets, 1u);
+    if (lane == 0u) {
+        atomicAdd(counters.candidateMeshlets, 1u);
+    }
     if (pc.enableMeshletFrustumCulling != 0u && cullMeshlet(header)) {
-        atomicAdd(counters.culledMeshlets, 1u);
-        SetMeshOutputsEXT(0u, 0u);
+        if (lane == 0u) {
+            atomicAdd(counters.culledMeshlets, 1u);
+            SetMeshOutputsEXT(0u, 0u);
+        }
         return;
     }
-    atomicAdd(counters.emittedMeshlets, 1u);
 
-    uint vertexCount = indexedTriangles ? uint(clamp(header.indexCount, 0, 64)) : uint(clamp(header.vertexCount, 0, 64));
-    uint primitiveCount = indexedTriangles ? min(vertexCount / 3u, 32u) : min(vertexCount / 4u * 2u, 32u);
+    uint vertexCount = indexedTriangles ? uint(clamp(header.indexCount, 0, 128)) : uint(clamp(header.vertexCount, 0, 128));
+    uint primitiveCount = indexedTriangles ? min(vertexCount / 3u, 64u) : min(vertexCount / 4u * 2u, 64u);
     TerrainVertices payload = TerrainVertices(
     pc.vertexPayload
     + uint64_t(header.vertexByteOffset)
@@ -159,8 +163,11 @@ void main() {
         materialFlags = uint(materials.records[materialIndex].flags);
     }
 
-    SetMeshOutputsEXT(vertexCount, primitiveCount);
-    for (uint vertex = 0u; vertex < vertexCount; vertex++) {
+    if (lane == 0u) {
+        atomicAdd(counters.emittedMeshlets, 1u);
+        SetMeshOutputsEXT(vertexCount, primitiveCount);
+    }
+    for (uint vertex = lane; vertex < vertexCount; vertex += gl_WorkGroupSize.x) {
         uint sourceVertex = indexedTriangles
         ? indices.indices[uint(max(header.firstIndex, 0)) + vertex]
         : uint(max(header.firstVertex, 0)) + vertex;
@@ -183,12 +190,13 @@ void main() {
     }
 
     if (indexedTriangles) {
-        for (uint primitive = 0u; primitive < primitiveCount; primitive++) {
+        for (uint primitive = lane; primitive < primitiveCount; primitive += gl_WorkGroupSize.x) {
             uint baseVertex = primitive * 3u;
             gl_PrimitiveTriangleIndicesEXT[primitive] = uvec3(baseVertex, baseVertex + 1u, baseVertex + 2u);
         }
     } else {
-        for (uint quad = 0u; quad < vertexCount / 4u; quad++) {
+        uint quadCount = vertexCount / 4u;
+        for (uint quad = lane; quad < quadCount; quad += gl_WorkGroupSize.x) {
             uint baseVertex = quad * 4u;
             uint primitive = quad * 2u;
             gl_PrimitiveTriangleIndicesEXT[primitive] = uvec3(baseVertex, baseVertex + 1u, baseVertex + 2u);

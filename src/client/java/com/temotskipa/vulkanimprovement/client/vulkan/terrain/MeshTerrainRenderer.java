@@ -112,9 +112,9 @@ public final class MeshTerrainRenderer {
         this.releasedSections.increment();
     }
 
-    public boolean tryDrawMeshTerrain(TerrainDrawContext context) {
+    public DrawResult tryDrawMeshTerrain(TerrainDrawContext context) {
         if (!canAttemptMeshTerrain(context)) {
-            return false;
+            return DrawResult.passThrough();
         }
         DescriptorHeapTerrainResources terrainResources = DescriptorHeapTerrainResources.get();
         if (context.useVisibleDrawList()) {
@@ -124,61 +124,69 @@ public final class MeshTerrainRenderer {
         return tryDrawLayerMeshTerrain(context, terrainResources);
     }
 
-    private boolean tryDrawLayerMeshTerrain(TerrainDrawContext context, DescriptorHeapTerrainResources terrainResources) {
+    private DrawResult tryDrawLayerMeshTerrain(TerrainDrawContext context, DescriptorHeapTerrainResources terrainResources) {
         int totalMeshletCount = terrainResources.meshletsUploaded();
 
         int layerOrdinal = context.layerOrdinal();
+        if (!TerrainLayerReplacementPolicy.canReplaceLayer(layerOrdinal)) {
+            this.meshReplacementRefusals.increment();
+            return DrawResult.passThrough();
+        }
         int meshletOffset = layerOrdinal < 0 ? 0 : terrainResources.meshletOffsetForLayer(layerOrdinal);
         int meshletCount = layerOrdinal < 0 ? totalMeshletCount : terrainResources.meshletCountForLayer(layerOrdinal);
         if (meshletCount <= 0) {
             this.meshReplacementRefusals.increment();
-            return false;
+            return DrawResult.passThrough();
         }
         if (!TerrainRenderContext.markDispatchRequired(layerOrdinal)) {
             this.meshReplacementDuplicateCancellations.increment();
-            return false;
+            return DrawResult.passThrough();
         }
 
         TerrainMeshTaskDispatch dispatch = TerrainRenderContext.pollPreparedLayerDispatch(layerOrdinal);
-        if (dispatch == null || !dispatch.ready()) {
-            dispatch = TerrainMeshTaskDispatch.fullLayer(meshletOffset, layerOrdinal, meshletCount);
-            DescriptorHeapTerrainResources.TerrainWorkQueueUpload workQueue = terrainResources.writeLayerWorkQueue(meshletOffset, layerOrdinal, Math.min(meshletCount, TerrainMeshTaskDispatch.MAX_DIRECT_TASKS));
-            if (workQueue.ready()) {
-                dispatch = TerrainMeshTaskDispatch.cpuWorkQueue(workQueue, layerOrdinal, meshletCount);
-            }
+        if (dispatch != null) {
+            return drawPreparedLayerDispatches(context, dispatch, terrainResources);
         }
-        if (drawMeshTerrain(context, dispatch, terrainResources)) {
-            return true;
+        if (!context.drawAllCapturedTerrainLayers()) {
+            this.meshReplacementRefusals.increment();
+            return DrawResult.passThrough();
         }
-
-        this.meshReplacementRefusals.increment();
-        return false;
+        return drawFullLayerSegments(context, terrainResources, meshletOffset, layerOrdinal, meshletCount);
     }
 
-    private boolean tryDrawVisibleMeshTerrain(TerrainDrawContext context, DescriptorHeapTerrainResources terrainResources) {
+    private DrawResult tryDrawVisibleMeshTerrain(TerrainDrawContext context, DescriptorHeapTerrainResources terrainResources) {
         int layerOrdinal = context.layerOrdinal();
-        if (layerOrdinal < 0) {
+        if (!TerrainLayerReplacementPolicy.canReplaceLayer(layerOrdinal)) {
             this.meshReplacementRefusals.increment();
-            return false;
+            return DrawResult.passThrough();
+        }
+
+        TerrainMeshTaskDispatch preparedDispatch = TerrainRenderContext.pollPreparedLayerDispatch(layerOrdinal);
+        if (preparedDispatch != null) {
+            if (preparedDispatch.ready() && drawMeshTerrain(context, preparedDispatch, terrainResources)) {
+                return visibleDrawResult();
+            }
+            this.meshReplacementRefusals.increment();
+            return DrawResult.passThrough();
         }
 
         List<SectionMeshletStore.MeshletRange> ranges = visibleMeshletRanges(context.draws(), layerOrdinal);
         if (ranges == null || ranges.isEmpty()) {
             this.meshReplacementRefusals.increment();
-            return false;
+            return DrawResult.passThrough();
         }
 
         TerrainMeshTaskDispatch dispatch = buildVisibleMeshDispatch(terrainResources, ranges, layerOrdinal);
         if (dispatch == null) {
             this.meshReplacementRefusals.increment();
-            return false;
+            return DrawResult.passThrough();
         }
         if (drawMeshTerrain(context, dispatch, terrainResources)) {
-            return true;
+            return visibleDrawResult();
         }
 
         this.meshReplacementRefusals.increment();
-        return false;
+        return DrawResult.passThrough();
     }
 
     private boolean canAttemptMeshTerrain(TerrainDrawContext context) {
@@ -210,6 +218,44 @@ public final class MeshTerrainRenderer {
         return drawCount == 0 ? List.of() : ranges;
     }
 
+    private DrawResult drawPreparedLayerDispatches(TerrainDrawContext context, TerrainMeshTaskDispatch firstDispatch, DescriptorHeapTerrainResources terrainResources) {
+        boolean drewAny = false;
+        TerrainMeshTaskDispatch dispatch = firstDispatch;
+        while (dispatch != null) {
+            if (!dispatch.ready() || !drawMeshTerrain(context, dispatch, terrainResources)) {
+                this.meshReplacementRefusals.increment();
+                return drewAny ? DrawResult.fallbackAfterPartialDraw() : DrawResult.passThrough();
+            }
+            drewAny = true;
+            dispatch = TerrainRenderContext.pollPreparedLayerDispatch(context.layerOrdinal());
+        }
+        return drewAny ? visibleDrawResult() : DrawResult.passThrough();
+    }
+
+    private DrawResult visibleDrawResult() {
+        return TerrainRendererDebugConfig.strictMeshTerrainReplacement() ? DrawResult.replaced() : DrawResult.overlayOnly();
+    }
+
+    private DrawResult drawFullLayerSegments(TerrainDrawContext context, DescriptorHeapTerrainResources terrainResources, int meshletOffset, int layerOrdinal, int meshletCount) {
+        int segments = TerrainLayerReplacementPolicy.dispatchCountForMeshlets(meshletCount);
+        boolean drewAny = false;
+        for (int segment = 0; segment < segments; segment++) {
+            int segmentOffset = TerrainLayerReplacementPolicy.segmentMeshletOffset(meshletOffset, segment);
+            int segmentCount = TerrainLayerReplacementPolicy.segmentMeshletCount(meshletCount, segment);
+            TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.fullLayer(segmentOffset, layerOrdinal, segmentCount);
+            if (!dispatch.ready()) {
+                this.meshReplacementRefusals.increment();
+                return drewAny ? DrawResult.fallbackAfterPartialDraw() : DrawResult.passThrough();
+            }
+            if (!drawMeshTerrain(context, dispatch, terrainResources)) {
+                this.meshReplacementRefusals.increment();
+                return drewAny ? DrawResult.fallbackAfterPartialDraw() : DrawResult.passThrough();
+            }
+            drewAny = true;
+        }
+        return drewAny ? DrawResult.overlayOnly() : DrawResult.passThrough();
+    }
+
     private void prepareTerrainCommands(ChunkSectionsToRender chunkSectionsToRender, ChunkSectionLayerGroup group) {
         if (group == null || !TerrainRendererDebugConfig.replaceVanillaTerrain()) {
             return;
@@ -227,28 +273,6 @@ public final class MeshTerrainRenderer {
 
         if (!TerrainRendererDebugConfig.drawAllCapturedTerrainLayers()) {
             prepareVisibleTerrainCommands(chunkSectionsToRender, group, terrainResources);
-            return;
-        }
-
-        for (ChunkSectionLayer layer : group.layers()) {
-            int layerOrdinal = layer.ordinal();
-            int meshletOffset = terrainResources.meshletOffsetForLayer(layerOrdinal);
-            int meshletCount = terrainResources.meshletCountForLayer(layerOrdinal);
-            if (meshletCount <= 0) {
-                continue;
-            }
-
-            DescriptorHeapTerrainResources.TerrainWorkQueueUpload workQueue = terrainResources.writeLayerWorkQueue(meshletOffset, layerOrdinal, Math.min(meshletCount, TerrainMeshTaskDispatch.MAX_DIRECT_TASKS));
-            TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.cpuWorkQueue(workQueue, layerOrdinal, meshletCount);
-            DescriptorHeapTerrainResources.TerrainMeshTaskCommandUpload commandUpload = terrainResources.reserveMeshTaskCommand(dispatch.taskCount());
-            TerrainMeshTaskDispatch preparedDispatch = dispatch.withIndirectCommand(commandUpload);
-            if (preparedDispatch.ready() && preparedDispatch.usesWorkQueue() && preparedDispatch.usesIndirectCommand() && MeshShaderTerrainProgram.get().prepareWorkQueueIndirectCommand(preparedDispatch)) {
-                TerrainRenderContext.enqueuePreparedLayerDispatch(layerOrdinal, preparedDispatch);
-                this.meshReplacementPreparedGpuCommands.increment();
-                this.meshReplacementPreparedFullLayerGpuCommands.increment();
-            } else {
-                this.meshReplacementPreparedGpuCommandRefusals.increment();
-            }
         }
     }
 
@@ -259,6 +283,9 @@ public final class MeshTerrainRenderer {
         }
 
         for (ChunkSectionLayer layer : group.layers()) {
+            if (!TerrainLayerReplacementPolicy.canReplaceLayer(layer)) {
+                continue;
+            }
             int layerOrdinal = layer.ordinal();
             Int2ObjectOpenHashMap<List<RenderPass.Draw<GpuBufferSlice[]>>> drawGroup = chunkSectionsToRender.drawGroupsPerLayer().get(layer);
             if (drawGroup == null || drawGroup.isEmpty()) {
@@ -445,5 +472,28 @@ public final class MeshTerrainRenderer {
     @SuppressWarnings("unused")
     RendererLifecycleState currentLifecycleState() {
         return RendererCoreServices.get().currentLifecycleState();
+    }
+
+    public record DrawResult(boolean drewMeshTerrain, boolean cancelVanillaDraw) {
+        private static final DrawResult PASS_THROUGH = new DrawResult(false, false);
+        private static final DrawResult REPLACED = new DrawResult(true, true);
+        private static final DrawResult OVERLAY_ONLY = new DrawResult(true, false);
+        private static final DrawResult FALLBACK_AFTER_PARTIAL_DRAW = new DrawResult(true, false);
+
+        static DrawResult passThrough() {
+            return PASS_THROUGH;
+        }
+
+        static DrawResult replaced() {
+            return REPLACED;
+        }
+
+        static DrawResult overlayOnly() {
+            return OVERLAY_ONLY;
+        }
+
+        static DrawResult fallbackAfterPartialDraw() {
+            return FALLBACK_AFTER_PARTIAL_DRAW;
+        }
     }
 }

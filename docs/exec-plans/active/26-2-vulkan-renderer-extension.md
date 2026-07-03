@@ -17,10 +17,10 @@ LOD, and RT/PT work can share.
 ## Current Baseline
 
 - The project now targets stable Minecraft `26.2`, Fabric API
-  `0.153.0+26.2`, Fabric Loader `0.19.3`, and Loom `1.17.13`.
-- The Gradle wrapper is `9.6.1`; the 2026-06-28, 2026-06-29, and
-  2026-07-01 dependency
-  checks found no newer stable 26.2 Fabric/Minecraft pins to take.
+  `0.154.0+26.2`, Fabric Loader `0.19.3`, and Loom `1.17.13`.
+- The Gradle wrapper is `9.6.1`; the 2026-07-03 dependency check found Gradle,
+  Fabric Loader, and Loom release pins current, kept Minecraft on the stable
+  26.2 target, and bumped Fabric API from `0.153.0+26.2` to `0.154.0+26.2`.
 - The completed dependency update is recorded in
   [../completed/minecraft-26-2-dependency-update.md](../completed/minecraft-26-2-dependency-update.md).
 - The previous terrain renderer foundation is recorded in
@@ -104,6 +104,52 @@ LOD, and RT/PT work can share.
   texture bindings with mip counts and sampler anisotropy so the next full-res
   nearest-filter capture can distinguish expected filtering from VIM sampling
   errors.
+- 2026-07-01: Max-feature record-first jitter at
+  `run/debugbridge-recordings/req_33/recording.jpg` showed mesh replacement is
+  still broken under the all-on diagnostic profile: voids/slabs/blur plus
+  transparency and environment screen-effect failures. Counters included
+  `meshReplacementTaskTruncations=5431` and visible translucent replacement
+  draws. The current containment is to split full-layer diagnostic dispatches,
+  consume prepared visible mesh-task commands, and keep visible translucent
+  terrain/effects on vanilla until their compatibility contract exists.
+- 2026-07-01: The follow-up max-feature capture
+  `run/debugbridge-recordings/req_41/recording.jpg` proved the first
+  containment pass removed task truncation and visible translucent replacement
+  (`meshReplacementTaskTruncations=0`, translucent replacement draw calls 0),
+  but the picture still had large sky/void gaps. Runtime counters showed
+  `terrainWorkQueueRingWraps=1625`, so full-layer `drawAll` now uses direct
+  segmented mesh-task dispatches instead of terrain work-queue records.
+- 2026-07-03: After direct full-layer dispatch, `run/debugbridge-recordings/req_4/recording.jpg`
+  stayed coherent under record-first jitter and counters showed no task
+  truncation, no translucent replacement draws, no work-queue uploads, and no
+  work-queue wraps. Same-camera nearest/no-mipmap screenshots still proved the
+  remaining blur is a VIM mesh replacement bug rather than the recorder or
+  vanilla filtering: vanilla/capture-bootstrap
+  `C:\Users\ttski\AppData\Local\Temp\debugbridge-screenshot-7625853700353120804.jpg`
+  was sharp, while VIM mesh replacement
+  `C:\Users\ttski\AppData\Local\Temp\debugbridge-screenshot-9545749426833000992.jpg`
+  had soft close terrain and over-expanded cutout vegetation. The terrain
+  fragment shader now uses `texelFetch` for the block atlas, applies a strict
+  cutout threshold for alpha-masked materials, and reports sampler min/mag
+  filters plus max LOD in texture-binding diagnostics.
+- 2026-07-03: Runtime retest after the 32-lane mesh shader and 128/32 meshlet
+  granularity changes recorded `run/debugbridge-recordings/req_63/recording.jpg`.
+  Strict visible replacement still produced large nearby terrain holes despite
+  `meshReplacementTaskTruncations=0`, no prepared-dispatch leaks, and no
+  translucent replacement. Same-camera vanilla/capture screenshot
+  `C:\Users\ttski\AppData\Local\Temp\debugbridge-screenshot-13566611726126501905.jpg`
+  was intact. The containment is to wire `vim.strictMeshTerrainReplacement`
+  into vanilla cancellation, default it to `false`, and keep visible mesh draws
+  as overlay/fallback diagnostics until coverage is proven.
+- 2026-07-03: Patched non-strict retest
+  `run/debugbridge-recordings/req_72/recording.jpg` kept vanilla terrain visible
+  under record-first jitter with `rendererMode=mesh-overlay-vanilla-fallback`
+  and `strictMeshTerrainReplacement=false`. Counters remained clean for
+  truncation, translucent replacement, and prepared-dispatch leaks, but
+  `terrainWorkQueueUploads=31962` and `terrainWorkQueueRingWraps=501` confirm
+  the current visible mesh path is still too expensive and should be replaced by
+  a GPU-resident visibility/residency architecture rather than tuned further as
+  the final design.
 - 2026-06-29: `RendererCoreServices` now owns renderer-wide lifecycle state,
   domain reset, present pacing, and fragment shading-rate controller
   configuration. `MeshTerrainRenderer` delegates those shared services while
@@ -289,13 +335,18 @@ compatibility gates.
 - Keep visible mesh replacement, work-queue mesh-task dispatch, and
   GPU-generated mesh-task indirect commands behind explicit user/developer
   opt-in flags.
+- Keep vanilla cancellation behind `vim.strictMeshTerrainReplacement=false` by
+  default; a successful visible mesh dispatch is diagnostic evidence, not proof
+  of complete replacement coverage.
 - Keep the CPU visible-meshlet ring disabled by default and treat it as a
   validation or emergency fallback only.
 - Add GPU-side culling and compaction only behind explicit capability/profile
   gates, with counters for skipped, culled, emitted, truncated, and fallback
   work.
-- Preserve vanilla ordering constraints, translucent opt-in behavior, and
-  strict replacement diagnostics.
+- Preserve vanilla ordering constraints and strict replacement diagnostics.
+  Visible mesh replacement currently covers replaceable solid/cutout terrain;
+  translucent terrain, underwater overlays, and environment screen effects stay
+  vanilla-rendered until their compatibility contract is implemented.
 
 ### 8. Stage Non-Terrain Domains Without Premature Replacement
 
@@ -375,10 +426,15 @@ compatibility gates.
   - log capability profile and renderer diagnostics;
   - include video-settings and texture-binding diagnostics when investigating
     texture quality, especially `textureFiltering`, `mipmapLevels`, and
-    captured sampler `maxAnisotropy`;
+    captured sampler `maxAnisotropy`, `minFilter`, `magFilter`, and `maxLod`;
   - enter an overworld scene with `vim.enableTerrainCaptureBootstrap=true` or
     `vim.replaceVanillaTerrain=true`;
   - test mesh terrain replacement only as an explicit opt-in validation path;
+  - test strict cancellation separately from mesh diagnostic overlay/fallback
+    mode by toggling `vim.strictMeshTerrainReplacement`;
+  - run an all-on VIM diagnostic profile, but assert that uncontracted
+    translucent/environment effects remain vanilla-rendered rather than visibly
+    mesh-replaced;
   - capture screenshot/video evidence;
   - test fallback flags and validation-only flags;
   - record validation-layer warnings where available.
@@ -397,6 +453,21 @@ compatibility gates.
   reproduction in the visible work-queue path. The later render-pass state and
   vanilla camera-projection fixes improve the path, but they are not yet enough
   evidence to make mesh replacement the default.
+- The 2026-07-01 max-feature recording shows visible translucent replacement
+  and full-layer task truncation are still outside the safe replacement
+  contract. Solid/cutout terrain can continue to advance behind opt-in flags;
+  translucent terrain and environment screen effects stay vanilla until a
+  separate compatibility contract exists.
+- Full-layer `drawAll` is a diagnostic solid/cutout path. It must not use the
+  shared terrain work queue because the layer meshlet range is already
+  contiguous and the work queue can wrap heavily under all-on stress.
+- Strict visible replacement is still unsafe after `req_63`; the current
+  Nvidium-inspired GPU-driven direction should replace per-draw cancellation
+  with GPU-resident scene data, visibility/compaction, explicit residency, and
+  indirect command production before vanilla terrain is canceled by default.
+- VIM mesh replacement must sample the block atlas with texel fetch and strict
+  cutout alpha until runtime evidence proves parity with vanilla texture
+  sharpness and vegetation masking.
 - GPU-authoritative vanilla world generation remains out of scope for the
   default client mod path, but C2ME plus `c2me-ocl` is an acceptable optional
   integration track for explicit GPU-authoritative worldgen experiments.

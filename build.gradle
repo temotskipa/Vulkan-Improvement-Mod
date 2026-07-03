@@ -593,6 +593,24 @@ tasks.register("checkShaderBuildPipelineInvariants", JavaExec) {
     mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.terrain.ShaderBuildPipelineInvariantCheck"
 }
 
+tasks.register("checkTerrainFragmentShaderSamplingInvariants", JavaExec) {
+    group = "verification"
+    description = "Runs pure Java terrain fragment shader sampling invariant checks."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainFragmentShaderSamplingInvariantCheck"
+}
+
+tasks.register("checkTerrainMeshShaderPerformanceInvariants", JavaExec) {
+    group = "verification"
+    description = "Runs pure Java terrain mesh shader performance invariant checks."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainMeshShaderPerformanceInvariantCheck"
+}
+
 tasks.register("checkMaterialRecordInvariants", JavaExec) {
     group = "verification"
     description = "Runs pure Java GPU material record layout and flag invariant checks."
@@ -747,6 +765,8 @@ tasks.named("check") {
     dependsOn tasks.named("checkRendererDomainInvariants")
     dependsOn tasks.named("checkRendererCoreServiceInvariants")
     dependsOn tasks.named("checkShaderBuildPipelineInvariants")
+    dependsOn tasks.named("checkTerrainFragmentShaderSamplingInvariants")
+    dependsOn tasks.named("checkTerrainMeshShaderPerformanceInvariants")
     dependsOn tasks.named("checkMaterialRecordInvariants")
     dependsOn tasks.named("checkTerrainMaterialInvariants")
     dependsOn tasks.named("checkRuntimeProfileInvariants")

@@ -29,7 +29,7 @@ public final class TerrainRendererDebugConfig {
     private static volatile boolean terrainCaptureBootstrap = booleanProperty("vim.enableTerrainCaptureBootstrap", false);
     private static volatile boolean meshTranslucentTerrainEnabled = booleanProperty("vim.enableMeshTranslucentTerrain", false);
     private static volatile boolean meshletFrustumCullingEnabled = booleanProperty("vim.enableMeshletFrustumCulling", false);
-    private static volatile boolean strictMeshTerrainReplacement = booleanProperty("vim.strictMeshTerrainReplacement", true);
+    private static volatile boolean strictMeshTerrainReplacement = booleanProperty("vim.strictMeshTerrainReplacement", false);
     private static volatile boolean vanillaChunkVisibilityFadeEnabled = booleanProperty("vim.enableVanillaChunkVisibilityFade", true);
     private static volatile boolean drawAllCapturedTerrainLayers = booleanProperty("vim.drawAllCapturedTerrainLayers", false);
 
@@ -165,7 +165,7 @@ public final class TerrainRendererDebugConfig {
 
     public static String rendererMode() {
         if (replaceVanillaTerrain()) {
-            return "mesh-required";
+            return strictMeshTerrainReplacement() ? "mesh-strict-replacement" : "mesh-overlay-vanilla-fallback";
         }
         return terrainCaptureBootstrapEnabled() ? "mesh-capture-bootstrap" : "vanilla";
     }
@@ -194,6 +194,10 @@ public final class TerrainRendererDebugConfig {
 
     public static boolean meshTranslucentTerrainEnabled() {
         return meshTranslucentTerrainEnabled;
+    }
+
+    public static String translucentLayerMode() {
+        return meshTranslucentTerrainEnabled() ? "metadata-capture-vanilla-visible" : "vanilla-translucent-fallback";
     }
 
     public static void setMeshTranslucentTerrainEnabled(boolean enabled) {
@@ -256,7 +260,7 @@ public final class TerrainRendererDebugConfig {
                 + ", enableVanillaChunkVisibilityFade=" + vanillaChunkVisibilityFadeEnabled()
                 + ", drawAllCapturedTerrainLayers=" + drawAllCapturedTerrainLayers()
                 + ", defaultSolidCutoutLayerMode=" + solidCutoutLayerMode()
-                + ", defaultTranslucentLayerMode=" + (meshTranslucentTerrainEnabled() ? "mesh-experimental-translucent" : "vanilla-translucent-fallback")
+                + ", defaultTranslucentLayerMode=" + translucentLayerMode()
                 + ", dumpCapabilities=" + dumpCapabilities()
                 + ", disableFragmentShadingRate=" + !fragmentShadingRateEnabled()
                 + ", disablePresentPacing=" + disablePresentPacing()
@@ -274,7 +278,7 @@ public final class TerrainRendererDebugConfig {
 
     private static String solidCutoutLayerMode() {
         if (replaceVanillaTerrain()) {
-            return "mesh";
+            return strictMeshTerrainReplacement() ? "mesh-strict-replacement" : "mesh-overlay-vanilla-fallback";
         }
         return terrainCaptureBootstrapEnabled() ? "capture-bootstrap" : "vanilla";
     }

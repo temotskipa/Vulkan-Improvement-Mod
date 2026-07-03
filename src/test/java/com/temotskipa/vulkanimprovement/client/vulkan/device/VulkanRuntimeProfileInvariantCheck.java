@@ -70,7 +70,7 @@ public final class VulkanRuntimeProfileInvariantCheck {
         require("ready".equals(selectedPaths.get("rtPtReadiness")), "supported profile must report RT/PT readiness");
         require(Boolean.TRUE.equals(selectedPaths.get("presentPacing")), "supported profile must enable present pacing");
         require(Boolean.TRUE.equals(selectedPaths.get("fragmentShadingRate")), "supported profile must enable fragment shading rate");
-        require("mesh-required".equals(selectedPaths.get("terrainRendererMode")), "supported profile must preserve terrain renderer mode");
+        require("mesh-overlay-vanilla-fallback".equals(selectedPaths.get("terrainRendererMode")), "supported profile must preserve terrain renderer mode");
         require(!disabledReasons.containsKey("deviceGeneratedCommandsExtension"), "supported profile must not explain enabled DGC as disabled");
         require(!disabledReasons.containsKey("rayTracingPipelineExtension"), "supported profile must not explain enabled RT pipeline as disabled");
         require(!disabledReasons.containsKey("descriptorBuffer"), "supported profile must not disable selected descriptor buffer");
@@ -98,7 +98,7 @@ public final class VulkanRuntimeProfileInvariantCheck {
                 "test vendor",
                 "test driver",
                 "1.4.0",
-                "mesh-required",
+                "mesh-overlay-vanilla-fallback",
                 true,
                 true,
                 true,

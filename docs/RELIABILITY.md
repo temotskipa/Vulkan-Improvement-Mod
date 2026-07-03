@@ -131,10 +131,13 @@ validation on real Vulkan hardware.
   wrap/fence-blocked state. Terrain work-queue and mesh-task indirect-command
   diagnostics include upload, GPU-reservation, drop, wrap, and fence-deferral
   counters. When mesh replacement is explicitly enabled, normal visible-list
-  replacement mirrors vanilla's per-layer draw-group order and translucent
-  reversal; the older visible meshlet ring is retained as an
-  unavailable/capacity fallback. GPU-generated mesh-task command preparation is
-  disabled by default behind `vim.enableGpuGeneratedMeshTaskCommands=false`.
+  replacement mirrors vanilla's per-layer draw-group order for replaceable
+  solid/cutout terrain. Translucent terrain, water-like transparency, and
+  environment screen effects remain vanilla-rendered until their
+  blending/fog/effect-ordering contract exists; the older visible meshlet ring
+  is retained as an unavailable/capacity fallback. GPU-generated mesh-task
+  command preparation is disabled by default behind
+  `vim.enableGpuGeneratedMeshTaskCommands=false`.
   Mesh replacement restores the native vanilla Vulkan graphics pipeline and
   marks descriptors dirty after each cancelled vanilla draw, so later fallback
   draws in the same terrain render pass cannot continue under VIM's mesh
@@ -167,14 +170,14 @@ validation on real Vulkan hardware.
 | `vim.requireVulkanBackend`             | `false`     | Require Vulkan backend behavior where checked.        |
 | `vim.validationDescriptorBufferOnly`   | `false`     | Validate descriptor-buffer-only mode.                 |
 | `vim.waitIdleBeforeTerrainUpload`      | `false`     | Force device idle before terrain upload.              |
-| `vim.replaceVanillaTerrain`            | `false`     | Replace vanilla terrain with mesh rendering. Validation-gated opt-in while visible work-queue draws can device-loss on long runs. |
+| `vim.replaceVanillaTerrain`            | `false`     | Draw mesh-shader solid/cutout terrain diagnostics; vanilla remains visible unless strict cancellation is enabled. |
 | `vim.enableTerrainCaptureBootstrap`   | `false`     | Mirror vanilla terrain into VIM GPU data without visible replacement. Heavy diagnostic opt-in. |
-| `vim.enableMeshTranslucentTerrain`     | `false`     | Enable experimental translucent mesh terrain.         |
+| `vim.enableMeshTranslucentTerrain`     | `false`     | Capture/upload experimental translucent terrain metadata; visible translucent replacement is safety-gated to vanilla. |
 | `vim.enableMeshletFrustumCulling`      | `false`     | Enable meshlet frustum culling.                       |
 | `vim.enableGpuGeneratedMeshTaskCommands` | `false`   | Enable experimental GPU-generated mesh-task indirect commands. |
-| `vim.strictMeshTerrainReplacement`     | `true`      | Prefer strict replacement semantics.                  |
+| `vim.strictMeshTerrainReplacement`     | `false`     | Let mesh terrain cancel vanilla solid/cutout draws; strict validation mode only until visible coverage is proven. |
 | `vim.enableVanillaChunkVisibilityFade` | `true`      | Keep vanilla chunk visibility fade behavior.          |
-| `vim.drawAllCapturedTerrainLayers`     | `false`     | Draw all captured terrain layers.                     |
+| `vim.drawAllCapturedTerrainLayers`     | `false`     | Draw all captured solid/cutout terrain layers; heavy diagnostic mode split above the mesh-task limit. |
 | `vim.terrainFragmentShadingRate`       | `1`         | Terrain fragment shading-rate value.                  |
 | `vim.initialSectionCapacity`           | `32768`     | Initial section storage capacity.                     |
 | `vim.initialMeshletCapacity`           | `524288`    | Initial meshlet storage capacity.                     |
@@ -202,15 +205,23 @@ Record manual validation results here before treating the mesh terrain path as g
 | 2026-06-29 | Windows 11   | RTX 4070 Ti | 610.62 / 1.4.341 | 1.4.341 | 26.2 | 0.153.0+26.2 | capture/bootstrap pass | Historical implicit capture/bootstrap with `vim.replaceVanillaTerrain=false`; survived past the prior crash window with zero mesh-task dispatches and vanilla terrain visible. Recording: `run/debugbridge-recordings/req_31/recording.jpg`. As of 2026-07-01, repeat this mode with `vim.enableTerrainCaptureBootstrap=true`. |
 | 2026-06-29 | Windows 11   | RTX 4070 Ti | 610.62 / 1.4.341 | 1.4.341 | 26.2 | 0.153.0+26.2 | mesh replacement visual fail | Record-first camera jitter with `vim.replaceVanillaTerrain=true` reproduced dark/green slab-like terrain corruption before the render-pass/projection fixes. Recording: `run/debugbridge-recordings/req_17/recording.jpg`. |
 | 2026-06-29 | Windows 11   | RTX 4070 Ti | 610.62 / 1.4.341 | 1.4.341 | 26.2 | 0.153.0+26.2 | mesh replacement jitter smoke pass with texture-quality caveat | After native pipeline restoration and vanilla camera-projection push constants, record-first jitter no longer showed the slab corruption. Counters reached 37,257 mesh draw calls and 46.0M mesh tasks with zero descriptor misses; recordings: `run/debugbridge-recordings/req_34/recording.jpg`, `run/debugbridge-recordings/req_43/recording.jpg`. `req_43` close textures look blurred, but the run used `textureFiltering:2` / `mipmapLevels:4` and the artifact is a downscaled contact sheet. Keep mesh replacement opt-in until a longer soak and full-resolution nearest-filter texture capture validate device-loss and texture-quality risk. |
+| 2026-07-01 | Windows 11   | RTX 4070 Ti | 610.62 / 1.4.341 | 1.4.341 | 26.2 | 0.153.0+26.2 | max-feature mesh replacement fail | Max-feature record-first jitter with `vim.replaceVanillaTerrain=true`, `vim.enableTerrainCaptureBootstrap=true`, `vim.enableMeshTranslucentTerrain=true`, `vim.drawAllCapturedTerrainLayers=true`, GPU-generated commands, CPU fallback, FSR, and present pacing reproduced voids/slabs/blur plus transparency and environment screen-effect failures. Recording: `run/debugbridge-recordings/req_33/recording.jpg`. Counters showed `meshReplacementTasks=987097888`, `meshReplacementTaskTruncations=5431`, solid/cutout layers above the direct task limit, and translucent replacement draws. Containment requires segmented full-layer dispatches, consumed prepared visible commands, and vanilla fallback for visible translucent terrain/effects. |
+| 2026-07-01 | Windows 11   | RTX 4070 Ti | 610.62 / 1.4.341 | 1.4.341 | 26.2 | 0.153.0+26.2 | max-feature mesh replacement still visual fail after truncation containment | After segmentation and translucent fallback, record-first jitter at `run/debugbridge-recordings/req_41/recording.jpg` still showed large sky/void gaps and black terrain fragments. Counters improved to `meshReplacementTaskTruncations=0`, `meshReplacementDrawCallsByLayer={solid=7860, cutout=7723, translucent=0}`, and no prepared-dispatch leaks, but `terrainWorkQueueRingWraps=1625` showed the full-layer diagnostic path was still churning the shared terrain work queue. Follow-up fix: full-layer `drawAll` uses direct segmented mesh-task dispatches instead of work-queue records. |
+| 2026-07-03 | Windows 11   | RTX 4070 Ti | 610.62 / 1.4.341 | 1.4.341 | 26.2 | 0.153.0+26.2 | max-feature mesh replacement texture-quality fail | After direct full-layer dispatch, record-first jitter at `run/debugbridge-recordings/req_4/recording.jpg` no longer showed the void/slab corruption and counters stayed at `meshReplacementTaskTruncations=0`, `meshReplacementDrawCallsByLayer={solid=2812, cutout=2721, translucent=0}`, `terrainWorkQueueUploads=0`, and `terrainWorkQueueRingWraps=0`. Same-camera screenshots with nearest/no-mipmap settings still proved a VIM texture-quality bug: vanilla/capture-bootstrap `C:\Users\ttski\AppData\Local\Temp\debugbridge-screenshot-7625853700353120804.jpg` was sharp, while VIM mesh replacement `C:\Users\ttski\AppData\Local\Temp\debugbridge-screenshot-9545749426833000992.jpg` had soft nearby terrain and over-expanded cutout vegetation. Follow-up fix: block-atlas sampling uses `texelFetch`, alpha-masked materials use a strict cutout threshold, and texture-binding diagnostics report sampler min/mag filters plus max LOD. |
+| 2026-07-03 | Windows 11   | RTX 4070 Ti | 610.62 / 1.4.341 | 1.4.341 | 26.2 | 0.154.0+26.2 | strict visible replacement hole regression | After the 32-lane mesh shader and 128/32 meshlet granularity changes, record-first jitter at `run/debugbridge-recordings/req_63/recording.jpg` still showed large nearby terrain holes when strict visible replacement canceled vanilla terrain. Counters ruled out the older overflow causes: `meshReplacementTaskTruncations=0`, `meshReplacementDrawCallsByLayer={solid=38963, cutout=38275, translucent=0}`, `meshReplacementPreparedDispatchQueueLeaks=0`, and no visible translucent replacement. Same-camera vanilla/capture screenshot `C:\Users\ttski\AppData\Local\Temp\debugbridge-screenshot-13566611726126501905.jpg` was intact. Containment: `vim.strictMeshTerrainReplacement=false` by default, visible mesh draws restore state but leave vanilla terrain visible, and strict cancellation remains a validation-only failure reproducer until visible coverage is proven. |
+| 2026-07-03 | Windows 11   | RTX 4070 Ti | 610.62 / 1.4.341 | 1.4.341 | 26.2 | 0.154.0+26.2 | non-strict mesh overlay containment pass | Patched non-strict record-first jitter at `run/debugbridge-recordings/req_72/recording.jpg` kept vanilla terrain visible through the same camera-jitter class that broke `req_63`. Runtime mode was `mesh-overlay-vanilla-fallback` with `strictMeshTerrainReplacement=false`; counters showed `meshReplacementTaskTruncations=0`, `meshReplacementDrawCallsByLayer={solid=16290, cutout=15672, translucent=0}`, `meshReplacementPreparedDispatchQueueLeaks=0`, `terrainWorkQueueUploads=31962`, and `terrainWorkQueueRingWraps=501`. This is containment only: overlay artifacts and work-queue cost remain, so strict replacement stays validation-gated pending a GPU-resident visibility/residency redesign. |
 
-Required JVM flags to record per run: `vim.replaceVanillaTerrain`, `vim.enableTerrainCaptureBootstrap`, `vim.enableMeshTranslucentTerrain`, `vim.drawAllCapturedTerrainLayers`, `vim.disableFragmentShadingRate`, `vim.validationDescriptorBufferOnly`, `vim.allowCpuVisibleMeshletFallback`, `vim.enableGpuGeneratedMeshTaskCommands`.
+Required JVM flags to record per run: `vim.replaceVanillaTerrain`, `vim.enableTerrainCaptureBootstrap`, `vim.enableMeshTranslucentTerrain`, `vim.strictMeshTerrainReplacement`, `vim.drawAllCapturedTerrainLayers`, `vim.disableFragmentShadingRate`, `vim.validationDescriptorBufferOnly`, `vim.allowCpuVisibleMeshletFallback`, `vim.enableGpuGeneratedMeshTaskCommands`.
 
-Required runtime counters to inspect: `meshReplacementDrawCalls`, `meshReplacementWorkQueueDrawCalls`, `meshReplacementTasks`, `meshReplacementPreparedGpuCommands`, `meshReplacementPreparedGpuCommandDisabled`, `meshReplacementPreparedDispatchQueueLeaks`, `meshReplacementVisibleMeshletFallbackRefusals`, `meshReplacementPreparedGpuCommandRefusals`.
+Required runtime counters to inspect: `meshReplacementDrawCalls`, `meshReplacementWorkQueueDrawCalls`, `meshReplacementTasks`, `meshReplacementTaskTruncations`, `meshReplacementDrawCallsByLayer`, `meshReplacementPreparedGpuCommands`, `meshReplacementPreparedGpuCommandDisabled`, `meshReplacementPreparedDispatchQueueLeaks`, `meshReplacementVisibleMeshletFallbackRefusals`, `meshReplacementPreparedGpuCommandRefusals`.
 
 Required texture-quality diagnostics to inspect when evaluating close terrain:
 `videoSettings.quality.textureFiltering`, `videoSettings.quality.mipmapLevels`,
 `videoSettings.quality.maxAnisotropyValue`, and
-`terrainRenderer.descriptorHeap.textureBindings.Sampler0.maxAnisotropy`.
+`terrainRenderer.descriptorHeap.textureBindings.Sampler0.maxAnisotropy`,
+`terrainRenderer.descriptorHeap.textureBindings.Sampler0.minFilter`,
+`terrainRenderer.descriptorHeap.textureBindings.Sampler0.magFilter`, and
+`terrainRenderer.descriptorHeap.textureBindings.Sampler0.maxLod`.
 
 ## Manual Runtime Checklist
 
