@@ -73,6 +73,86 @@ dedicated integration plan decides what belongs in committed docs.
 - Dependency pins remain stable Minecraft 26.2 unless a separate version-port
   plan is opened.
 
+## Resident Page Ownership
+
+GPU-world residency needs one renderer-owned page manager for terrain pages.
+The page manager owns the page ID lifecycle, allocation, retire, and free
+sequence. `GpuWorldSectionUpdate` revisions identify the CPU-authoritative
+source revision that each canonical page mirrors, while render-only LOD pages,
+predictive pages, visibility buffers, and command buffers keep separate
+canonical-vs-LOD authority labels.
+
+Resident page diagnostics must distinguish allocated bytes, used bytes,
+fragmentation, live page count, evictions, over-budget refusals, and pending
+retirements. Page memory can be reused only after resource retirement proves no
+in-flight GPU work still references the old page.
+
+## Queue Overflow Policy
+
+Every GPU append target and generated-command stream needs a documented soft
+limit, hard limit, frame behavior, fallback path, and diagnostics. This includes
+visible-section outputs, traversal request queues, opaque/cutout command
+buffers, future translucent buckets, and fallback command paths.
+
+Overflow behavior must prefer vanilla terrain visibility over strict
+replacement. If a queue saturates, the frame may skip the GPU replacement path,
+clamp diagnostic output, or schedule a rebuild, but it must report the queue,
+limit, dropped or fallback count, and fallback reason.
+
+## Synchronization Model
+
+Terrain residency uploads, command generation, diagnostic readback, and page
+retirement must be frame-delayed and fence-backed. Upload streams and GPU
+barriers move dirty section data into resident pages; readback streams expose
+diagnostics after the relevant frame has retired.
+
+Runtime decisions must not depend on immediate GPU readback. Diagnostic
+readback must not be frame-critical, and resource frees or page decommit must
+wait until the retirement service proves the page is no longer referenced by
+submitted GPU work.
+
+## Invalidation Matrix
+
+Dirty-event ingestion must cover block updates, neighbor exposure changes,
+section unloads, render-distance changes, resource reloads,
+material-table revision changes, world clear/device loss, and LOD parent/child
+propagation.
+
+LOD parent/child propagation must be explicit rather than relying on a full
+cache reset.
+
+Each invalidation source must state which page classes are stale, whether the
+page can be patched or must be rebuilt, how the `GpuWorldSectionUpdate`
+revision changes, and which fallback reason is reported while the resident page
+is missing or stale.
+
+## Material And Texture Compatibility
+
+The block atlas/lightmap source of truth remains Minecraft's resource state.
+GPU material records must preserve render layer, atlas identity, lightmap use,
+per-face tint or color metadata, alpha/cutout policy, sampler and mip state,
+and fallback classification.
+
+Resource reloads and resource-pack revision invalidation must retire or rebuild
+affected material and page records before strict cancellation can use them.
+Texture diagnostics must include sampler filtering, mip limits, anisotropy,
+atlas revision, and fallback material counts.
+
+## Traversal Diagnostics
+
+GPU traversal and compaction must report HIZ built/invalid dimensions,
+traversal input count, output count, request queue saturation, visibility frame
+IDs, and fallback reason when traversal data is incomplete. Visibility counters
+are validation evidence only until they are tied to resident page revisions and
+material compatibility.
+
+Generated-command readiness is separate from mesh dispatch success. Strict
+vanilla cancellation requires complete visible coverage, no queue overflow, no
+stale page revisions, and material compatibility, not only successful indirect
+dispatch.
+
+Strict terrain replacement allows no stale page revisions.
+
 ## Steps
 
 1. Keep the current mesh terrain path as overlay/fallback diagnostics.

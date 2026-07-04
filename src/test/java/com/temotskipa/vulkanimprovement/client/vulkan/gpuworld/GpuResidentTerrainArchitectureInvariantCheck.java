@@ -143,6 +143,51 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
                 "architecture plan must reject the current per-draw upload shape");
         requireContains(architecturePlan, "External source links and named reference projects stay in ignored local notes under `docs/local/`",
                 "architecture plan must route named external references to ignored local notes");
+        requireContains(architecturePlan, "## Resident Page Ownership",
+                "architecture plan must define resident page ownership");
+        requireContains(architecturePlan, "page ID lifecycle",
+                "architecture plan must define page ID lifecycle");
+        requireContains(architecturePlan, "canonical-vs-LOD authority labels",
+                "architecture plan must preserve authority labels across page classes");
+        requireContains(architecturePlan, "## Queue Overflow Policy",
+                "architecture plan must define queue overflow policy");
+        requireContains(architecturePlan, "soft", "architecture plan must require a soft overflow limit");
+        requireContains(architecturePlan, "hard limit", "architecture plan must require a hard overflow limit");
+        requireContains(architecturePlan, "frame behavior", "architecture plan must require overflow frame behavior");
+        requireContains(architecturePlan, "fallback path", "architecture plan must require overflow fallback path");
+        requireContains(architecturePlan, "diagnostics", "architecture plan must require overflow diagnostics");
+        requireContains(architecturePlan, "## Synchronization Model",
+                "architecture plan must define frame-safe synchronization");
+        requireContains(architecturePlan, "readback must not be frame-critical",
+                "architecture plan must keep diagnostics off the frame-critical path");
+        requireContains(architecturePlan, "## Invalidation Matrix",
+                "architecture plan must include invalidation matrix");
+        requireContains(architecturePlan, "block updates", "architecture plan must cover block update invalidation");
+        requireContains(architecturePlan, "neighbor exposure changes", "architecture plan must cover neighbor exposure invalidation");
+        requireContains(architecturePlan, "section unloads", "architecture plan must cover section unload invalidation");
+        requireContains(architecturePlan, "render-distance changes", "architecture plan must cover render-distance invalidation");
+        requireContains(architecturePlan, "resource reloads", "architecture plan must cover resource reload invalidation");
+        requireContains(architecturePlan, "material-table revision changes", "architecture plan must cover material-table invalidation");
+        requireContains(architecturePlan, "world clear/device loss", "architecture plan must cover world clear and device loss invalidation");
+        requireContains(architecturePlan, "LOD parent/child propagation", "architecture plan must cover LOD propagation invalidation");
+        requireContains(architecturePlan, "## Material And Texture Compatibility",
+                "architecture plan must define material and texture compatibility");
+        requireContains(architecturePlan, "block atlas/lightmap source of truth",
+                "architecture plan must preserve vanilla texture authority");
+        requireContains(architecturePlan, "resource-pack revision invalidation",
+                "architecture plan must handle resource-pack changes");
+        requireContains(architecturePlan, "## Traversal Diagnostics",
+                "architecture plan must define traversal diagnostics");
+        requireContains(architecturePlan, "HIZ built/invalid dimensions",
+                "architecture plan must require HIZ diagnostics");
+        requireContains(architecturePlan, "vanilla cancellation requires complete visible coverage",
+                "architecture plan must separate command readiness from strict cancellation");
+        requireContains(architecturePlan, "no queue overflow",
+                "architecture plan must require no queue overflow before strict cancellation");
+        requireContains(architecturePlan, "no stale page revisions",
+                "architecture plan must require fresh page revisions before strict cancellation");
+        requireContains(architecturePlan, "material compatibility",
+                "architecture plan must require material compatibility before strict cancellation");
     }
 
     private static void checkRuntimeSafetyBoundaries(String architecturePlan) {
