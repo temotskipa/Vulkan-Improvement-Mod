@@ -172,6 +172,11 @@ LOD, and RT/PT work can share.
   opt-in state, renderer/worldgen authority labels, fallback reason, and
   metadata relationship without adding Fabric metadata relationships or changing
   terrain capture, mesh replacement, or GPU-world page authority.
+- 2026-07-04: `GpuWorldVisibilityCommandStats` now exposes the diagnostic
+  contract for visibility compaction inputs, culled/visible sections, emitted
+  indirect commands, command overflows, and fallback commands. The counters are
+  reported through `GpuWorldDatabase.asMap()` but explicitly do not authorize
+  vanilla terrain cancellation.
 - 2026-06-29: `RendererCoreServices` now owns renderer-wide lifecycle state,
   domain reset, present pacing, and fragment shading-rate controller
   configuration. `MeshTerrainRenderer` delegates those shared services while

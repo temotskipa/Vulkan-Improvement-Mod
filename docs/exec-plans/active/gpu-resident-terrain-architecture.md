@@ -24,6 +24,9 @@ The first contract-level code for this direction is:
   visibility compaction work, and indirect command generation work.
 - `GpuWorldResidencyStats`, which reports live page counts, used resident
   bytes, eviction totals, and over-budget refusals by page kind.
+- `GpuWorldVisibilityCommandStats`, which reports visibility compaction input,
+  culled, and visible section counts plus emitted, overflowed, and fallback
+  indirect command counts without granting vanilla-cancellation authority.
 - `GpuWorldPipelineStage`, which documents the pipeline stages that move from
   authoritative ingest to persistent residency, visibility compaction, and
   indirect command generation.

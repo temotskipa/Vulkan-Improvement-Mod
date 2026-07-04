@@ -19,6 +19,7 @@ public final class GpuWorldDatabase {
     private final AtomicLong updateSequence = new AtomicLong();
     private final AtomicLong clearCount = new AtomicLong();
     private final GpuWorldResidencyStats residencyStats = GpuWorldResidencyStats.empty(DEFAULT_RESIDENCY_BUDGET);
+    private final GpuWorldVisibilityCommandStats visibilityCommandStats = GpuWorldVisibilityCommandStats.empty();
     private GpuWorldMaterialTableContract materialTable = GpuWorldMaterialTableContract.terrainDefault();
     private GpuWorldSectionUpdate lastUpdate;
     private String lastClearReason = "not cleared";
@@ -46,6 +47,7 @@ public final class GpuWorldDatabase {
         this.lastUpdate = null;
         this.lastClearReason = "not cleared";
         this.residencyStats.resetForTests();
+        this.visibilityCommandStats.resetForTests();
         GpuWorldTerrainLayerDirectory.get().resetForTests();
     }
     
@@ -110,6 +112,13 @@ public final class GpuWorldDatabase {
         }
         return Optional.of(current.asUpdate(current.lastUpdateSequence(), layerOrdinal));
     }
+
+    public synchronized void recordVisibilityCommandPass(long inputSectionCount, long culledSectionCount,
+                                                         long visibleSectionCount, long emittedCommandCount,
+                                                         long overflowedCommandCount, long fallbackCommandCount) {
+        this.visibilityCommandStats.recordPass(inputSectionCount, culledSectionCount, visibleSectionCount,
+                emittedCommandCount, overflowedCommandCount, fallbackCommandCount);
+    }
     
     @SuppressWarnings("unused")
     synchronized GpuWorldMaterialTableContract advanceMaterialTableRevision() {
@@ -132,6 +141,7 @@ public final class GpuWorldDatabase {
         map.put("materialTable", this.materialTable.asMap());
         map.put("residencyBudget", DEFAULT_RESIDENCY_BUDGET.asMap());
         map.put("residencyStats", this.residencyStats.asMap());
+        map.put("visibilityCommandStats", this.visibilityCommandStats.asMap());
         map.put("pipelineStages", GpuWorldPipelineStage.asDiagnostics());
         map.put("terrainLayerDirectory", GpuWorldTerrainLayerDirectory.get().asMap());
         map.put("pageKinds", pageKindsMap());

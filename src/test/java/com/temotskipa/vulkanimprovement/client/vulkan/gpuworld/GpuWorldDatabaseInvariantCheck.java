@@ -21,6 +21,7 @@ public final class GpuWorldDatabaseInvariantCheck {
         checkPageKindAuthority();
         checkResidencyBudgetAndPipelineDiagnostics();
         checkResidencyStatsContract();
+        checkVisibilityCommandStatsContract();
         checkCaptureReleaseAndClearDiagnostics();
         checkCanonicalUpdatesInvalidateAccelerationPages();
         checkInvalidUpdatesRejected();
@@ -94,6 +95,8 @@ public final class GpuWorldDatabaseInvariantCheck {
         Map<String, Object> databaseDiagnostics = GpuWorldDatabase.get().asMap();
         require(databaseDiagnostics.containsKey("residencyBudget"), "GPU world diagnostics must expose the residency budget");
         require(databaseDiagnostics.containsKey("residencyStats"), "GPU world diagnostics must expose residency usage stats");
+        require(databaseDiagnostics.containsKey("visibilityCommandStats"),
+                "GPU world diagnostics must expose visibility compaction and indirect command generation stats");
         require(databaseDiagnostics.containsKey("pipelineStages"), "GPU world diagnostics must expose pipeline stages");
     }
 
@@ -122,6 +125,43 @@ public final class GpuWorldDatabaseInvariantCheck {
 
         requireThrows(() -> stats.tryReservePage(GpuWorldPageKind.RENDER_ONLY_LOD, -1L), "negative page bytes must be rejected");
         requireThrows(() -> stats.releasePage(GpuWorldPageKind.RENDER_ONLY_LOD, 1L), "releasing a missing page must be rejected");
+    }
+
+    private static void checkVisibilityCommandStatsContract() {
+        GpuWorldVisibilityCommandStats stats = GpuWorldVisibilityCommandStats.empty();
+        stats.recordPass(12L, 5L, 7L, 6L, 1L, 1L);
+        stats.recordPass(3L, 1L, 2L, 2L, 0L, 0L);
+
+        Map<String, Object> diagnostics = stats.asMap();
+        require(diagnostics.get("compactionPassCount").equals(2L), "compaction pass count must be reported");
+        require(diagnostics.get("inputSectionCount").equals(15L), "input section count must accumulate");
+        require(diagnostics.get("culledSectionCount").equals(6L), "culled section count must accumulate");
+        require(diagnostics.get("visibleSectionCount").equals(9L), "visible section count must accumulate");
+        require(diagnostics.get("emittedCommandCount").equals(8L), "emitted command count must accumulate");
+        require(diagnostics.get("overflowedCommandCount").equals(1L), "overflowed command count must accumulate");
+        require(diagnostics.get("fallbackCommandCount").equals(1L), "fallback command count must accumulate");
+        require(Boolean.TRUE.equals(diagnostics.get("gpuResidentInputRequired")),
+                "visibility command stats must require GPU-resident inputs");
+        require(Boolean.FALSE.equals(diagnostics.get("affectsVanillaCancellation")),
+                "diagnostic counters must not authorize vanilla cancellation");
+
+        Map<?, ?> lastPass = child(diagnostics, "lastPass");
+        require(lastPass.get("inputSectionCount").equals(3L), "last pass must expose input sections");
+        require(lastPass.get("visibleSectionCount").equals(2L), "last pass must expose visible sections");
+        require(lastPass.get("emittedCommandCount").equals(2L), "last pass must expose emitted commands");
+
+        GpuWorldDatabase database = GpuWorldDatabase.get();
+        database.resetForTests();
+        database.recordVisibilityCommandPass(4L, 1L, 3L, 2L, 1L, 0L);
+        Map<?, ?> databaseStats = child(database.asMap(), "visibilityCommandStats");
+        require(databaseStats.get("inputSectionCount").equals(4L), "database diagnostics must expose visibility inputs");
+        require(databaseStats.get("overflowedCommandCount").equals(1L), "database diagnostics must expose command overflows");
+        database.resetForTests();
+        require(child(database.asMap(), "visibilityCommandStats").get("compactionPassCount").equals(0L),
+                "test reset must clear visibility command stats");
+
+        requireThrows(() -> stats.recordPass(-1L, 0L, 0L, 0L, 0L, 0L), "negative visibility counts must be rejected");
+        requireThrows(() -> stats.recordPass(1L, 1L, 1L, 0L, 0L, 0L), "culled plus visible sections cannot exceed inputs");
     }
 
     private static void checkCaptureReleaseAndClearDiagnostics() {

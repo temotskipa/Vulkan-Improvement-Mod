@@ -57,7 +57,8 @@ validation on real Vulkan hardware.
   for GPU resource retirement diagnostic aggregation.
 - `.\gradlew.bat checkGpuWorldDatabaseInvariants` runs pure Java checks for GPU
   world section identity, revision rollover, material-table bounds, page-kind
-  authority labels, and dirty update diagnostics.
+  authority labels, residency stats, visibility/command counters, and dirty
+  update diagnostics.
 - `.\gradlew.bat checkTerrainDispatchInvariants` runs pure Java checks for
   terrain mesh-task dispatch records, direct task limits, visible-list source
   selection, and diagnostic fields.
@@ -121,8 +122,9 @@ validation on real Vulkan hardware.
   opt-ins until their runtime cost and device-loss risk are fixed.
 - `RendererDiagnostics.bugReport()` exposes `gpuWorldDatabase`, a CPU-authority
   GPU-world mirror contract with live section count, update sequence, clear
-  count, material-table contract, page-kind authority labels, the last dirty
-  update, and sampled section diagnostics.
+  count, material-table contract, page-kind authority labels, residency budget
+  and usage stats, visibility compaction and indirect-command counters, the
+  last dirty update, and sampled section diagnostics.
 - `RendererDiagnostics.bugReport()` exposes `rtPtAccelerationData`, a
   diagnostics-only acceleration-data registry. Allocation is disabled, while
   registered/live/retired page counts, pending rebuilds, device-lost clears,
@@ -219,6 +221,15 @@ Record manual validation results here before treating the mesh terrain path as g
 Required JVM flags to record per run: `vim.replaceVanillaTerrain`, `vim.enableTerrainCaptureBootstrap`, `vim.enableMeshTranslucentTerrain`, `vim.strictMeshTerrainReplacement`, `vim.drawAllCapturedTerrainLayers`, `vim.disableFragmentShadingRate`, `vim.validationDescriptorBufferOnly`, `vim.allowCpuVisibleMeshletFallback`, `vim.enableGpuGeneratedMeshTaskCommands`.
 
 Required runtime counters to inspect: `meshReplacementDrawCalls`, `meshReplacementWorkQueueDrawCalls`, `meshReplacementTasks`, `meshReplacementTaskTruncations`, `meshReplacementDrawCallsByLayer`, `meshReplacementPreparedGpuCommands`, `meshReplacementPreparedGpuCommandDisabled`, `meshReplacementPreparedDispatchQueueLeaks`, `meshReplacementVisibleMeshletFallbackRefusals`, `meshReplacementPreparedGpuCommandRefusals`.
+
+Required GPU-world counters to inspect when validating the resident terrain
+path: `gpuWorldDatabase.residencyStats.livePageCount`,
+`gpuWorldDatabase.residencyStats.overBudgetRefusals`,
+`gpuWorldDatabase.visibilityCommandStats.inputSectionCount`,
+`gpuWorldDatabase.visibilityCommandStats.visibleSectionCount`,
+`gpuWorldDatabase.visibilityCommandStats.emittedCommandCount`,
+`gpuWorldDatabase.visibilityCommandStats.overflowedCommandCount`, and
+`gpuWorldDatabase.visibilityCommandStats.fallbackCommandCount`.
 
 Required texture-quality diagnostics to inspect when evaluating close terrain:
 `videoSettings.quality.textureFiltering`, `videoSettings.quality.mipmapLevels`,

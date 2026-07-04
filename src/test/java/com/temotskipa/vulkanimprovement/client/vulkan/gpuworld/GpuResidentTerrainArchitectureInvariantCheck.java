@@ -16,6 +16,7 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
     private static final Path DATABASE_SOURCE = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/gpuworld/GpuWorldDatabase.java");
     private static final Path RESIDENCY_BUDGET_SOURCE = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/gpuworld/GpuWorldResidencyBudget.java");
     private static final Path RESIDENCY_STATS_SOURCE = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/gpuworld/GpuWorldResidencyStats.java");
+    private static final Path VISIBILITY_COMMAND_STATS_SOURCE = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/gpuworld/GpuWorldVisibilityCommandStats.java");
     private static final Path PIPELINE_STAGE_SOURCE = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/gpuworld/GpuWorldPipelineStage.java");
     private static final Path LAYER_DIRECTORY_SOURCE = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/gpuworld/GpuWorldTerrainLayerDirectory.java");
 
@@ -33,6 +34,7 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
         String databaseSource = read(DATABASE_SOURCE);
         String residencyBudgetSource = read(RESIDENCY_BUDGET_SOURCE);
         String residencyStatsSource = read(RESIDENCY_STATS_SOURCE);
+        String visibilityCommandStatsSource = read(VISIBILITY_COMMAND_STATS_SOURCE);
         String pipelineStageSource = read(PIPELINE_STAGE_SOURCE);
         String layerDirectorySource = read(LAYER_DIRECTORY_SOURCE);
 
@@ -42,7 +44,7 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
         checkGpuResidentRequirements(architecturePlan);
         checkRuntimeSafetyBoundaries(architecturePlan);
         checkCodeContracts(databaseSource, residencyBudgetSource, residencyStatsSource,
-                pipelineStageSource, layerDirectorySource);
+                visibilityCommandStatsSource, pipelineStageSource, layerDirectorySource);
     }
 
     private static void checkPlanWiring(String architecturePlan, String extensionPlan,
@@ -121,6 +123,8 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
                 "architecture plan must name the residency-budget contract");
         requireContains(architecturePlan, "GpuWorldResidencyStats",
                 "architecture plan must name the residency-stats contract");
+        requireContains(architecturePlan, "GpuWorldVisibilityCommandStats",
+                "architecture plan must name the visibility/command-stats contract");
         requireContains(architecturePlan, "GpuWorldPipelineStage",
                 "architecture plan must name the pipeline-stage contract");
         requireContains(architecturePlan, "GpuWorldTerrainLayerDirectory",
@@ -153,7 +157,7 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
     }
 
     private static void checkCodeContracts(String databaseSource, String residencyBudgetSource,
-                                           String residencyStatsSource,
+                                           String residencyStatsSource, String visibilityCommandStatsSource,
                                            String pipelineStageSource, String layerDirectorySource) {
         requireContains(residencyBudgetSource, "public record GpuWorldResidencyBudget",
                 "GPU world residency budget contract must exist");
@@ -175,6 +179,24 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
                 "residency stats must expose live page counts by page kind");
         requireContains(residencyStatsSource, "usedBytesByKind",
                 "residency stats must expose used bytes by page kind");
+        requireContains(visibilityCommandStatsSource, "public final class GpuWorldVisibilityCommandStats",
+                "visibility command stats contract must exist");
+        requireContains(visibilityCommandStatsSource, "recordPass",
+                "visibility command stats must record compaction passes");
+        requireContains(visibilityCommandStatsSource, "inputSectionCount",
+                "visibility command stats must expose input sections");
+        requireContains(visibilityCommandStatsSource, "culledSectionCount",
+                "visibility command stats must expose culled sections");
+        requireContains(visibilityCommandStatsSource, "visibleSectionCount",
+                "visibility command stats must expose visible sections");
+        requireContains(visibilityCommandStatsSource, "emittedCommandCount",
+                "visibility command stats must expose emitted commands");
+        requireContains(visibilityCommandStatsSource, "overflowedCommandCount",
+                "visibility command stats must expose overflowed commands");
+        requireContains(visibilityCommandStatsSource, "fallbackCommandCount",
+                "visibility command stats must expose fallback commands");
+        requireContains(visibilityCommandStatsSource, "\"affectsVanillaCancellation\", false",
+                "visibility command stats must remain diagnostic until strict replacement is proven");
         requireContains(pipelineStageSource, "public enum GpuWorldPipelineStage",
                 "GPU world pipeline stage contract must exist");
         requireContains(pipelineStageSource, "PERSISTENT_RESIDENCY",
@@ -193,6 +215,8 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
                 "GPU world diagnostics must expose the residency budget");
         requireContains(databaseSource, "residencyStats",
                 "GPU world diagnostics must expose residency usage stats");
+        requireContains(databaseSource, "visibilityCommandStats",
+                "GPU world diagnostics must expose visibility command stats");
         requireContains(databaseSource, "GpuWorldPipelineStage.asDiagnostics()",
                 "GPU world diagnostics must expose the pipeline stages");
         requireContains(databaseSource, "terrainLayerDirectory",
