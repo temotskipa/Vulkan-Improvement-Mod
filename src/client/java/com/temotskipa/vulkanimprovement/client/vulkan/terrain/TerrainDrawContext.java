@@ -1,33 +1,24 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
-import com.mojang.renderpearl.api.commands.RenderPass;
-import com.mojang.renderpearl.backend.vulkan.VulkanRenderPipeline;
 import org.jspecify.annotations.Nullable;
 import org.lwjgl.vulkan.VkCommandBuffer;
 
-import java.util.Collection;
-import java.util.List;
 import java.util.Objects;
 
-public record TerrainDrawContext(VkCommandBuffer commandBuffer, @Nullable VulkanRenderPipeline vanillaPipeline,
-                                 boolean hasDepth, boolean terrainPass, int layerOrdinal,
-                                 Collection<? extends RenderPass.Draw<?>> draws, boolean drawAllCapturedTerrainLayers) {
-    private static final Collection<RenderPass.Draw<?>> NO_DRAWS = List.of();
-
+/**
+ * One terrain layer about to be drawn inside Minecraft's terrain render pass.
+ */
+public record TerrainDrawContext(VkCommandBuffer commandBuffer, @Nullable TerrainPipelineState vanillaPipeline,
+                                 boolean terrainPass, int layerOrdinal, boolean drawAllCapturedTerrainLayers) {
     public TerrainDrawContext {
         Objects.requireNonNull(commandBuffer, "commandBuffer");
-        draws = draws == null ? NO_DRAWS : draws;
     }
 
-    public static TerrainDrawContext current(VkCommandBuffer commandBuffer, @Nullable VulkanRenderPipeline vanillaPipeline, boolean hasDepth, Collection<? extends RenderPass.Draw<?>> draws) {
-        return new TerrainDrawContext(commandBuffer, vanillaPipeline, hasDepth, TerrainRenderContext.isTerrainPass(), TerrainRenderContext.currentLayerOrdinal(), draws, TerrainRendererDebugConfig.drawAllCapturedTerrainLayers());
-    }
-
-    public boolean hasDrawList() {
-        return !this.draws.isEmpty();
+    public static TerrainDrawContext forLayer(TerrainRenderPassAccess renderPass, int layerOrdinal) {
+        return new TerrainDrawContext(renderPass.vim$commandBuffer(), TerrainPipelineState.of(renderPass.vim$boundPipeline()), TerrainRenderContext.isTerrainPass(), layerOrdinal, TerrainRendererDebugConfig.drawAllCapturedTerrainLayers());
     }
 
     public boolean useVisibleDrawList() {
-        return !this.drawAllCapturedTerrainLayers && hasDrawList();
+        return !this.drawAllCapturedTerrainLayers;
     }
 }

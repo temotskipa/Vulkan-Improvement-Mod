@@ -86,8 +86,9 @@ validation on real Vulkan hardware.
   diagnostics-only, default off, Video Settings-visible, and free of Fabric
   hard or soft dependency metadata.
 - `.\gradlew.bat checkMinecraft26MixinTargetManifest` runs pure Java source
-  checks that the mcdev-confirmed Minecraft `26.2` mixin target manifest,
-  client mixin config, and source-level hook tokens stay aligned.
+  checks that the mcdev-confirmed mixin target manifest for the Minecraft
+  version in `gradle.properties`, the client mixin config, and source-level
+  hook tokens stay aligned, and that no configured mixin is missing from it.
 - `.\gradlew.bat build` compiles and packages the mod.
 - `.\gradlew.bat runClient` starts a local Minecraft client for manual runtime
   validation.
@@ -217,6 +218,7 @@ Record manual validation results here before treating the mesh terrain path as g
 | 2026-07-03 | Windows 11   | RTX 4070 Ti | 610.62 / 1.4.341 | 1.4.341 | 26.2 | 0.153.0+26.2 | max-feature mesh replacement texture-quality fail | After direct full-layer dispatch, record-first jitter at `run/debugbridge-recordings/req_4/recording.jpg` no longer showed the void/slab corruption and counters stayed at `meshReplacementTaskTruncations=0`, `meshReplacementDrawCallsByLayer={solid=2812, cutout=2721, translucent=0}`, `terrainWorkQueueUploads=0`, and `terrainWorkQueueRingWraps=0`. Same-camera screenshots with nearest/no-mipmap settings still proved a VIM texture-quality bug: vanilla/capture-bootstrap `C:\Users\ttski\AppData\Local\Temp\debugbridge-screenshot-7625853700353120804.jpg` was sharp, while VIM mesh replacement `C:\Users\ttski\AppData\Local\Temp\debugbridge-screenshot-9545749426833000992.jpg` had soft nearby terrain and over-expanded cutout vegetation. Follow-up fix: block-atlas sampling uses `texelFetch`, alpha-masked materials use a strict cutout threshold, and texture-binding diagnostics report sampler min/mag filters plus max LOD. |
 | 2026-07-03 | Windows 11   | RTX 4070 Ti | 610.62 / 1.4.341 | 1.4.341 | 26.2 | 0.154.0+26.2 | strict visible replacement hole regression | After the 32-lane mesh shader and 128/32 meshlet granularity changes, record-first jitter at `run/debugbridge-recordings/req_63/recording.jpg` still showed large nearby terrain holes when strict visible replacement canceled vanilla terrain. Counters ruled out the older overflow causes: `meshReplacementTaskTruncations=0`, `meshReplacementDrawCallsByLayer={solid=38963, cutout=38275, translucent=0}`, `meshReplacementPreparedDispatchQueueLeaks=0`, and no visible translucent replacement. Same-camera vanilla/capture screenshot `C:\Users\ttski\AppData\Local\Temp\debugbridge-screenshot-13566611726126501905.jpg` was intact. Containment: `vim.strictMeshTerrainReplacement=false` by default, visible mesh draws restore state but leave vanilla terrain visible, and strict cancellation remains a validation-only failure reproducer until visible coverage is proven. |
 | 2026-07-03 | Windows 11   | RTX 4070 Ti | 610.62 / 1.4.341 | 1.4.341 | 26.2 | 0.154.0+26.2 | non-strict mesh overlay containment pass | Patched non-strict record-first jitter at `run/debugbridge-recordings/req_72/recording.jpg` kept vanilla terrain visible through the same camera-jitter class that broke `req_63`. Runtime mode was `mesh-overlay-vanilla-fallback` with `strictMeshTerrainReplacement=false`; counters showed `meshReplacementTaskTruncations=0`, `meshReplacementDrawCallsByLayer={solid=16290, cutout=15672, translucent=0}`, `meshReplacementPreparedDispatchQueueLeaks=0`, `terrainWorkQueueUploads=31962`, and `terrainWorkQueueRingWraps=501`. This is containment only: overlay artifacts and work-queue cost remain, so strict replacement stays validation-gated pending a GPU-resident visibility/residency redesign. |
+| 2026-10-13 | Windows 11   | RTX 4070 Ti | 616.92 / 1.4.351 | 1.4.351 | 26.4-snapshot-3 | 0.162.2+26.4 | port: default, capture, overlay and strict pass in short runs | First runs of the 26.4 port. Default mode reaches a world on Minecraft's multi-draw-indirect path. Capture covered every visible section layer. Strict replacement with `vim.enableGpuGeneratedMeshTaskCommands=true` through record-first camera jitter: `run/debugbridge-recordings/26.4-snapshot-3/strict-gpu-commands-jitter-100.jpg` (100 frames at 100 ms, nine camera turns) shows coherent terrain; `meshReplacementTaskTruncations=0`, `meshReplacementPreparedDispatchQueueLeaks=0`, `meshReplacementRefusals=0`, `meshReplacementDrawCallsByLayer={solid=4082, cutout=4082, translucent=0}`. Also passes without multi-draw-indirect (`strict-draw-separate.jpg`). Present pacing on the Vulkan swapchain: `presentIdsSubmitted=888`, `presentWaitFailures=0`. This is ten seconds, not the long pass the mesh bugfix plan asks for, and texture quality was not compared at full resolution. |
 
 Required JVM flags to record per run: `vim.replaceVanillaTerrain`, `vim.enableTerrainCaptureBootstrap`, `vim.enableMeshTranslucentTerrain`, `vim.strictMeshTerrainReplacement`, `vim.drawAllCapturedTerrainLayers`, `vim.disableFragmentShadingRate`, `vim.validationDescriptorBufferOnly`, `vim.allowCpuVisibleMeshletFallback`, `vim.enableGpuGeneratedMeshTaskCommands`.
 
@@ -241,7 +243,9 @@ Required texture-quality diagnostics to inspect when evaluating close terrain:
 
 ## Manual Runtime Checklist
 
-1. Start with `.\gradlew.bat runClient`.
+1. Start with `.\gradlew.bat runClient`. On Windows Minecraft 26.4 presents
+   through DXGI by default; set `RENDERPEARL_DISABLE_DXGI_PRESENT=1` to
+   validate present pacing, which acts on the Vulkan swapchain only.
 2. Confirm the client preserves the selected graphics API; OpenGL-active
    sessions should not expose VIM renderer options or terrain capture hooks,
    while active Vulkan sessions keep VIM renderer options visible even after

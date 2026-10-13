@@ -6,18 +6,11 @@ import com.temotskipa.vulkanimprovement.client.vulkan.runtime.RendererCoreServic
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.RendererDomainObserver;
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.RendererDomainRegistry;
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.RendererLifecycleState;
-import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
-import com.mojang.renderpearl.api.commands.RenderPass;
 import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
-import com.mojang.renderpearl.backend.vulkan.VulkanRenderPipeline;
-import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayerGroup;
-import net.minecraft.client.renderer.chunk.ChunkSectionsToRender;
 import org.jspecify.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -83,21 +76,56 @@ public final class MeshTerrainRenderer {
         return map;
     }
 
-    public void observeTerrainGroup(ChunkSectionsToRender chunkSectionsToRender, ChunkSectionLayerGroup group) {
+    /**
+     * Called when Minecraft starts drawing a group of terrain layers, before it sets a pipeline.
+     * Wireframe terrain is left to Minecraft: its pipelines are not ones the mesh path stands in for.
+     */
+    public void observeTerrainGroup(ChunkSectionLayerGroup group, boolean wireframe) {
         if (!TerrainRendererDebugConfig.terrainCaptureEnabled()) {
             return;
         }
         this.terrainGroupCalls.increment();
-        TerrainRenderContext.setCurrentTerrainGroup(chunkSectionsToRender, group);
-        DescriptorHeapTerrainResources.get().uploadDirtyTerrainData();
-        prepareTerrainCommands(chunkSectionsToRender, group);
+        TerrainRenderContext.setCurrentTerrainGroup(group);
+        TerrainRenderContext.setReplacementAllowed(!wireframe);
     }
 
-    public void finalizeTerrainGroupObservation() {
-        int unconsumedPreparedDispatches = TerrainRenderContext.unconsumedPreparedDispatchCount();
+    /**
+     * Called once Minecraft has collected the frame's section layers and before it opens a render
+     * pass. Minecraft hands the terrain renderers a pass that is already open, and neither an
+     * upload nor the compute step that writes mesh-task commands can be recorded inside one, so
+     * everything the layers need from the GPU this frame is prepared here.
+     */
+    public void prepareVisibleFrame() {
+        if (!TerrainRendererDebugConfig.terrainCaptureEnabled()) {
+            return;
+        }
+        DescriptorHeapTerrainResources.get().uploadDirtyTerrainData();
+        int unconsumedPreparedDispatches = TerrainRenderContext.beginPreparedFrame();
         if (unconsumedPreparedDispatches > 0) {
             this.meshReplacementPreparedDispatchQueueLeaks.add(unconsumedPreparedDispatches);
         }
+        prepareTerrainCommands();
+    }
+
+    /**
+     * Called for each layer once Minecraft has bound that layer's pipeline. Draws the layer's
+     * meshlets and says whether Minecraft's own draws for the layer are to be skipped.
+     */
+    public boolean drawTerrainLayer(ChunkSectionLayer layer, Object renderPass) {
+        if (!TerrainRenderContext.isTerrainPass() || !TerrainRendererDebugConfig.replaceVanillaTerrain()) {
+            return false;
+        }
+        TerrainRenderContext.setCurrentLayer(layer);
+        TerrainRenderPassAccess access = TerrainRenderPassAccess.of(renderPass);
+        if (access == null) {
+            this.meshReplacementRefusals.increment();
+            return false;
+        }
+        DrawResult drawResult = tryDrawMeshTerrain(TerrainDrawContext.forLayer(access, layer.ordinal()));
+        if (drawResult.drewMeshTerrain()) {
+            access.vim$restoreVanillaPipeline();
+        }
+        return drawResult.cancelVanillaDraw();
     }
 
     public void recordSectionCapture(int vertexBytes, int indexBytes, int meshlets, long cpuNanos) {
@@ -163,34 +191,29 @@ public final class MeshTerrainRenderer {
 
         TerrainMeshTaskDispatch preparedDispatch = TerrainRenderContext.pollPreparedLayerDispatch(layerOrdinal);
         if (preparedDispatch != null) {
-            if (preparedDispatch.ready() && drawMeshTerrain(context, preparedDispatch, terrainResources)) {
-                return visibleDrawResult();
-            }
-            this.meshReplacementRefusals.increment();
-            return DrawResult.passThrough();
+            return drawPreparedLayerDispatches(context, preparedDispatch, terrainResources);
         }
 
-        List<SectionMeshletStore.MeshletRange> ranges = visibleMeshletRanges(context.draws(), layerOrdinal);
+        List<SectionMeshletStore.MeshletRange> ranges = SectionMeshletStore.visibleMeshletRanges(layerOrdinal);
         if (ranges == null || ranges.isEmpty()) {
             this.meshReplacementRefusals.increment();
             return DrawResult.passThrough();
         }
 
-        TerrainMeshTaskDispatch dispatch = buildVisibleMeshDispatch(terrainResources, ranges, layerOrdinal);
-        if (dispatch == null) {
-            this.meshReplacementRefusals.increment();
-            return DrawResult.passThrough();
+        boolean drewAny = false;
+        for (List<SectionMeshletStore.MeshletRange> batch : TerrainLayerReplacementPolicy.dispatchBatches(ranges)) {
+            TerrainMeshTaskDispatch dispatch = buildVisibleMeshDispatch(terrainResources, batch, layerOrdinal);
+            if (dispatch == null || !drawMeshTerrain(context, dispatch, terrainResources)) {
+                this.meshReplacementRefusals.increment();
+                return drewAny ? DrawResult.fallbackAfterPartialDraw() : DrawResult.passThrough();
+            }
+            drewAny = true;
         }
-        if (drawMeshTerrain(context, dispatch, terrainResources)) {
-            return visibleDrawResult();
-        }
-
-        this.meshReplacementRefusals.increment();
-        return DrawResult.passThrough();
+        return visibleDrawResult();
     }
 
     private boolean canAttemptMeshTerrain(TerrainDrawContext context) {
-        if (!TerrainRendererDebugConfig.replaceVanillaTerrain() || !context.terrainPass()) {
+        if (!TerrainRendererDebugConfig.replaceVanillaTerrain() || !context.terrainPass() || !TerrainRenderContext.replacementAllowed()) {
             return false;
         }
         DescriptorHeapTerrainResources terrainResources = DescriptorHeapTerrainResources.get();
@@ -199,23 +222,6 @@ public final class MeshTerrainRenderer {
             return false;
         }
         return true;
-    }
-
-    private List<SectionMeshletStore.MeshletRange> visibleMeshletRanges(Collection<? extends RenderPass.Draw<?>> draws, int layerOrdinal) {
-        List<SectionMeshletStore.MeshletRange> ranges = new ArrayList<>(draws.size());
-        int drawCount = 0;
-        for (RenderPass.Draw<?> draw : draws) {
-            if (draw.indexCount() <= 0) {
-                continue;
-            }
-            drawCount++;
-            SectionMeshletStore.MeshletRange range = SectionMeshletStore.meshletRangeForDraw(draw, layerOrdinal);
-            if (range == null || range.count() <= 0) {
-                return null;
-            }
-            ranges.add(range);
-        }
-        return drawCount == 0 ? List.of() : ranges;
     }
 
     private DrawResult drawPreparedLayerDispatches(TerrainDrawContext context, TerrainMeshTaskDispatch firstDispatch, DescriptorHeapTerrainResources terrainResources) {
@@ -256,8 +262,8 @@ public final class MeshTerrainRenderer {
         return drewAny ? DrawResult.overlayOnly() : DrawResult.passThrough();
     }
 
-    private void prepareTerrainCommands(ChunkSectionsToRender chunkSectionsToRender, ChunkSectionLayerGroup group) {
-        if (group == null || !TerrainRendererDebugConfig.replaceVanillaTerrain()) {
+    private void prepareTerrainCommands() {
+        if (!TerrainRendererDebugConfig.replaceVanillaTerrain()) {
             return;
         }
         if (!TerrainRendererDebugConfig.enableGpuGeneratedMeshTaskCommands()) {
@@ -272,41 +278,29 @@ public final class MeshTerrainRenderer {
         }
 
         if (!TerrainRendererDebugConfig.drawAllCapturedTerrainLayers()) {
-            prepareVisibleTerrainCommands(chunkSectionsToRender, group, terrainResources);
+            prepareVisibleTerrainCommands(terrainResources);
         }
     }
 
-    private void prepareVisibleTerrainCommands(ChunkSectionsToRender chunkSectionsToRender, ChunkSectionLayerGroup group, DescriptorHeapTerrainResources terrainResources) {
-        if (chunkSectionsToRender == null) {
-            this.meshReplacementPreparedGpuCommandRefusals.increment();
-            return;
-        }
-
-        for (ChunkSectionLayer layer : group.layers()) {
+    /**
+     * Uploads the work queue of every layer the mesh path can stand in for and has the GPU write
+     * its mesh-task commands. The visible set is the one Minecraft collected for its own draws
+     * this frame.
+     */
+    private void prepareVisibleTerrainCommands(DescriptorHeapTerrainResources terrainResources) {
+        for (ChunkSectionLayer layer : ChunkSectionLayer.values()) {
             if (!TerrainLayerReplacementPolicy.canReplaceLayer(layer)) {
                 continue;
             }
             int layerOrdinal = layer.ordinal();
-            Int2ObjectOpenHashMap<List<RenderPass.Draw<GpuBufferSlice[]>>> drawGroup = chunkSectionsToRender.drawGroupsPerLayer().get(layer);
-            if (drawGroup == null || drawGroup.isEmpty()) {
+            List<SectionMeshletStore.MeshletRange> ranges = SectionMeshletStore.visibleMeshletRanges(layerOrdinal);
+            if (ranges == null) {
+                this.meshReplacementPreparedGpuCommandRefusals.increment();
                 continue;
             }
 
-            for (List<RenderPass.Draw<GpuBufferSlice[]>> draws : drawGroup.values()) {
-                if (draws.isEmpty()) {
-                    continue;
-                }
-                List<RenderPass.Draw<GpuBufferSlice[]>> orderedDraws = layer == ChunkSectionLayer.TRANSLUCENT ? draws.reversed() : draws;
-                List<SectionMeshletStore.MeshletRange> ranges = visibleMeshletRanges(orderedDraws, layerOrdinal);
-                if (ranges == null) {
-                    this.meshReplacementPreparedGpuCommandRefusals.increment();
-                    continue;
-                }
-                if (ranges.isEmpty()) {
-                    continue;
-                }
-
-                DescriptorHeapTerrainResources.TerrainWorkQueueUpload workQueue = terrainResources.writeVisibleWorkQueue(ranges, layerOrdinal);
+            for (List<SectionMeshletStore.MeshletRange> batch : TerrainLayerReplacementPolicy.dispatchBatches(ranges)) {
+                DescriptorHeapTerrainResources.TerrainWorkQueueUpload workQueue = terrainResources.writeVisibleWorkQueue(batch, layerOrdinal);
                 TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.cpuWorkQueue(workQueue, layerOrdinal, workQueue.count());
                 DescriptorHeapTerrainResources.TerrainMeshTaskCommandUpload commandUpload = terrainResources.reserveMeshTaskCommand(dispatch.taskCount());
                 TerrainMeshTaskDispatch preparedDispatch = dispatch.withIndirectCommand(commandUpload);
@@ -339,7 +333,7 @@ public final class MeshTerrainRenderer {
     }
 
     private boolean drawMeshTerrain(TerrainDrawContext context, TerrainMeshTaskDispatch dispatch, DescriptorHeapTerrainResources terrainResources) {
-        VulkanRenderPipeline vanillaPipeline = context.vanillaPipeline();
+        TerrainPipelineState vanillaPipeline = context.vanillaPipeline();
         if (vanillaPipeline == null) {
             return false;
         }
@@ -348,7 +342,7 @@ public final class MeshTerrainRenderer {
             DescriptorHeapTerrainResources.TerrainMeshTaskCommandUpload commandUpload = terrainResources.writeMeshTaskCommand(dispatch.taskCount());
             drawDispatch = dispatch.withIndirectCommand(commandUpload);
         }
-        if (MeshShaderTerrainProgram.get().drawTerrain(context.commandBuffer(), vanillaPipeline, context.hasDepth(), drawDispatch, terrainResources.meshletHeaderAddress(), terrainResources.meshletVertexPayloadAddress(), terrainResources.meshletIndexPayloadAddress())) {
+        if (MeshShaderTerrainProgram.get().drawTerrain(context.commandBuffer(), vanillaPipeline, drawDispatch, terrainResources.meshletHeaderAddress(), terrainResources.meshletVertexPayloadAddress(), terrainResources.meshletIndexPayloadAddress())) {
             terrainResources.markTerrainReadInCurrentSubmit();
             this.meshReplacementDrawCalls.increment();
             this.meshReplacementTasks.add(drawDispatch.taskCount());

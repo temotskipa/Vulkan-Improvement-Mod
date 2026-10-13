@@ -1,39 +1,25 @@
 package com.temotskipa.vulkanimprovement.mixin.client;
 
-import com.temotskipa.vulkanimprovement.client.vulkan.terrain.DescriptorHeapTerrainResources;
-import com.temotskipa.vulkanimprovement.client.vulkan.terrain.MeshTerrainRenderer;
-import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainDrawContext;
-import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRenderContext;
-import com.mojang.renderpearl.api.pipeline.IndexType;
-import com.mojang.renderpearl.api.buffers.GpuBuffer;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.renderpearl.api.commands.RenderPass;
-import com.mojang.renderpearl.api.textures.GpuSampler;
-import com.mojang.renderpearl.api.textures.GpuTextureView;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRenderPassAccess;
 import com.mojang.renderpearl.backend.vulkan.VulkanRenderPass;
 import com.mojang.renderpearl.backend.vulkan.VulkanRenderPipeline;
 import org.jspecify.annotations.Nullable;
-import org.lwjgl.vulkan.VkCommandBuffer;
 import org.lwjgl.vulkan.VK10;
 import org.lwjgl.vulkan.VK12;
-import org.spongepowered.asm.mixin.Final;
+import org.lwjgl.vulkan.VkCommandBuffer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
-import org.spongepowered.asm.mixin.Unique;
-import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import java.util.Collection;
-
+/**
+ * Gives the mesh terrain path the command buffer and bound pipeline of Minecraft's render pass,
+ * and the way to hand the pass back to Minecraft after drawing with a pipeline of its own.
+ */
 @Mixin(VulkanRenderPass.class)
-public class VulkanRenderPassMixin {
+public abstract class VulkanRenderPassMixin implements TerrainRenderPassAccess {
     @Shadow
     @Nullable
     protected VulkanRenderPipeline pipeline;
-    @Shadow
-    @Final
-    private boolean hasDepth;
+
     @Shadow
     private boolean anyDescriptorDirty;
 
@@ -42,42 +28,22 @@ public class VulkanRenderPassMixin {
         throw new AssertionError();
     }
 
-    @Inject(method = "setPipeline", at = @At("TAIL"))
-    private void vim$applyTerrainFragmentShadingRate(RenderPipeline pipeline, CallbackInfo ci) {
-        if (TerrainRenderContext.isTerrainPass()) {
-            TerrainRenderContext.setLayerForPipeline(pipeline);
-        }
+    @Override
+    public VkCommandBuffer vim$commandBuffer() {
+        return this.commandBuffer();
     }
 
-    @Inject(method = "bindTexture", at = @At("TAIL"))
-    private void vim$captureTerrainTextureBinding(String name, GpuTextureView textureView, GpuSampler sampler, CallbackInfo ci) {
-        if (TerrainRenderContext.isTerrainPass()) {
-            DescriptorHeapTerrainResources.get().recordTextureBinding(name, textureView, sampler);
-        }
+    @Override
+    public @Nullable VulkanRenderPipeline vim$boundPipeline() {
+        return this.pipeline;
     }
 
-    @Inject(method = "drawMultipleIndexed", at = @At("HEAD"), cancellable = true)
-    private <T> void vim$drawMeshTerrain(Collection<RenderPass.Draw<T>> draws, @Nullable GpuBuffer defaultIndexBuffer, @Nullable IndexType defaultIndexType, Collection<String> dynamicUniforms, T uniformArgument, CallbackInfo ci) {
-        TerrainDrawContext context = TerrainDrawContext.current(this.commandBuffer(), this.pipeline, this.hasDepth, draws);
-        MeshTerrainRenderer.DrawResult drawResult = MeshTerrainRenderer.get().tryDrawMeshTerrain(context);
-        if (drawResult.drewMeshTerrain()) {
-            vim$restoreVanillaPipelineState();
-        }
-        if (drawResult.cancelVanillaDraw()) {
-            ci.cancel();
-        }
-    }
-
-    @Unique
-    private void vim$restoreVanillaPipelineState() {
-        if (this.pipeline == null || !this.pipeline.isValid()) {
+    @Override
+    public void vim$restoreVanillaPipeline() {
+        if (this.pipeline == null) {
             return;
         }
-        long pipelineHandle = this.hasDepth ? this.pipeline.withDepthPipeline() : this.pipeline.withoutDepthPipeline();
-        if (pipelineHandle == 0L) {
-            return;
-        }
-        VK12.vkCmdBindPipeline(this.commandBuffer(), VK10.VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineHandle);
+        VK12.vkCmdBindPipeline(this.commandBuffer(), VK10.VK_PIPELINE_BIND_POINT_GRAPHICS, this.pipeline.vkPipeline());
         this.anyDescriptorDirty = true;
     }
 }

@@ -1,34 +1,47 @@
 package com.temotskipa.vulkanimprovement.mixin.client;
 
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.VulkanImprovementRuntime;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.DescriptorHeapTerrainResources;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.MeshTerrainRenderer;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRenderContext;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.renderpearl.api.commands.RenderPass;
+import com.mojang.renderpearl.api.textures.FilterMode;
 import com.mojang.renderpearl.api.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayerGroup;
 import net.minecraft.client.renderer.chunk.ChunkSectionsToRender;
+import org.jspecify.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+/**
+ * Brackets Minecraft's drawing of a group of terrain layers. The textures the mesh path samples
+ * are the ones Minecraft is about to bind for the same layers.
+ */
 @Mixin(ChunkSectionsToRender.class)
-public final class ChunkSectionsToRenderMixin {
+public abstract class ChunkSectionsToRenderMixin {
     @Inject(method = "renderGroup", at = @At("HEAD"))
-    private void vim$observeTerrainGroup(ChunkSectionLayerGroup group, GpuSampler sampler, CallbackInfo ci) {
+    private void vim$observeTerrainGroup(ChunkSectionLayerGroup group, RenderPass renderPass, GpuSampler sampler, GpuTextureView atlas, ChunkSectionsToRender.@Nullable ImprovedFogTextures improvedFogTextures, boolean renderWireframeTerrain, CallbackInfo ci) {
         if (!VulkanImprovementRuntime.isVulkanBackendActive() || !TerrainRendererDebugConfig.terrainCaptureEnabled()) {
             return;
         }
         TerrainRenderContext.enter();
-        MeshTerrainRenderer.get().observeTerrainGroup((ChunkSectionsToRender) (Object) this, group);
+        DescriptorHeapTerrainResources resources = DescriptorHeapTerrainResources.get();
+        resources.recordTextureBinding("Sampler0", atlas, sampler);
+        resources.recordTextureBinding("Sampler2", Minecraft.getInstance().gameRenderer.lightmap(), RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
+        MeshTerrainRenderer.get().observeTerrainGroup(group, renderWireframeTerrain);
     }
 
     @Inject(method = "renderGroup", at = @At("RETURN"))
-    private void vim$leaveTerrainGroup(ChunkSectionLayerGroup group, GpuSampler sampler, CallbackInfo ci) {
+    private void vim$leaveTerrainGroup(ChunkSectionLayerGroup group, RenderPass renderPass, GpuSampler sampler, GpuTextureView atlas, ChunkSectionsToRender.@Nullable ImprovedFogTextures improvedFogTextures, boolean renderWireframeTerrain, CallbackInfo ci) {
         if (!TerrainRenderContext.isTerrainPass()) {
             return;
         }
-        MeshTerrainRenderer.get().finalizeTerrainGroupObservation();
         TerrainRenderContext.exit();
     }
 }

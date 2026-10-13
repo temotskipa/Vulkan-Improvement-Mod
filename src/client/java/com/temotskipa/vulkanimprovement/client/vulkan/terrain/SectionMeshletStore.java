@@ -3,9 +3,6 @@ package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldDatabase;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldTerrainLayerDirectory;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldTerrainLayerRecord;
-import com.mojang.renderpearl.api.pipeline.IndexType;
-import com.mojang.renderpearl.api.buffers.GpuBuffer;
-import com.mojang.renderpearl.api.commands.RenderPass;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.chunk.CompiledSectionMesh;
 import net.minecraft.client.renderer.chunk.SectionMesh;
@@ -21,7 +18,7 @@ import java.util.concurrent.atomic.AtomicLong;
 @SuppressWarnings("resource")
 public final class SectionMeshletStore {
     private static final Map<CompiledSectionMesh, CapturedSection> SECTIONS = new ConcurrentHashMap<>();
-    private static final Map<DrawKey, SectionLayerKey> DRAW_SLICES = new ConcurrentHashMap<>();
+    private static final VisibleFrame VISIBLE_FRAME = new VisibleFrame();
     private static final Map<SectionLayerKey, MeshletRange> GPU_MESHLET_RANGES = new ConcurrentHashMap<>();
     private static final Map<Long, Float> SECTION_VISIBILITY = new ConcurrentHashMap<>();
     private static final AtomicLong INVALIDATION_COUNT = new AtomicLong();
@@ -81,7 +78,7 @@ public final class SectionMeshletStore {
     public static void release(CompiledSectionMesh mesh) {
         CapturedSection removed = SECTIONS.remove(mesh);
         if (removed != null) {
-            DRAW_SLICES.entrySet().removeIf(entry -> entry.getValue().mesh() == mesh);
+            VISIBLE_FRAME.forget(mesh);
             GPU_MESHLET_RANGES.keySet().removeIf(key -> key.mesh() == mesh);
             MeshTerrainRenderer.get().recordSectionRelease();
             GpuWorldDatabase.get().recordSectionRelease(removed.sectionNode);
@@ -90,9 +87,9 @@ public final class SectionMeshletStore {
     }
 
     public static void clearAll(String reason) {
-        boolean hadTerrainData = !SECTIONS.isEmpty() || !DRAW_SLICES.isEmpty() || !GPU_MESHLET_RANGES.isEmpty() || !SECTION_VISIBILITY.isEmpty();
+        boolean hadTerrainData = !SECTIONS.isEmpty() || VISIBLE_FRAME.sectionLayerCount() > 0 || !GPU_MESHLET_RANGES.isEmpty() || !SECTION_VISIBILITY.isEmpty();
         SECTIONS.clear();
-        DRAW_SLICES.clear();
+        VISIBLE_FRAME.clear();
         GPU_MESHLET_RANGES.clear();
         SECTION_VISIBILITY.clear();
         lastInvalidationReason = reason;
@@ -103,32 +100,54 @@ public final class SectionMeshletStore {
         }
     }
 
-    public static void recordDrawSlice(SectionMesh sectionMesh, ChunkSectionLayer layer, SectionRenderDispatcher.RenderSectionBufferSlice slice) {
-        if (!(sectionMesh instanceof CompiledSectionMesh compiledSectionMesh)) {
+    /**
+     * Starts collecting the section layers of a frame. Minecraft collects them once per frame, for
+     * its indirect and its separate draw path alike.
+     */
+    public static void beginVisibleFrame() {
+        SECTION_VISIBILITY.clear();
+        VISIBLE_FRAME.begin();
+    }
+
+    public static void endVisibleFrame() {
+        VISIBLE_FRAME.end();
+    }
+
+    /**
+     * Called for every section layer Minecraft looks up while it collects a frame. A layer it goes
+     * on to draw is remembered in its draw order, so the mesh path covers exactly what the vanilla
+     * draw would; one the mod has not captured makes the frame's layer uncovered.
+     */
+    public static void recordDrawSlice(SectionMesh sectionMesh, ChunkSectionLayer layer, SectionRenderDispatcher.@Nullable RenderSectionBufferSlice slice) {
+        if (slice == null || !(sectionMesh instanceof CompiledSectionMesh compiledSectionMesh)) {
+            return;
+        }
+        SectionMesh.SectionDraw draw = compiledSectionMesh.getSectionDraw(layer);
+        if (draw == null || draw.hasCustomIndexBuffer() && slice.indexBuffer() == null) {
             return;
         }
         CapturedSection capturedSection = SECTIONS.get(compiledSectionMesh);
-        SectionMesh.SectionDraw draw = compiledSectionMesh.getSectionDraw(layer);
-        if (capturedSection == null || draw == null || slice == null) {
-            return;
-        }
-
-        int baseVertex = (int) (slice.vertexBufferOffset() / layer.vertexFormat().getVertexSize());
-        GpuBuffer indexBuffer = draw.hasCustomIndexBuffer() ? slice.indexBuffer() : null;
-        int firstIndex = draw.hasCustomIndexBuffer() ? (int) (slice.indexBufferOffset() / draw.indexType().bytes) : 0;
-        DRAW_SLICES.put(new DrawKey(slice.vertexBuffer(), indexBuffer, draw.hasCustomIndexBuffer() ? draw.indexType() : null, baseVertex, firstIndex, draw.indexCount()), new SectionLayerKey(compiledSectionMesh, capturedSection.sectionNode, layer.ordinal()));
+        VISIBLE_FRAME.add(layer.ordinal(), capturedSection == null ? null : new SectionLayerKey(compiledSectionMesh, capturedSection.sectionNode, layer.ordinal()));
     }
 
-    public static @Nullable MeshletRange meshletRangeForDraw(RenderPass.Draw<?> draw, int layerOrdinal) {
-        SectionLayerKey sectionLayer = DRAW_SLICES.get(new DrawKey(draw.vertexBuffer(), draw.indexBuffer(), draw.indexType(), draw.baseVertex(), draw.firstIndex(), draw.indexCount()));
-        if (sectionLayer == null || sectionLayer.layerOrdinal() != layerOrdinal) {
+    /**
+     * The meshlet ranges of the section layers Minecraft draws this frame for a layer, in its draw
+     * order, or {@code null} when one of them has no meshlets on the GPU yet.
+     */
+    public static @Nullable List<MeshletRange> visibleMeshletRanges(int layerOrdinal) {
+        List<SectionLayerKey> sectionLayers = VISIBLE_FRAME.covered(layerOrdinal);
+        if (sectionLayers == null) {
             return null;
         }
-        MeshletRange range = GPU_MESHLET_RANGES.get(sectionLayer);
-        if (range == null) {
-            return null;
+        List<MeshletRange> ranges = new ArrayList<>(sectionLayers.size());
+        for (SectionLayerKey sectionLayer : sectionLayers) {
+            MeshletRange range = GPU_MESHLET_RANGES.get(sectionLayer);
+            if (range == null || range.count() <= 0) {
+                return null;
+            }
+            ranges.add(range.withVisibility(visibilityForSection(sectionLayer.sectionNode())));
         }
-        return range.withVisibility(visibilityForSection(sectionLayer.sectionNode()));
+        return ranges;
     }
 
     @SuppressWarnings("unused")
@@ -144,22 +163,8 @@ public final class SectionMeshletStore {
         return ranges;
     }
 
-    @SuppressWarnings("unused")
-    public static boolean hasGpuMeshletRangeForDraw(RenderPass.Draw<?> draw, int layerOrdinal) {
-        SectionLayerKey sectionLayer = DRAW_SLICES.get(new DrawKey(draw.vertexBuffer(), draw.indexBuffer(), draw.indexType(), draw.baseVertex(), draw.firstIndex(), draw.indexCount()));
-        if (sectionLayer == null || sectionLayer.layerOrdinal() != layerOrdinal) {
-            return false;
-        }
-        MeshletRange range = GPU_MESHLET_RANGES.get(sectionLayer);
-        return range != null && range.count() > 0;
-    }
-
     public static void recordSectionVisibility(int blockX, int blockY, int blockZ, float visibility) {
         SECTION_VISIBILITY.put(net.minecraft.core.SectionPos.asLong(net.minecraft.core.SectionPos.blockToSectionCoord(blockX), net.minecraft.core.SectionPos.blockToSectionCoord(blockY), net.minecraft.core.SectionPos.blockToSectionCoord(blockZ)), Math.clamp(visibility, 0.0F, 1.0F));
-    }
-
-    public static void clearSectionVisibilityFrame() {
-        SECTION_VISIBILITY.clear();
     }
 
     static void clearGpuMeshletRanges() {
@@ -197,7 +202,8 @@ public final class SectionMeshletStore {
         map.put("blockVertexStride", TerrainGpuLayout.BLOCK_VERTEX_STRIDE);
         map.put("normalizedIndexStride", TerrainGpuLayout.NORMALIZED_INDEX_STRIDE);
         map.put("terrainMaterialClassification", TerrainMaterialClassifier.asMap());
-        map.put("drawSliceMappings", DRAW_SLICES.size());
+        map.put("visibleSectionLayers", VISIBLE_FRAME.sectionLayerCount());
+        map.put("visibleSectionLayersWithoutCapture", VISIBLE_FRAME.uncapturedCount());
         map.put("gpuMeshletRanges", GPU_MESHLET_RANGES.size());
         map.put("sectionVisibilityEntries", SECTION_VISIBILITY.size());
         map.put("vanillaChunkVisibilityFadeEnabled", TerrainRendererDebugConfig.vanillaChunkVisibilityFadeEnabled());
@@ -436,7 +442,7 @@ public final class SectionMeshletStore {
     }
 
     private static void removeLayerMappings(CompiledSectionMesh mesh, int layerOrdinal) {
-        DRAW_SLICES.entrySet().removeIf(entry -> entry.getValue().mesh() == mesh && entry.getValue().layerOrdinal() == layerOrdinal);
+        VISIBLE_FRAME.forget(mesh, layerOrdinal);
         GPU_MESHLET_RANGES.keySet().removeIf(key -> key.mesh() == mesh && key.layerOrdinal() == layerOrdinal);
     }
 
@@ -576,8 +582,69 @@ public final class SectionMeshletStore {
     private record SectionLayerKey(CompiledSectionMesh mesh, long sectionNode, int layerOrdinal) {
     }
 
-    private record DrawKey(GpuBuffer vertexBuffer, @Nullable GpuBuffer indexBuffer, @Nullable IndexType indexType,
-                           int baseVertex, int firstIndex, int indexCount) {
+    /**
+     * The section layers Minecraft collected for the frame being prepared, per layer and in its
+     * draw order. Written and read on the render thread; a mesh released on another thread is
+     * taken out under the same lock.
+     */
+    private static final class VisibleFrame {
+        private final List<List<SectionLayerKey>> sectionLayers = new ArrayList<>();
+        private final int[] uncaptured = new int[ChunkSectionLayer.values().length];
+        private boolean open;
+
+        private VisibleFrame() {
+            for (int layer = 0; layer < this.uncaptured.length; layer++) {
+                this.sectionLayers.add(new ArrayList<>());
+            }
+        }
+
+        private synchronized void begin() {
+            clear();
+            this.open = true;
+        }
+
+        private synchronized void end() {
+            this.open = false;
+        }
+
+        private synchronized void clear() {
+            this.sectionLayers.forEach(List::clear);
+            Arrays.fill(this.uncaptured, 0);
+        }
+
+        private synchronized void add(int layerOrdinal, @Nullable SectionLayerKey sectionLayer) {
+            if (!this.open) {
+                return;
+            }
+            if (sectionLayer == null) {
+                this.uncaptured[layerOrdinal]++;
+            } else {
+                this.sectionLayers.get(layerOrdinal).add(sectionLayer);
+            }
+        }
+
+        private synchronized void forget(CompiledSectionMesh mesh) {
+            this.sectionLayers.forEach(layer -> layer.removeIf(key -> key.mesh() == mesh));
+        }
+
+        private synchronized void forget(CompiledSectionMesh mesh, int layerOrdinal) {
+            this.sectionLayers.get(layerOrdinal).removeIf(key -> key.mesh() == mesh);
+        }
+
+        private synchronized @Nullable List<SectionLayerKey> covered(int layerOrdinal) {
+            if (layerOrdinal < 0 || layerOrdinal >= this.uncaptured.length || this.uncaptured[layerOrdinal] > 0) {
+                return null;
+            }
+            return List.copyOf(this.sectionLayers.get(layerOrdinal));
+        }
+
+        private synchronized int sectionLayerCount() {
+            return this.sectionLayers.stream().mapToInt(List::size).sum();
+        }
+
+        private synchronized int uncapturedCount() {
+            return Arrays.stream(this.uncaptured).sum();
+        }
     }
 
     private static final class CaptureResult {

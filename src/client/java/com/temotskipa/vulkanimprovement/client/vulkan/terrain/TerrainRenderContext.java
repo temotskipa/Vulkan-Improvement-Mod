@@ -1,9 +1,7 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayerGroup;
-import net.minecraft.client.renderer.chunk.ChunkSectionsToRender;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayDeque;
@@ -19,8 +17,12 @@ public final class TerrainRenderContext {
     private static final ThreadLocal<Boolean> DISPATCHED_WHOLE_SET = ThreadLocal.withInitial(() -> false);
     private static final ThreadLocal<Boolean> REPLACEMENT_ALLOWED = ThreadLocal.withInitial(() -> true);
     private static final ThreadLocal<Boolean> MESH_PIPELINE_BOUND = ThreadLocal.withInitial(() -> false);
-    private static final ThreadLocal<List<ArrayDeque<TerrainMeshTaskDispatch>>> PREPARED_LAYER_DISPATCHES = new ThreadLocal<>();
-    private static final ThreadLocal<ChunkSectionsToRender> CURRENT_SECTIONS_TO_RENDER = new ThreadLocal<>();
+    /**
+     * The mesh-task dispatches prepared for the frame, per layer. They are prepared before
+     * Minecraft opens a render pass and drawn inside it, possibly over several layer groups, so
+     * they belong to the frame and not to one group. Render thread only.
+     */
+    private static final List<ArrayDeque<TerrainMeshTaskDispatch>> PREPARED_LAYER_DISPATCHES = createPreparedLayerDispatches();
     private static final ThreadLocal<ChunkSectionLayerGroup> CURRENT_GROUP = new ThreadLocal<>();
 
     private TerrainRenderContext() {
@@ -35,12 +37,6 @@ public final class TerrainRenderContext {
             DISPATCHED_WHOLE_SET.set(false);
             REPLACEMENT_ALLOWED.set(true);
             MESH_PIPELINE_BOUND.set(false);
-            List<ArrayDeque<TerrainMeshTaskDispatch>> preparedDispatches = new ArrayList<>(ChunkSectionLayer.values().length);
-            for (int i = 0; i < ChunkSectionLayer.values().length; i++) {
-                preparedDispatches.add(new ArrayDeque<>());
-            }
-            PREPARED_LAYER_DISPATCHES.set(preparedDispatches);
-            CURRENT_SECTIONS_TO_RENDER.remove();
             CURRENT_GROUP.remove();
         }
     }
@@ -54,8 +50,6 @@ public final class TerrainRenderContext {
             DISPATCHED_WHOLE_SET.remove();
             REPLACEMENT_ALLOWED.remove();
             MESH_PIPELINE_BOUND.remove();
-            PREPARED_LAYER_DISPATCHES.remove();
-            CURRENT_SECTIONS_TO_RENDER.remove();
             CURRENT_GROUP.remove();
         } else {
             DEPTH.set(depth);
@@ -66,29 +60,17 @@ public final class TerrainRenderContext {
         return DEPTH.get() > 0;
     }
 
-    public static void setLayerForPipeline(RenderPipeline pipeline) {
+    public static void setCurrentLayer(ChunkSectionLayer layer) {
         MESH_PIPELINE_BOUND.set(false);
-        for (ChunkSectionLayer layer : ChunkSectionLayer.values()) {
-            if (layer.pipeline() == pipeline) {
-                CURRENT_LAYER_ORDINAL.set(layer.ordinal());
-                return;
-            }
-        }
-        CURRENT_LAYER_ORDINAL.set(-1);
+        CURRENT_LAYER_ORDINAL.set(layer.ordinal());
     }
 
     public static int currentLayerOrdinal() {
         return CURRENT_LAYER_ORDINAL.get();
     }
 
-    public static void setCurrentTerrainGroup(ChunkSectionsToRender sectionsToRender, ChunkSectionLayerGroup group) {
-        CURRENT_SECTIONS_TO_RENDER.set(sectionsToRender);
+    public static void setCurrentTerrainGroup(ChunkSectionLayerGroup group) {
         CURRENT_GROUP.set(group);
-    }
-
-    @SuppressWarnings("unused")
-    public static @Nullable ChunkSectionsToRender currentSectionsToRender() {
-        return CURRENT_SECTIONS_TO_RENDER.get();
     }
 
     @SuppressWarnings("unused")
@@ -96,12 +78,10 @@ public final class TerrainRenderContext {
         return CURRENT_GROUP.get();
     }
 
-    @SuppressWarnings("unused")
     public static void setReplacementAllowed(boolean allowed) {
         REPLACEMENT_ALLOWED.set(allowed);
     }
 
-    @SuppressWarnings("unused")
     public static boolean replacementAllowed() {
         return REPLACEMENT_ALLOWED.get();
     }
@@ -116,19 +96,34 @@ public final class TerrainRenderContext {
         return MESH_PIPELINE_BOUND.get();
     }
 
+    private static List<ArrayDeque<TerrainMeshTaskDispatch>> createPreparedLayerDispatches() {
+        List<ArrayDeque<TerrainMeshTaskDispatch>> preparedDispatches = new ArrayList<>(ChunkSectionLayer.values().length);
+        for (int i = 0; i < ChunkSectionLayer.values().length; i++) {
+            preparedDispatches.add(new ArrayDeque<>());
+        }
+        return List.copyOf(preparedDispatches);
+    }
+
+    /**
+     * Discards what the last frame prepared and did not draw, and says how many dispatches that was.
+     */
+    static int beginPreparedFrame() {
+        int unconsumed = unconsumedPreparedDispatchCount();
+        PREPARED_LAYER_DISPATCHES.forEach(ArrayDeque::clear);
+        return unconsumed;
+    }
+
     static void enqueuePreparedLayerDispatch(int layerOrdinal, TerrainMeshTaskDispatch dispatch) {
-        List<ArrayDeque<TerrainMeshTaskDispatch>> preparedDispatches = PREPARED_LAYER_DISPATCHES.get();
-        if (preparedDispatches != null && dispatch != null && layerOrdinal >= 0 && layerOrdinal < preparedDispatches.size()) {
-            preparedDispatches.get(layerOrdinal).addLast(dispatch);
+        if (dispatch != null && layerOrdinal >= 0 && layerOrdinal < PREPARED_LAYER_DISPATCHES.size()) {
+            PREPARED_LAYER_DISPATCHES.get(layerOrdinal).addLast(dispatch);
         }
     }
 
     static @Nullable TerrainMeshTaskDispatch pollPreparedLayerDispatch(int layerOrdinal) {
-        List<ArrayDeque<TerrainMeshTaskDispatch>> preparedDispatches = PREPARED_LAYER_DISPATCHES.get();
-        if (preparedDispatches == null || layerOrdinal < 0 || layerOrdinal >= preparedDispatches.size()) {
+        if (layerOrdinal < 0 || layerOrdinal >= PREPARED_LAYER_DISPATCHES.size()) {
             return null;
         }
-        return preparedDispatches.get(layerOrdinal).pollFirst();
+        return PREPARED_LAYER_DISPATCHES.get(layerOrdinal).pollFirst();
     }
 
     @SuppressWarnings("unused")
@@ -137,11 +132,8 @@ public final class TerrainRenderContext {
     }
 
     public static Map<String, Object> preparedDispatchQueueDepths() {
-        List<ArrayDeque<TerrainMeshTaskDispatch>> preparedDispatches = PREPARED_LAYER_DISPATCHES.get();
+        List<ArrayDeque<TerrainMeshTaskDispatch>> preparedDispatches = PREPARED_LAYER_DISPATCHES;
         Map<String, Object> depths = new LinkedHashMap<>();
-        if (preparedDispatches == null) {
-            return depths;
-        }
         ChunkSectionLayer[] layers = ChunkSectionLayer.values();
         for (int layerOrdinal = 0; layerOrdinal < preparedDispatches.size() && layerOrdinal < layers.length; layerOrdinal++) {
             int depth = preparedDispatches.get(layerOrdinal).size();
@@ -153,12 +145,8 @@ public final class TerrainRenderContext {
     }
 
     public static int unconsumedPreparedDispatchCount() {
-        List<ArrayDeque<TerrainMeshTaskDispatch>> preparedDispatches = PREPARED_LAYER_DISPATCHES.get();
-        if (preparedDispatches == null) {
-            return 0;
-        }
         int remaining = 0;
-        for (ArrayDeque<TerrainMeshTaskDispatch> queue : preparedDispatches) {
+        for (ArrayDeque<TerrainMeshTaskDispatch> queue : PREPARED_LAYER_DISPATCHES) {
             remaining += queue.size();
         }
         return remaining;

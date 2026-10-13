@@ -4,11 +4,14 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Properties;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class Minecraft26MixinTargetManifestInvariantCheck {
     private static final Path MIXIN_CONFIG = Path.of("src/client/resources/vulkanimprovement.client.mixins.json");
     private static final Path MIXIN_SOURCE_DIR = Path.of("src/client/java/com/temotskipa/vulkanimprovement/mixin/client");
-    private static final Path MANIFEST = Path.of("docs/references/minecraft-26-2-mixin-targets.md");
+    private static final Path MANIFEST = Path.of("docs/references/minecraft-26-4-mixin-targets.md");
 
     private static final List<Target> TARGETS = List.of(
             target(
@@ -16,12 +19,17 @@ public final class Minecraft26MixinTargetManifestInvariantCheck {
                     "@Mixin(VulkanBackend.class)",
                     "com.mojang.renderpearl.backend.vulkan.VulkanBackend",
                     List.of(
-                            "REQUIRED_DEVICE_EXTENSIONS",
-                            "REQUIRED_DEVICE_FEATURES",
-                            "method = \"<clinit>\"",
                             "method = \"createVma\"",
-                            "method = \"isDeviceSuitable\"",
-                            "method = \"throwForMissingRequrements\""
+                            "vmaCreateAllocator",
+                            "method = \"checkDeviceSuitability\""
+                    )
+            ),
+            target(
+                    "VulkanFeatureSetsMixin",
+                    "@Mixin(VulkanFeatureSets.class)",
+                    "com.mojang.renderpearl.backend.vulkan.VulkanFeatureSets",
+                    List.of(
+                            "method = \"requiredFeatureSets\""
                     )
             ),
             target(
@@ -40,6 +48,7 @@ public final class Minecraft26MixinTargetManifestInvariantCheck {
                     List.of(
                             "private VkDevice vkDevice",
                             "method = \"<init>\"",
+                            "FeatureSet enabledFeatureSet",
                             "VulkanPhysicalDevice;close()V",
                             "method = \"close\""
                     )
@@ -61,19 +70,42 @@ public final class Minecraft26MixinTargetManifestInvariantCheck {
                     "com.mojang.renderpearl.backend.vulkan.VulkanRenderPass",
                     List.of(
                             "protected VulkanRenderPipeline pipeline",
-                            "private boolean hasDepth",
                             "private boolean anyDescriptorDirty",
-                            "private VkCommandBuffer commandBuffer()",
-                            "method = \"setPipeline\"",
-                            "method = \"bindTexture\"",
-                            "method = \"drawMultipleIndexed\""
+                            "private VkCommandBuffer commandBuffer()"
+                    )
+            ),
+            target(
+                    "VulkanRenderPipelineMixin",
+                    "@Mixin(VulkanRenderPipeline.class)",
+                    "com.mojang.renderpearl.backend.vulkan.VulkanRenderPipeline",
+                    List.of(
+                            "method = \"compile\"",
+                            "CompiledRenderPipeline.CreateInfo pipelineCreateInfo"
+                    )
+            ),
+            target(
+                    "VulkanCommandEncoderMixin",
+                    "@Mixin(VulkanCommandEncoder.class)",
+                    "com.mojang.renderpearl.backend.vulkan.VulkanCommandEncoder",
+                    List.of(
+                            "VulkanRenderPass currentRenderPass"
+                    )
+            ),
+            target(
+                    "FrontendRenderPassMixin",
+                    "@Mixin(FrontendRenderPass.class)",
+                    "com.mojang.renderpearl.frontend.FrontendRenderPass",
+                    List.of(
+                            "private RenderPassBackend backend"
                     )
             ),
             target(
                     "GlBackendMixin",
                     "@Mixin(GlBackend.class)",
                     "com.mojang.renderpearl.backend.opengl.GlBackend",
-                    List.of("method = \"createDevice\"")
+                    List.of(
+                            "method = \"createDevice\""
+                    )
             ),
             target(
                     "VideoSettingsScreenMixin",
@@ -89,7 +121,7 @@ public final class Minecraft26MixinTargetManifestInvariantCheck {
                     "@Mixin(LevelRenderer.class)",
                     "net.minecraft.client.renderer.LevelRenderer",
                     List.of(
-                            "method = \"prepareChunkRenders\"",
+                            "method = \"extractSectionDrawGroups\"",
                             "method = \"invalidateCompiledGeometry\"",
                             "method = \"resetLevelRenderData\"",
                             "method = \"close\""
@@ -117,7 +149,28 @@ public final class Minecraft26MixinTargetManifestInvariantCheck {
                     "ChunkSectionsToRenderMixin",
                     "@Mixin(ChunkSectionsToRender.class)",
                     "net.minecraft.client.renderer.chunk.ChunkSectionsToRender",
-                    List.of("method = \"renderGroup\"")
+                    List.of(
+                            "method = \"renderGroup\"",
+                            "boolean renderWireframeTerrain"
+                    )
+            ),
+            target(
+                    "ChunkSectionsToRenderDrawIndirectMixin",
+                    "@Mixin(ChunkSectionsToRender.DrawIndirect.class)",
+                    "net.minecraft.client.renderer.chunk.ChunkSectionsToRender.DrawIndirect",
+                    List.of(
+                            "method = \"render\"",
+                            "RenderPass;setPipeline("
+                    )
+            ),
+            target(
+                    "ChunkSectionsToRenderDrawSeparateMixin",
+                    "@Mixin(ChunkSectionsToRender.DrawSeparate.class)",
+                    "net.minecraft.client.renderer.chunk.ChunkSectionsToRender.DrawSeparate",
+                    List.of(
+                            "method = \"render\"",
+                            "RenderPass;setPipeline("
+                    )
             ),
             target(
                     "ChunkSectionInfoMixin",
@@ -125,16 +178,16 @@ public final class Minecraft26MixinTargetManifestInvariantCheck {
                     "net.minecraft.client.renderer.DynamicGpuData.ChunkSectionInfo",
                     List.of(
                             "method = \"<init>\"",
-                            "Matrix4fc modelView",
-                            "int textureAtlasWidth",
-                            "int textureAtlasHeight"
+                            "float visibility"
                     )
             ),
             target(
                     "CompiledSectionMeshMixin",
                     "@Mixin(CompiledSectionMesh.class)",
                     "net.minecraft.client.renderer.chunk.CompiledSectionMesh",
-                    List.of("method = \"close\"")
+                    List.of(
+                            "method = \"close\""
+                    )
             )
     );
 
@@ -144,18 +197,38 @@ public final class Minecraft26MixinTargetManifestInvariantCheck {
     @SuppressWarnings("unused")
     static void main(String[] args) throws IOException {
         String config = read(MIXIN_CONFIG);
-        require(Files.isRegularFile(MANIFEST), "missing mcdev-verified 26.2 mixin target manifest: " + MANIFEST);
+        require(Files.isRegularFile(MANIFEST), "missing mcdev-verified 26.4 mixin target manifest: " + MANIFEST);
         String manifest = read(MANIFEST);
-        require(manifest.contains("Minecraft `26.2`"), "manifest must identify Minecraft 26.2 as the validated target");
+        require(manifest.contains("Minecraft `" + minecraftVersion() + "`"), "manifest must identify the Minecraft version in gradle.properties as the validated target");
         require(manifest.contains("mcdev static analysis"), "manifest must record that the target surface came from mcdev static analysis");
         require(manifest.contains("Do not edit these target method names without re-running mcdev"),
                 "manifest must preserve the mcdev revalidation rule");
 
+        checkEveryConfiguredMixinIsDocumented(config);
         for (Target target : TARGETS) {
             checkMixinConfig(config, target.mixinName());
             String source = read(MIXIN_SOURCE_DIR.resolve(target.mixinName() + ".java"));
             checkSource(target, source);
             checkManifest(target, manifest);
+        }
+    }
+
+    private static String minecraftVersion() throws IOException {
+        Properties properties = new Properties();
+        try (var input = Files.newInputStream(Path.of("gradle.properties"))) {
+            properties.load(input);
+        }
+        return properties.getProperty("minecraft_version");
+    }
+
+    /**
+     * A mixin added to the config without a manifest entry has targets nobody verified.
+     */
+    private static void checkEveryConfiguredMixinIsDocumented(String config) {
+        Matcher mixin = Pattern.compile("\"(\\w+Mixin)\"").matcher(config);
+        while (mixin.find()) {
+            String name = mixin.group(1);
+            require(TARGETS.stream().anyMatch(target -> target.mixinName().equals(name)), "client mixin config lists a mixin the target manifest does not cover: " + name);
         }
     }
 

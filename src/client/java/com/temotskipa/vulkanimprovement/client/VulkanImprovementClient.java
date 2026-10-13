@@ -8,7 +8,6 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.minecraft.client.KeyMapping;
-import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 
 public class VulkanImprovementClient implements ClientModInitializer {
@@ -20,8 +19,8 @@ public class VulkanImprovementClient implements ClientModInitializer {
         LOGGER.info("[Vulkan Improvement] Client entrypoint loaded; renderer services initialize only for an active Vulkan backend.");
         dumpDiagnosticsKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.vulkanimprovement.dump_diagnostics",
-                InputConstants.Type.KEYSYM,
-                GLFW.GLFW_KEY_K,
+                InputConstants.Type.KEYBOARD,
+                InputConstants.KEY_K,
                 KeyMapping.Category.DEBUG
         ));
         ClientTickEvents.END_CLIENT_TICK.register(_ -> {

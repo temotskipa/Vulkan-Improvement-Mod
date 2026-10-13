@@ -9,7 +9,7 @@ public final class DependencyBaselineInvariantCheck {
     private static final Path GRADLE_PROPERTIES = Path.of("gradle.properties");
     private static final Path BUILD_GRADLE = Path.of("build.gradle");
     private static final Path WRAPPER_PROPERTIES = Path.of("gradle/wrapper/gradle-wrapper.properties");
-    private static final Path EXTENSION_PLAN = Path.of("docs/exec-plans/active/26-2-vulkan-renderer-extension.md");
+    private static final Path PORT_PLAN = Path.of("docs/exec-plans/active/minecraft-26-4-snapshot-port.md");
     private static final Path COMPLETED_DEPENDENCY_PLAN = Path.of("docs/exec-plans/completed/minecraft-26-2-dependency-update.md");
 
     private DependencyBaselineInvariantCheck() {
@@ -27,22 +27,25 @@ public final class DependencyBaselineInvariantCheck {
         String fabricVersion = requiredProperty(gradleProperties, "fabric_version");
         String buildGradle = read(BUILD_GRADLE);
         String wrapperProperties = read(WRAPPER_PROPERTIES);
-        String extensionPlan = read(EXTENSION_PLAN);
+        String portPlan = read(PORT_PLAN);
         String completedDependencyPlan = read(COMPLETED_DEPENDENCY_PLAN);
 
-        require("26.2".equals(minecraftVersion), "Minecraft baseline must stay on stable 26.2");
-        require("0.19.3".equals(loaderVersion), "Fabric Loader baseline must match the checked dependency audit");
-        require("0.154.0+26.2".equals(fabricVersion), "Fabric API baseline must match the checked dependency audit");
+        // This branch ports the mod to the 26.4 snapshots. Its baseline is the snapshot the port plan
+        // names; the 26.2 baseline is recorded in the completed dependency plan.
+        require("26.4-snapshot-3".equals(minecraftVersion), "Minecraft baseline must be the snapshot the port plan targets");
+        require("26.4-alpha.3".equals(requiredProperty(gradleProperties, "minecraft_dependency")),
+                "the metadata must ask for the name Fabric Loader gives that snapshot");
+        require("0.19.5".equals(loaderVersion), "Fabric Loader baseline must match the port plan");
+        require("0.162.2+26.4".equals(fabricVersion), "Fabric API baseline must match the port plan");
+        requireContains(buildGradle, "vmArg \"-XX:StackShadowPages=32\"",
+                "run configurations must pass the stack setting the 26.4 launcher metadata starts the game with");
         requireContains(buildGradle, "id 'net.fabricmc.fabric-loom' version '1.17.13'",
                 "Loom plugin version must match the checked dependency audit");
         requireContains(wrapperProperties, "gradle-9.6.1-bin.zip",
                 "Gradle wrapper must match the checked dependency audit");
-        requireContains(extensionPlan, "Minecraft `26.2`, Fabric API\n  `0.154.0+26.2`, Fabric Loader `0.19.3`, and Loom `1.17.13`",
-                "active renderer extension plan must record the current dependency baseline");
-        requireContains(extensionPlan, "The Gradle wrapper is `9.6.1`",
-                "active renderer extension plan must record the current Gradle wrapper baseline");
-        requireContains(extensionPlan, "The 2026-07-04 dependency recheck found no pin changes",
-                "active renderer extension plan must record the latest dependency recheck result");
+        for (String pin : new String[]{"`26.4-snapshot-3`", "`26.4-alpha.3`", "`0.19.5`", "`0.162.2+26.4`", "`1.17.13`", "`9.6.1`", "-XX:StackShadowPages=32"}) {
+            requireContains(portPlan, pin, "the port plan must record the current dependency baseline");
+        }
         requireContains(completedDependencyPlan, "| Fabric API | `0.154.0+26.2`",
                 "completed dependency plan must record the latest 26.2 Fabric API audit result");
         requireContains(completedDependencyPlan, "| Gradle wrapper | `9.6.1`",

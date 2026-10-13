@@ -3,6 +3,7 @@ package com.temotskipa.vulkanimprovement.client.vulkan.runtime;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 public final class VulkanVideoOptionsInvariantCheck {
     private static final Path RUNTIME = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/runtime/VulkanImprovementRuntime.java");
@@ -14,6 +15,8 @@ public final class VulkanVideoOptionsInvariantCheck {
     private static final Path CHUNK_SECTIONS_TO_RENDER_MIXIN = Path.of("src/client/java/com/temotskipa/vulkanimprovement/mixin/client/ChunkSectionsToRenderMixin.java");
     private static final Path SECTION_RENDER_DISPATCHER_MIXIN = Path.of("src/client/java/com/temotskipa/vulkanimprovement/mixin/client/SectionRenderDispatcherMixin.java");
     private static final Path RENDER_SECTION_MIXIN = Path.of("src/client/java/com/temotskipa/vulkanimprovement/mixin/client/SectionRenderDispatcherRenderSectionMixin.java");
+    private static final Path DRAW_INDIRECT_MIXIN = Path.of("src/client/java/com/temotskipa/vulkanimprovement/mixin/client/ChunkSectionsToRenderDrawIndirectMixin.java");
+    private static final Path DRAW_SEPARATE_MIXIN = Path.of("src/client/java/com/temotskipa/vulkanimprovement/mixin/client/ChunkSectionsToRenderDrawSeparateMixin.java");
     private static final Path LEVEL_RENDERER_MIXIN = Path.of("src/client/java/com/temotskipa/vulkanimprovement/mixin/client/LevelRendererMixin.java");
     private static final Path LANG = Path.of("src/client/resources/assets/vulkanimprovement/lang/en_us.json");
 
@@ -144,10 +147,22 @@ public final class VulkanVideoOptionsInvariantCheck {
                 "terrain section capture must be gated off for OpenGL-active sessions"
         );
         requireCallGuard(
-                methodBody(levelRendererSource, "private void vim$beginChunkVisibilityFrame"),
-                "SectionMeshletStore.clearSectionVisibilityFrame",
+                methodBody(levelRendererSource, "private void vim$beginVisibleFrame"),
+                "SectionMeshletStore.beginVisibleFrame",
                 "terrain visibility-frame reset must be gated off for OpenGL-active sessions"
         );
+        requireCallGuard(
+                methodBody(levelRendererSource, "private void vim$endVisibleFrame"),
+                "MeshTerrainRenderer.get().prepareVisibleFrame",
+                "terrain frame preparation must be gated off for OpenGL-active sessions"
+        );
+        for (Path layerMixin : List.of(DRAW_INDIRECT_MIXIN, DRAW_SEPARATE_MIXIN)) {
+            requireCallGuard(
+                    methodBody(readUnchecked(layerMixin), "private void vim$drawMeshTerrainLayer"),
+                    "MeshTerrainRenderer.get().drawTerrainLayer",
+                    "terrain layer draws must be gated off for OpenGL-active sessions"
+            );
+        }
         requireCallGuard(
                 methodBody(levelRendererSource, "private void vim$clearMeshletCacheForGeometryInvalidation"),
                 "SectionMeshletStore.clearAll",
@@ -173,7 +188,7 @@ public final class VulkanVideoOptionsInvariantCheck {
             String levelRendererSource
     ) {
         requireCallGuard(
-                methodBody(meshRendererSource, "public void observeTerrainGroup"),
+                methodBody(meshRendererSource, "public void prepareVisibleFrame"),
                 "DescriptorHeapTerrainResources.get().uploadDirtyTerrainData",
                 "terrain metadata uploads must be skipped unless capture/bootstrap or mesh replacement is enabled",
                 "TerrainRendererDebugConfig.terrainCaptureEnabled()"
@@ -197,8 +212,8 @@ public final class VulkanVideoOptionsInvariantCheck {
                 "TerrainRendererDebugConfig.terrainCaptureEnabled()"
         );
         requireCallGuard(
-                methodBody(levelRendererSource, "private void vim$beginChunkVisibilityFrame"),
-                "SectionMeshletStore.clearSectionVisibilityFrame",
+                methodBody(levelRendererSource, "private void vim$beginVisibleFrame"),
+                "SectionMeshletStore.beginVisibleFrame",
                 "terrain visibility resets must be skipped unless capture/bootstrap or mesh replacement is enabled",
                 "TerrainRendererDebugConfig.terrainCaptureEnabled()"
         );
@@ -255,6 +270,14 @@ public final class VulkanVideoOptionsInvariantCheck {
 
     private static String read(Path path) throws IOException {
         return Files.readString(path);
+    }
+
+    private static String readUnchecked(Path path) {
+        try {
+            return read(path);
+        } catch (IOException ex) {
+            throw new AssertionError("failed to read " + path, ex);
+        }
     }
 
     private static void requireContains(String source, String token, String message) {

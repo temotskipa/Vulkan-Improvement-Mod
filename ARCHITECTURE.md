@@ -8,16 +8,24 @@ augmenting vanilla terrain rendering through modern Vulkan capabilities.
 1. Fabric loads `VulkanImprovement` from `src/main` and
    `VulkanImprovementClient` from `src/client`.
 2. Client mixins patch Minecraft's Vulkan backend, device, render pass, chunk
-   section, and video settings classes.
-3. `VulkanBackendMixin` extends required Vulkan API, extension, and feature
-   requirements before device selection completes.
+   section, and video settings classes. Their targets are listed in
+   [the mixin target manifest](docs/references/minecraft-26-4-mixin-targets.md).
+3. `VulkanFeatureSetsMixin` adds the mod's required extensions and features to
+   the feature sets Minecraft requires of a Vulkan device, and
+   `VulkanBackendMixin` adds the Vulkan 1.4 API requirement, before device
+   selection completes.
 4. `VulkanDeviceMixin` captures physical-device capabilities and configures the
    singleton `MeshTerrainRenderer`.
 5. Chunk-section mixins mirror vanilla chunk geometry into `SectionMeshletStore`
    and related GPU buffers.
-6. Render-pass mixins call `MeshTerrainRenderer` to draw mesh terrain when
-   configured and safe; otherwise the vanilla path remains the fallback where
-   supported by the active mode.
+6. Each frame Minecraft collects the section layers it will draw.
+   `LevelRendererMixin` and `SectionRenderDispatcherMixin` record them, and
+   `MeshTerrainRenderer.prepareVisibleFrame` uploads terrain data and prepares
+   mesh-task commands before Minecraft opens a render pass.
+7. Inside Minecraft's terrain render pass, the layer mixins on both of its
+   draw strategies call `MeshTerrainRenderer` once the layer's pipeline is
+   bound, to draw mesh terrain when configured and safe; otherwise the vanilla
+   draws for the layer run unchanged.
 
 ## Source Sets
 
@@ -75,17 +83,29 @@ renderer code does not drift back into a catch-all root package.
   configuring, ready, failed, shutting down, or device-lost.
 - `RendererDomainRegistry` records the selected path and CPU/GPU work split for
   terrain and non-terrain renderer domains.
-- `TerrainDrawContext` snapshots the terrain draw request from the Vulkan render
-  pass, including command buffer, vanilla pipeline, layer ordinal, draw list,
-  and debug draw-all mode.
+- The mod extends Minecraft's terrain drawing and does not replace how a
+  frame's sections are chosen. The visible set is the one
+  `LevelRenderer.extractSectionDrawGroups` collects for Minecraft's own draws,
+  and a layer is drawn by the mesh path only when every section layer in that
+  set has meshlets on the GPU.
+- Nothing is uploaded and no compute work is recorded while Minecraft's
+  terrain render pass is open. Minecraft's command encoder fails the frame
+  otherwise.
+- `TerrainPipelineState` is the rasterization, depth and blend state Minecraft
+  compiled a pipeline with, remembered at compile time because the Vulkan
+  pipeline no longer keeps it. A mesh pipeline is built from it, for the
+  render pass Minecraft's pipeline uses, and cached by it.
+- `TerrainDrawContext` snapshots one terrain layer about to be drawn inside
+  Minecraft's render pass: command buffer, vanilla pipeline state, layer
+  ordinal, and debug draw-all mode.
 - `TerrainMeshTaskDispatch` records the terrain mesh-task dispatch source,
   direct task cap, meshlet offset, visible-list address, work-queue address,
   indirect command buffer/offset, and truncation state. The current path can
   submit a CPU-written `VkDrawMeshTasksIndirectCommandEXT` record when prepared
-  GPU command generation is unavailable. `ChunkSectionsToRenderMixin` prepares
-  work queues before Minecraft creates the terrain render pass: normal visible
-  draw-list replacement queues one prepared dispatch per vanilla draw group, and
-  full-layer diagnostic mode queues one prepared dispatch per layer. The command
+  GPU command generation is unavailable. Frame preparation writes the work
+  queues before Minecraft opens the terrain render pass: visible replacement
+  queues one prepared dispatch per layer, more only when a layer exceeds the
+  mesh-task limit of one dispatch. The command
   generation compute pipeline fills each indirect mesh-task command from the
   work-queue counters. The older visible meshlet ring remains a fallback when a
   visible work queue cannot be uploaded.

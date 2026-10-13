@@ -23,6 +23,15 @@ loom {
             sourceSet sourceSets.client
         }
     }
+
+    runs {
+        configureEach {
+            // The 26.4 launcher metadata starts the game with this and Loom does not pass it
+            // on. Without it shaderc overflows the stack of the thread that compiles a shader
+            // and the client dies at startup with an access violation and no JVM error file.
+            vmArg "-XX:StackShadowPages=32"
+        }
+    }
 }
 
 
@@ -54,13 +63,13 @@ sourceSets {
 
 processResources {
     inputs.property "version", project.version
-    inputs.property "minecraft_version", project.minecraft_version
+    inputs.property "minecraft_dependency", project.minecraft_dependency
     inputs.property "loader_version", project.loader_version
     filteringCharset = "UTF-8"
 
     filesMatching("fabric.mod.json") {
         expand "version": project.version,
-                "minecraft_version": project.minecraft_version,
+                "minecraft_dependency": project.minecraft_dependency,
                 "loader_version": project.loader_version
     }
 }

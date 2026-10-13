@@ -3,8 +3,12 @@ package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 public final class TerrainRenderPassStateInvariantCheck {
+    private static final Path DRAW_INDIRECT_MIXIN = Path.of("src/client/java/com/temotskipa/vulkanimprovement/mixin/client/ChunkSectionsToRenderDrawIndirectMixin.java");
+    private static final Path DRAW_SEPARATE_MIXIN = Path.of("src/client/java/com/temotskipa/vulkanimprovement/mixin/client/ChunkSectionsToRenderDrawSeparateMixin.java");
+    private static final Path LEVEL_RENDERER_MIXIN = Path.of("src/client/java/com/temotskipa/vulkanimprovement/mixin/client/LevelRendererMixin.java");
     private static final Path RENDER_PASS_MIXIN = Path.of("src/client/java/com/temotskipa/vulkanimprovement/mixin/client/VulkanRenderPassMixin.java");
     private static final Path MESH_TERRAIN_RENDERER = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/MeshTerrainRenderer.java");
     private static final Path MESH_SHADER_PROGRAM = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/MeshShaderTerrainProgram.java");
@@ -15,7 +19,10 @@ public final class TerrainRenderPassStateInvariantCheck {
 
     @SuppressWarnings("unused")
     static void main(String[] args) throws IOException {
-        checkRenderPassRestoresVanillaPipelineState(read(RENDER_PASS_MIXIN));
+        checkRenderPassRestoresVanillaPipelineState(read(RENDER_PASS_MIXIN), read(MESH_TERRAIN_RENDERER));
+        checkLayerHooksDrawAfterMinecraftBindsThePipeline();
+        checkFramePreparationStaysOutsideTheRenderPass(read(MESH_TERRAIN_RENDERER), read(MESH_SHADER_PROGRAM), read(LEVEL_RENDERER_MIXIN));
+        checkMeshPipelineIsBuiltForMinecraftsRenderPass(read(MESH_SHADER_PROGRAM));
         checkPartialMeshReplacementFallsBackToVanilla(read(MESH_TERRAIN_RENDERER));
         checkVisibleReplacementRespectsStrictMode(read(MESH_TERRAIN_RENDERER));
         checkFullLayerDiagnosticsDoNotCancelVanilla(read(MESH_TERRAIN_RENDERER));
@@ -24,21 +31,73 @@ public final class TerrainRenderPassStateInvariantCheck {
         checkTerrainTextureBindingsExposeSamplerState(read(DESCRIPTOR_HEAP_TERRAIN_RESOURCES));
     }
 
-    private static void checkRenderPassRestoresVanillaPipelineState(String source) {
-        require(source.contains("private boolean anyDescriptorDirty;"), "render-pass mixin must shadow vanilla descriptor dirtiness");
-        require(source.contains("vim$restoreVanillaPipelineState"), "render-pass mixin must restore native vanilla pipeline state after VIM mesh draws");
-        require(source.contains("this.anyDescriptorDirty = true;"), "render-pass mixin must force vanilla descriptors to be pushed after VIM descriptor-buffer binding");
-        require(source.contains("VK12.vkCmdBindPipeline(this.commandBuffer(), VK10.VK_PIPELINE_BIND_POINT_GRAPHICS"),
+    private static void checkRenderPassRestoresVanillaPipelineState(String renderPassMixin, String meshRenderer) {
+        require(renderPassMixin.contains("private boolean anyDescriptorDirty;"), "render-pass mixin must shadow vanilla descriptor dirtiness");
+        String restore = methodBody(renderPassMixin, "public void vim$restoreVanillaPipeline");
+        require(restore.contains("this.anyDescriptorDirty = true;"), "render-pass mixin must force vanilla descriptors to be pushed after VIM descriptor-buffer binding");
+        require(restore.contains("VK12.vkCmdBindPipeline(this.commandBuffer(), VK10.VK_PIPELINE_BIND_POINT_GRAPHICS, this.pipeline.vkPipeline())"),
                 "render-pass mixin must rebind the native vanilla graphics pipeline");
 
-        int meshDraw = source.indexOf("MeshTerrainRenderer.get().tryDrawMeshTerrain(context)");
-        int restore = source.indexOf("if (drawResult.drewMeshTerrain())", meshDraw);
-        int cancel = source.indexOf("if (drawResult.cancelVanillaDraw())", meshDraw);
-        require(meshDraw >= 0, "render-pass mixin must still call the terrain mesh replacement path");
-        require(restore > meshDraw, "render-pass mixin must restore vanilla state after any emitted VIM mesh draw");
-        require(cancel > restore, "render-pass mixin must decide vanilla cancellation separately after restoring VIM state");
-        require(methodBody(source, "private <T> void vim$drawMeshTerrain").contains("ci.cancel();"),
-                "render-pass mixin must still cancel vanilla draws after full VIM replacement");
+        String drawLayer = methodBody(meshRenderer, "public boolean drawTerrainLayer");
+        int meshDraw = drawLayer.indexOf("tryDrawMeshTerrain(");
+        int drewCheck = drawLayer.indexOf("if (drawResult.drewMeshTerrain())", meshDraw);
+        int restoreCall = drawLayer.indexOf("access.vim$restoreVanillaPipeline();", meshDraw);
+        int cancel = drawLayer.indexOf("return drawResult.cancelVanillaDraw();", meshDraw);
+        require(meshDraw >= 0, "the layer draw must still call the terrain mesh replacement path");
+        require(drewCheck > meshDraw && restoreCall > drewCheck, "the layer draw must restore vanilla state after any emitted VIM mesh draw");
+        require(cancel > restoreCall, "the layer draw must decide vanilla cancellation separately after restoring VIM state");
+    }
+
+    /**
+     * Minecraft has two terrain draw paths. Both are hooked at the same point: after the layer's
+     * pipeline is bound, which the mesh pipeline is derived from, and before the layer's draws.
+     */
+    private static void checkLayerHooksDrawAfterMinecraftBindsThePipeline() throws IOException {
+        for (Path layerMixin : List.of(DRAW_INDIRECT_MIXIN, DRAW_SEPARATE_MIXIN)) {
+            String source = read(layerMixin);
+            require(source.contains("method = \"render\""), layerMixin.getFileName() + " must hook the layer render method");
+            require(source.contains("RenderPass;setPipeline(Lcom/mojang/renderpearl/api/pipeline/CompiledRenderPipeline;)V") && source.contains("shift = At.Shift.AFTER"),
+                    layerMixin.getFileName() + " must draw after Minecraft has bound the layer's pipeline");
+            String hook = methodBody(source, "private void vim$drawMeshTerrainLayer");
+            require(hook.contains("MeshTerrainRenderer.get().drawTerrainLayer(layer, renderPass)"), layerMixin.getFileName() + " must hand the layer to the mesh renderer");
+            require(hook.contains("ci.cancel();"), layerMixin.getFileName() + " must still cancel vanilla draws after full VIM replacement");
+        }
+    }
+
+    /**
+     * Minecraft hands the terrain renderers a render pass that is already open, and its command
+     * encoder fails the frame when another command buffer is executed inside one. Uploads and the
+     * compute step that writes mesh-task commands therefore belong to frame preparation.
+     */
+    private static void checkFramePreparationStaysOutsideTheRenderPass(String meshRenderer, String meshProgram, String levelRendererMixin) {
+        String observe = methodBody(meshRenderer, "public void observeTerrainGroup");
+        require(!observe.contains("uploadDirtyTerrainData"), "terrain data must not be uploaded while Minecraft's terrain render pass is open");
+        require(!observe.contains("prepareTerrainCommands"), "mesh-task commands must not be generated while Minecraft's terrain render pass is open");
+        String prepareFrame = methodBody(meshRenderer, "public void prepareVisibleFrame");
+        require(prepareFrame.contains("uploadDirtyTerrainData()") && prepareFrame.contains("prepareTerrainCommands()"),
+                "frame preparation must upload terrain data and generate mesh-task commands");
+        require(prepareFrame.indexOf("uploadDirtyTerrainData()") < prepareFrame.indexOf("prepareTerrainCommands()"),
+                "terrain data must be uploaded before the frame's commands are generated from it");
+        require(methodBody(levelRendererMixin, "private void vim$endVisibleFrame").contains("MeshTerrainRenderer.get().prepareVisibleFrame()"),
+                "frame preparation must run when Minecraft has collected the frame's sections");
+        require(levelRendererMixin.contains("method = \"extractSectionDrawGroups\""), "the frame's sections must be taken from the method both Minecraft terrain paths share");
+
+        String prepareCommand = methodBody(meshProgram, "public synchronized boolean prepareWorkQueueIndirectCommand");
+        int guard = prepareCommand.indexOf("TerrainRenderPassAccess.insideRenderPass(encoder)");
+        int execute = prepareCommand.indexOf("encoder.execute(commandBuffer)");
+        require(guard >= 0 && execute > guard, "command generation must refuse to execute a command buffer inside a render pass");
+    }
+
+    /**
+     * Minecraft records terrain inside a render pass object, so a pipeline drawn there has to be
+     * created for that pass and not for dynamic rendering.
+     */
+    private static void checkMeshPipelineIsBuiltForMinecraftsRenderPass(String meshProgram) {
+        String createPipeline = methodBody(meshProgram, "private MeshPipeline createPipeline");
+        require(createPipeline.contains("device.renderpassCache().getRenderPass("), "the mesh pipeline must be created for the render pass Minecraft's pipeline uses");
+        require(createPipeline.contains(".renderPass(renderPass).subpass(0)"), "the mesh pipeline must name its render pass and subpass");
+        require(!createPipeline.contains("VkPipelineRenderingCreateInfo"), "the mesh pipeline must not be created for dynamic rendering");
+        require(meshProgram.contains("Map<TerrainPipelineState, MeshPipeline> pipelineCache"), "mesh pipelines must be cached by the vanilla pipeline state they stand in for");
     }
 
     private static void checkPartialMeshReplacementFallsBackToVanilla(String source) {
@@ -46,6 +105,8 @@ public final class TerrainRenderPassStateInvariantCheck {
                 "mesh renderer must return whether it drew VIM commands separately from whether vanilla should be cancelled");
         require(source.contains("fallbackAfterPartialDraw()"),
                 "mesh renderer must expose a partial-draw result that restores state but leaves vanilla uncancelled");
+        require(methodBody(source, "private DrawResult tryDrawVisibleMeshTerrain").contains("TerrainLayerReplacementPolicy.dispatchBatches(ranges)"),
+                "a layer's visible ranges must be split into dispatches instead of truncated");
         require(methodBody(source, "private DrawResult drawPreparedLayerDispatches").contains("return drewAny ? DrawResult.fallbackAfterPartialDraw() : DrawResult.passThrough();"),
                 "prepared multi-dispatch failure must fall back to vanilla after restoring any emitted VIM draw");
         String fullLayerSegments = methodBody(source, "private DrawResult drawFullLayerSegments");

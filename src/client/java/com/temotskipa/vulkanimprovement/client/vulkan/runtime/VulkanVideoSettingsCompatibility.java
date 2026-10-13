@@ -42,7 +42,7 @@ public final class VulkanVideoSettingsCompatibility {
         map.put("cloudRange", options.cloudRange().get());
         map.put("cutoutLeaves", options.cutoutLeaves().get());
         map.put("improvedTransparency", options.improvedTransparency().get());
-        map.put("shaderTransparencyActive", minecraft.gameRenderer.gameRenderState().useShaderTransparency());
+        map.put("shaderTransparencyActive", minecraft.gameRenderer.useImprovedTransparency());
         map.put("textureFiltering", textureFiltering.name());
         map.put("useRgss", textureFiltering == TextureFilteringMethod.RGSS);
         map.put("anisotropicSamplerExpected", textureFiltering == TextureFilteringMethod.ANISOTROPIC);

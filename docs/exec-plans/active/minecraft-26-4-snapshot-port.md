@@ -1,12 +1,14 @@
 # Minecraft 26.4 Snapshot Port
 
-**Status:** Active. Started 2026-10-13 on branch `mc-26.4-snapshot`. The branch
-does not compile yet.
+**Status:** Active. Started 2026-10-13 on branch `mc-26.4-snapshot`. The mod
+builds, passes its checks and runs on `26.4-snapshot-3`; the default mode and
+the mesh modes were exercised once each. The longer runtime matrix is open.
 
 ## Goal
 
 Run the mod on the Minecraft 26.4 snapshots, starting with `26.4-snapshot-3`,
-without losing the behaviour the 26.2 line has.
+without losing the behaviour the 26.2 line has, and attach the terrain path to
+Minecraft's own structures instead of rebuilding them.
 
 ## Constraints
 
@@ -15,36 +17,46 @@ without losing the behaviour the 26.2 line has.
   Vulkan mixin target changed package and several changed shape.
 - Windowing moved from GLFW to SDL. `org.lwjgl.glfw` is no longer on the
   classpath.
-- Vanilla now has its own indirect terrain path
+- Minecraft now has its own indirect terrain path
   (`LevelRenderer.prepareChunkRendersIndirect`, `RenderPass.drawIndexedIndirect`,
-  the optional `EXT MultiDraw` feature set). This overlaps the mod's mesh-task
-  command generation and changes what "replace vanilla terrain" has to hook.
+  the optional `EXT MultiDraw` feature set) next to the path that issues one
+  draw per section layer. The mod extends these paths; it does not replace how
+  a frame's sections are chosen.
+- Minecraft records terrain inside a `VkRenderPass` object from
+  `RenderPassCache`, not with dynamic rendering, and builds one Vulkan pipeline
+  per compiled pipeline. The level renderer opens the render pass before it
+  calls `ChunkSectionsToRender.renderGroup`.
 - Loom `1.18` needs Gradle `9.7`; the wrapper is `9.6.1`. Loom `1.17.13`
   resolves the snapshot, so the wrapper is unchanged.
-- On the development machine the snapshot client dies at startup with a native
-  access violation while implicit Vulkan layers are active (ReShade, Steam, Epic
-  and OBS overlay layers are registered). Start it with
-  `VK_LOADER_LAYERS_DISABLE=~implicit~` until the layer at fault is known. The
-  26.2 client runs with the same layers, so the snapshot's new DXGI presentation
-  path (`D3D12GpuSurface`, the `DXGI Surface` feature set) is the suspect.
+- Fabric Loader reports a snapshot under a normalized name:
+  `26.4-snapshot-3` is `26.4-alpha.3`. `gradle.properties` holds both
+  (`minecraft_version`, `minecraft_dependency`).
+- The 26.4 launcher metadata starts the game with `-XX:StackShadowPages=32`.
+  Loom does not pass launcher JVM arguments on. Without it shader compilation
+  in `shaderc` overflows the stack of the calling thread and the client dies at
+  startup with exit code `0xC0000005` and no JVM error file, most often when
+  the machine is busy or a second client runs. `build.gradle` adds the argument
+  to every run configuration.
 
 ## Steps
 
 1. Done: target `26.4-snapshot-3`, Fabric Loader `0.19.5`, Fabric API
-   `0.162.2+26.4` in `gradle.properties`.
+   `0.162.2+26.4`, Loom `1.17.13`, Gradle wrapper `9.6.1`.
 2. Done: relocate the imports and mixin descriptors that only changed package
-   (table below). This took the compile from 100 errors to 23.
-3. Open: fix the 23 remaining compile errors (list below).
-4. Open: retarget the mixins whose targets changed shape (list below). Mixin
-   targets are checked when the game starts, not by `javac`, and every injector
-   is required.
-5. Open: decide how terrain replacement attaches to the restructured chunk
-   draw path, then port `MeshTerrainRenderer`, `MeshShaderTerrainProgram` and
-   `TerrainRenderContext`.
-6. Open: update `ARCHITECTURE.md`, `docs/RELIABILITY.md` and the Gradle
-   invariant checks that name 26.2 classes.
+   (table below).
+3. Done: device requirements. `VulkanFeatureRequirements` describes them as
+   Minecraft `FeatureSet`s; `VulkanFeatureSetsMixin` adds them to
+   `VulkanFeatureSets.requiredFeatureSets()`, so Minecraft checks, reports and
+   enables them with its own. `VulkanBackendMixin` keeps what a feature set
+   cannot express: the Vulkan 1.4 device API and the allocator flags.
+4. Done: terrain path (section below).
+5. Done: every mixin target re-verified with mcdev and recorded in
+   `docs/references/minecraft-26-4-mixin-targets.md`.
+6. Done: `ARCHITECTURE.md`, `docs/RELIABILITY.md` and the invariant checks
+   that named 26.2 classes.
+7. Open: the runtime matrix in Validation.
 
-### Package relocations applied
+### Package relocations
 
 | 26.2 | 26.4 snapshot |
 |---|---|
@@ -61,64 +73,110 @@ without losing the behaviour the 26.2 line has.
 | `com.mojang.blaze3d.shaders.ShaderSource` | `com.mojang.blaze3d.pipeline.ShaderSource` |
 | `net.minecraft.client.renderer.DynamicUniforms` | `net.minecraft.client.renderer.DynamicGpuData` |
 
-### Remaining compile errors
+### Terrain path on 26.4
 
-- `VulkanFeatureRequirements`: `VulkanPNextStruct` is now built from the LWJGL
-  struct class (`new VulkanPNextStruct(VkPhysicalDeviceMeshShaderFeaturesEXT.class)`),
-  and a feature is named by its struct field (`new VulkanFeature(struct, "meshShader")`).
-- `VulkanImprovementClient`: the key binding uses `InputConstants.Type.KEYSYM`
-  and a GLFW key code. The type is now `KEYBOARD` and codes are SDL scancodes.
-- `VulkanVideoSettingsCompatibility`: `GameRenderState.useShaderTransparency()`
-  is gone.
-- `MeshShaderTerrainProgram`: `VulkanRenderPipeline` no longer exposes `info()`
-  (it keeps `device()`, `vkPipeline()`, `pipelineLayout()`,
-  `descriptorSetLayout()`, `uniforms()`); `getColorTargetStates()` returns a list.
-- `MeshTerrainRenderer`: `ChunkSectionsToRender.drawGroupsPerLayer()` is gone.
-  The class is now abstract with a `render(layer, renderPass, ...)` method per
-  draw strategy.
-- `TerrainRenderContext`: `ChunkSectionLayer.pipeline()` takes
-  `(boolean multiDraw, boolean cloudsInFog)`.
-- `VulkanRenderPassMixin`: `VulkanRenderPipeline.isValid()`,
-  `withDepthPipeline()` and `withoutDepthPipeline()` are gone. One Vulkan
-  pipeline per compiled pipeline; depth is part of the render pass.
-
-### Mixin targets
-
-| Mixin | 26.4 status |
-|---|---|
-| `VulkanInstanceMixin` | `<init>` still calls `VkApplicationInfo.apiVersion`; it passes `VK_API_VERSION_1_2`. |
-| `VulkanBackendMixin` | `createVma` still calls `vmaCreateAllocator`. `isDeviceSuitable` and `throwForMissingRequrements` are gone; device selection is `findPhysicalDevice` with `checkDeviceSuitability`, driven by `VulkanFeatureSets.requiredFeatureSets()`, `requiredIfExtensionsAvailableFeatureSets()` and `optionalFeatureSets()`. Those three return mutable sets and are the natural place to add the mod's `FeatureSet`s. |
-| `VulkanDeviceMixin` | `<init>` still calls `VulkanPhysicalDevice.close()`; the constructor gained parameters (`FeatureSet enabledFeatureSet`, `CheckpointExtension`). |
-| `VulkanGpuSurfaceMixin` | `present` still calls `vkQueuePresentKHR`. With the `DXGI Surface` feature set the game presents through `D3D12GpuSurface` instead, where present pacing would not run. |
-| `VulkanRenderPassMixin` | `setPipeline` exists (takes `BackendRenderPipeline`). `bindTexture` is replaced by `setUniform(int, Object)`. `drawMultipleIndexed` moved to the frontend (`FrontendRenderPass`); the backend has `multiDrawIndexed`, `drawIndexedIndirect`. |
-| `GlBackendMixin` | `createDevice` exists with a new signature. |
-| `ChunkSectionInfoMixin` | The record is `DynamicGpuData.ChunkSectionInfo(int x, int y, int z, float visibility)`. |
-| `ChunkSectionsToRenderMixin` | `renderGroup` exists with a new signature. |
-| `CompiledSectionMeshMixin` | `close` exists. |
-| `LevelRendererMixin` | `prepareChunkRenders`, `invalidateCompiledGeometry`, `resetLevelRenderData` and `close` exist. `prepareChunkRendersIndirect` is new and is not hooked. |
-| `SectionRenderDispatcherMixin` | `getRenderSectionSlice` exists. |
-| `SectionRenderDispatcherRenderSectionMixin` | `RenderSection.addSectionBuffersToUberBuffer` exists (private). |
-| `VideoSettingsScreenMixin` | `addOptions` and `tick` exist. |
+- **Which section layers.** `LevelRenderer.extractSectionDrawGroups` collects
+  the frame's section layers for both Minecraft draw paths and asks
+  `SectionRenderDispatcher.getRenderSectionSlice` for each one, in draw order.
+  `SectionMeshletStore` remembers those layers for the frame. The 26.2 mapping
+  from backend draws back to section layers is gone.
+- **Coverage.** A layer is drawn by the mesh path only when every section
+  layer Minecraft collected for it has meshlets on the GPU. Otherwise the
+  layer is left to Minecraft for that frame.
+- **Preparation.** Uploads and the compute step that writes mesh-task commands
+  run when `extractSectionDrawGroups` returns, before a render pass is open.
+  On 26.2 they ran inside `renderGroup`, which then still created the pass;
+  doing so on 26.4 fails the frame with `Cannot execute command buffer while
+  inside RenderPass`. Command generation also refuses when a pass is open.
+- **Draw.** `ChunkSectionsToRender.DrawIndirect.render` and
+  `DrawSeparate.render` are hooked after Minecraft binds the layer's pipeline.
+  One dispatch per layer per frame, split only when a layer exceeds the
+  mesh-task limit; 26.2 issued one per vanilla draw group.
+- **Pipeline.** A Vulkan pipeline no longer keeps the state it was compiled
+  with, so `VulkanRenderPipelineMixin` remembers it as `TerrainPipelineState`.
+  The mesh pipeline is built from that state for the render pass Minecraft's
+  pipeline uses.
+- **Textures.** The atlas, its sampler and the lightmap are taken from the
+  arguments of `renderGroup` instead of from a hook on texture binding.
 
 ## Validation
 
-- `.\gradlew.bat build` and the repository checks pass.
-- `.\gradlew.bat runClient` reaches a world with the default vanilla-terrain
-  mode and every mixin applied.
-- A DebugBridge 26.4 build in `run/mods` answers `mc_connect`; a screenshot and
-  a `mc_record_video` contact sheet show correct terrain in each renderer mode.
-  A local DebugBridge branch `mc-26.4-snapshot` has the module
-  (`debugbridge-26.4-2.0.0.jar`); it was exercised against the vanilla snapshot.
+Done on 2026-10-13, Windows 11, RTX 4070 Ti, driver 616.92, Vulkan 1.4.351:
+
+- `.\gradlew.bat build` passes, with every repository check.
+- `.\gradlew.bat runClient` reaches a world in the default mode. All 19
+  client mixins were applied across the runs below; each applies when its
+  target class loads, so `VulkanGpuSurfaceMixin` needed a run on the Vulkan
+  swapchain and `ChunkSectionsToRenderDrawSeparateMixin` one without
+  multi-draw-indirect. Device selection reports the mod's feature sets and
+  rejects the integrated GPU for the extensions it lacks.
+- Capture: 1,334 sections captured; every visible section layer covered.
+- Overlay (`vim.replaceVanillaTerrain=true`): one mesh dispatch per layer per
+  frame, `meshReplacementTaskTruncations=0`, two mesh pipelines compiled.
+- Strict replacement with GPU-generated commands, record-first camera jitter:
+  `run/debugbridge-recordings/26.4-snapshot-3/strict-gpu-commands-jitter.jpg`
+  shows coherent terrain in all 24 frames. Counters after the run:
+  `meshReplacementPreparedGpuCommands=2633`,
+  `meshReplacementPreparedDispatchQueueLeaks=0`,
+  `meshReplacementTaskTruncations=0`,
+  `meshReplacementDrawCallsByLayer={solid=1355, cutout=1334, translucent=0}`,
+  `meshReplacementPreparedGpuCommandRefusals=83` (frames in which a newly
+  visible section layer had no meshlets yet; Minecraft drew those).
+- Same-camera screenshots `vanilla.jpg`, `overlay.jpg` and `strict.jpg` in the
+  same folder show the same scene.
+- A second run on the Vulkan swapchain (`RENDERPEARL_DISABLE_DXGI_PRESENT=1`):
+  present pacing reported `mode=present-id-wait`, `presentIdsSubmitted=888`,
+  `presentWaits=888`, `presentWaitFailures=0`.
+- Strict replacement without multi-draw-indirect (`Minecraft.multiDrawIndirect`
+  set to `false`): `strict-draw-separate.jpg`, 519 dispatches per layer, no
+  refusals; two more mesh pipelines were compiled for the pipelines that path
+  uses.
+- 100 frames at 100 ms with nine scheduled camera turns, strict replacement
+  with GPU-generated commands: `strict-gpu-commands-jitter-100.jpg` shows
+  coherent terrain in every frame; 8,164 dispatches,
+  `meshReplacementRefusals=0`, `meshReplacementPreparedGpuCommandRefusals=0`,
+  `meshReplacementPreparedDispatchQueueLeaks=0`,
+  `meshReplacementTaskTruncations=0`.
+- The Video Settings screen opens with its mixin applied. That the mod's
+  controls are listed in it was not looked at.
+
+Open:
+
+- A long record-first jitter run (`mc_record_video(frames=300, interval=100)`)
+  in each mode, exceeding the 26.2 crash window.
+- Full-resolution nearest-filter texture comparison; the 26.2 cutout and
+  softness caveats are not re-examined on 26.4.
+- `vim.drawAllCapturedTerrainLayers`, `vim.allowCpuVisibleMeshletFallback`,
+  `vim.validationDescriptorBufferOnly` and `vim.enableMeshletFrustumCulling`.
+- Wireframe terrain, resource reload, dimension change and render-distance
+  change with capture enabled.
+- An OpenGL-active session.
 
 ## Decisions
 
-- Open: build terrain replacement on vanilla's new indirect path, or keep the
-  mod's own capture and dispatch and hook it into the restructured
-  `ChunkSectionsToRender`.
-- Open: whether present pacing should also cover `D3D12GpuSurface`.
+- Terrain replacement builds on Minecraft's draw paths. The mod takes the
+  frame's visible set from Minecraft and draws at Minecraft's per-layer draw
+  point; it does not choose sections itself. Decided by the maintainer on
+  2026-10-13: the mod extends Mojang's renderer and does not write a new one,
+  unless that conflicts with the modern-feature goals.
+- The mod's startup requirements stay required, now as feature sets. A device
+  without them fails Vulkan device selection as on 26.2.
+- Feature names follow the Vulkan struct fields (`meshShader`), as Minecraft's
+  do, instead of the `vim.` names; the feature set name identifies the mod.
+- Present pacing covers `VulkanGpuSurface` only. Minecraft presents through
+  `D3D12GpuSurface` when the `DXGI Surface` feature set is enabled, which it is
+  on Windows with current drivers, and present-id/present-wait have no
+  swapchain to act on there. See Follow-Up.
 
 ## Follow-Up
 
-- Find which implicit Vulkan layer crashes the snapshot client and whether it
-  is the DXGI presentation path.
+- Decide what present pacing does under DXGI presentation: report itself
+  inactive, or ask for the Vulkan swapchain while pacing is enabled
+  (`RENDERPEARL_DISABLE_DXGI_PRESENT=1` is Minecraft's own switch).
+- Use Minecraft's indirect command buffer as the input of GPU visibility
+  compaction for the
+  [GPU-resident terrain plan](gpu-resident-terrain-architecture.md): it
+  already holds one record per visible section layer.
 - Move the wrapper to Gradle `9.7` or newer when Loom `1.18` is wanted.
+- Rename what still says 26.2 once the 26.2 line is retired
+  (`26-2-vulkan-renderer-extension.md`).

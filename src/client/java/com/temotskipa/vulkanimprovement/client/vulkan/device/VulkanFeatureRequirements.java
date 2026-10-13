@@ -1,8 +1,7 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.device;
 
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
-import com.mojang.renderpearl.api.device.BackendCreationException;
-import com.mojang.renderpearl.backend.vulkan.VulkanPhysicalDevice;
+import com.mojang.renderpearl.backend.vulkan.init.FeatureSet;
 import com.mojang.renderpearl.backend.vulkan.init.VulkanFeature;
 import com.mojang.renderpearl.backend.vulkan.init.VulkanPNextStruct;
 import org.lwjgl.system.MemoryStack;
@@ -17,19 +16,24 @@ import java.util.Set;
 public final class VulkanFeatureRequirements {
     public static final String VULKAN_14_CAPABILITY = "Vulkan Improvement Mod requires VULKAN_CORE_1_4; remove the mod to use vanilla renderer";
 
-    private static final VulkanPNextStruct PHYSICAL_DEVICE_FEATURES = new VulkanPNextStruct(VK11.VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, VkPhysicalDeviceFeatures2.SIZEOF);
-    private static final VulkanPNextStruct VULKAN_12_FEATURES = new VulkanPNextStruct(VK12.VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES, VkPhysicalDeviceVulkan12Features.SIZEOF);
-    private static final VulkanPNextStruct MAINTENANCE_4_FEATURES = new VulkanPNextStruct(VK13.VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_FEATURES, VkPhysicalDeviceMaintenance4FeaturesKHR.SIZEOF);
-    private static final VulkanPNextStruct SHADER_DEMOTE_FEATURES = new VulkanPNextStruct(VK13.VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DEMOTE_TO_HELPER_INVOCATION_FEATURES, VkPhysicalDeviceShaderDemoteToHelperInvocationFeaturesEXT.SIZEOF);
-    private static final VulkanPNextStruct DYNAMIC_RENDERING_LOCAL_READ_FEATURES = new VulkanPNextStruct(VK14.VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_LOCAL_READ_FEATURES, VkPhysicalDeviceDynamicRenderingLocalReadFeaturesKHR.SIZEOF);
-    private static final VulkanPNextStruct MAINTENANCE_5_FEATURES = new VulkanPNextStruct(VK14.VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_5_FEATURES, VkPhysicalDeviceMaintenance5FeaturesKHR.SIZEOF);
-    private static final VulkanPNextStruct MAINTENANCE_6_FEATURES = new VulkanPNextStruct(VK14.VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_FEATURES, VkPhysicalDeviceMaintenance6FeaturesKHR.SIZEOF);
-    private static final VulkanPNextStruct MESH_SHADER_FEATURES = new VulkanPNextStruct(EXTMeshShader.VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT, VkPhysicalDeviceMeshShaderFeaturesEXT.SIZEOF);
-    private static final VulkanPNextStruct DESCRIPTOR_HEAP_FEATURES = new VulkanPNextStruct(EXTDescriptorHeap.VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_HEAP_FEATURES_EXT, VkPhysicalDeviceDescriptorHeapFeaturesEXT.SIZEOF);
-    private static final VulkanPNextStruct DESCRIPTOR_BUFFER_FEATURES = new VulkanPNextStruct(EXTDescriptorBuffer.VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_FEATURES_EXT, VkPhysicalDeviceDescriptorBufferFeaturesEXT.SIZEOF);
-    private static final VulkanPNextStruct FRAGMENT_SHADING_RATE_FEATURES = new VulkanPNextStruct(KHRFragmentShadingRate.VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_FEATURES_KHR, VkPhysicalDeviceFragmentShadingRateFeaturesKHR.SIZEOF);
-    private static final VulkanPNextStruct PRESENT_ID_FEATURES = new VulkanPNextStruct(KHRPresentId.VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR, VkPhysicalDevicePresentIdFeaturesKHR.SIZEOF);
-    private static final VulkanPNextStruct PRESENT_WAIT_FEATURES = new VulkanPNextStruct(KHRPresentWait.VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR, VkPhysicalDevicePresentWaitFeaturesKHR.SIZEOF);
+    private static final VulkanPNextStruct PHYSICAL_DEVICE_FEATURES = new VulkanPNextStruct(VkPhysicalDeviceFeatures2.class);
+    private static final VulkanPNextStruct VULKAN_12_FEATURES = new VulkanPNextStruct(VkPhysicalDeviceVulkan12Features.class);
+    private static final VulkanPNextStruct MAINTENANCE_4_FEATURES = new VulkanPNextStruct(VkPhysicalDeviceMaintenance4Features.class);
+    private static final VulkanPNextStruct SHADER_DEMOTE_FEATURES = new VulkanPNextStruct(VkPhysicalDeviceShaderDemoteToHelperInvocationFeatures.class);
+    private static final VulkanPNextStruct DYNAMIC_RENDERING_LOCAL_READ_FEATURES = new VulkanPNextStruct(VkPhysicalDeviceDynamicRenderingLocalReadFeatures.class);
+    private static final VulkanPNextStruct MAINTENANCE_5_FEATURES = new VulkanPNextStruct(VkPhysicalDeviceMaintenance5Features.class);
+    private static final VulkanPNextStruct MAINTENANCE_6_FEATURES = new VulkanPNextStruct(VkPhysicalDeviceMaintenance6Features.class);
+    private static final VulkanPNextStruct MESH_SHADER_FEATURES = new VulkanPNextStruct(VkPhysicalDeviceMeshShaderFeaturesEXT.class);
+    private static final VulkanPNextStruct DESCRIPTOR_HEAP_FEATURES = new VulkanPNextStruct(VkPhysicalDeviceDescriptorHeapFeaturesEXT.class);
+    private static final VulkanPNextStruct DESCRIPTOR_BUFFER_FEATURES = new VulkanPNextStruct(VkPhysicalDeviceDescriptorBufferFeaturesEXT.class);
+    private static final VulkanPNextStruct FRAGMENT_SHADING_RATE_FEATURES = new VulkanPNextStruct(VkPhysicalDeviceFragmentShadingRateFeaturesKHR.class);
+    private static final VulkanPNextStruct PRESENT_ID_FEATURES = new VulkanPNextStruct(VkPhysicalDevicePresentIdFeaturesKHR.class);
+    private static final VulkanPNextStruct PRESENT_WAIT_FEATURES = new VulkanPNextStruct(VkPhysicalDevicePresentWaitFeaturesKHR.class);
+
+    /**
+     * The name under which Minecraft logs and reports each of the mod's feature sets.
+     */
+    public static final String FEATURE_SET_PREFIX = "Vulkan Improvement ";
 
     public record RequirementGroup(String id, RequirementScope scope, boolean startupRequired, String disabledReason,
                                    Set<String> deviceExtensions, Set<VulkanFeature> deviceFeatures) {
@@ -96,7 +100,7 @@ public final class VulkanFeatureRequirements {
                 requireDescriptorHeap,
                 requireDescriptorHeap ? "required by descriptor-buffer plus heap path" : "disabled by vim.validationDescriptorBufferOnly",
                 Set.of(EXTDescriptorHeap.VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME),
-                Set.of(new VulkanFeature(DESCRIPTOR_HEAP_FEATURES, "vim.descriptorHeap", VkPhysicalDeviceDescriptorHeapFeaturesEXT.DESCRIPTORHEAP))));
+                Set.of(new VulkanFeature(DESCRIPTOR_HEAP_FEATURES, "descriptorHeap"))));
 
         groups.add(new RequirementGroup(
                 "optional-acceleration",
@@ -159,21 +163,42 @@ public final class VulkanFeatureRequirements {
 
     private static Set<VulkanFeature> hardRenderingFeatures() {
         Set<VulkanFeature> hardFeatures = new LinkedHashSet<>();
-        hardFeatures.add(new VulkanFeature(PHYSICAL_DEVICE_FEATURES, "vim.shaderInt64", VkPhysicalDeviceFeatures.SHADERINT64));
-        hardFeatures.add(new VulkanFeature(MAINTENANCE_4_FEATURES, "vim.vulkan13.maintenance4", VkPhysicalDeviceMaintenance4Features.MAINTENANCE4));
-        hardFeatures.add(new VulkanFeature(SHADER_DEMOTE_FEATURES, "vim.vulkan13.shaderDemoteToHelperInvocation", VkPhysicalDeviceShaderDemoteToHelperInvocationFeatures.SHADERDEMOTETOHELPERINVOCATION));
-        hardFeatures.add(new VulkanFeature(DYNAMIC_RENDERING_LOCAL_READ_FEATURES, "vim.vulkan14.dynamicRenderingLocalRead", VkPhysicalDeviceDynamicRenderingLocalReadFeatures.DYNAMICRENDERINGLOCALREAD));
-        hardFeatures.add(new VulkanFeature(MAINTENANCE_5_FEATURES, "vim.vulkan14.maintenance5", VkPhysicalDeviceMaintenance5Features.MAINTENANCE5));
-        hardFeatures.add(new VulkanFeature(MAINTENANCE_6_FEATURES, "vim.vulkan14.maintenance6", VkPhysicalDeviceMaintenance6Features.MAINTENANCE6));
-        hardFeatures.add(new VulkanFeature(VULKAN_12_FEATURES, "vim.vulkan12.bufferDeviceAddress", VkPhysicalDeviceVulkan12Features.BUFFERDEVICEADDRESS));
-        hardFeatures.add(new VulkanFeature(VULKAN_12_FEATURES, "vim.vulkan12.scalarBlockLayout", VkPhysicalDeviceVulkan12Features.SCALARBLOCKLAYOUT));
-        hardFeatures.add(new VulkanFeature(MESH_SHADER_FEATURES, "vim.mesh.taskShader", VkPhysicalDeviceMeshShaderFeaturesEXT.TASKSHADER));
-        hardFeatures.add(new VulkanFeature(MESH_SHADER_FEATURES, "vim.mesh.meshShader", VkPhysicalDeviceMeshShaderFeaturesEXT.MESHSHADER));
-        hardFeatures.add(new VulkanFeature(DESCRIPTOR_BUFFER_FEATURES, "vim.descriptorBuffer", VkPhysicalDeviceDescriptorBufferFeaturesEXT.DESCRIPTORBUFFER));
-        hardFeatures.add(new VulkanFeature(FRAGMENT_SHADING_RATE_FEATURES, "vim.fragmentShadingRate.pipeline", VkPhysicalDeviceFragmentShadingRateFeaturesKHR.PIPELINEFRAGMENTSHADINGRATE));
-        hardFeatures.add(new VulkanFeature(PRESENT_ID_FEATURES, "vim.presentId", VkPhysicalDevicePresentIdFeaturesKHR.PRESENTID));
-        hardFeatures.add(new VulkanFeature(PRESENT_WAIT_FEATURES, "vim.presentWait", VkPhysicalDevicePresentWaitFeaturesKHR.PRESENTWAIT));
+        // A feature is named by its field in the Vulkan struct, as Minecraft names its own, so
+        // the two agree when both ask for the same one.
+        hardFeatures.add(new VulkanFeature(PHYSICAL_DEVICE_FEATURES, "shaderInt64"));
+        hardFeatures.add(new VulkanFeature(MAINTENANCE_4_FEATURES, "maintenance4"));
+        hardFeatures.add(new VulkanFeature(SHADER_DEMOTE_FEATURES, "shaderDemoteToHelperInvocation"));
+        hardFeatures.add(new VulkanFeature(DYNAMIC_RENDERING_LOCAL_READ_FEATURES, "dynamicRenderingLocalRead"));
+        hardFeatures.add(new VulkanFeature(MAINTENANCE_5_FEATURES, "maintenance5"));
+        hardFeatures.add(new VulkanFeature(MAINTENANCE_6_FEATURES, "maintenance6"));
+        hardFeatures.add(new VulkanFeature(VULKAN_12_FEATURES, "bufferDeviceAddress"));
+        hardFeatures.add(new VulkanFeature(VULKAN_12_FEATURES, "scalarBlockLayout"));
+        hardFeatures.add(new VulkanFeature(MESH_SHADER_FEATURES, "taskShader"));
+        hardFeatures.add(new VulkanFeature(MESH_SHADER_FEATURES, "meshShader"));
+        hardFeatures.add(new VulkanFeature(DESCRIPTOR_BUFFER_FEATURES, "descriptorBuffer"));
+        hardFeatures.add(new VulkanFeature(FRAGMENT_SHADING_RATE_FEATURES, "pipelineFragmentShadingRate"));
+        hardFeatures.add(new VulkanFeature(PRESENT_ID_FEATURES, "presentId"));
+        hardFeatures.add(new VulkanFeature(PRESENT_WAIT_FEATURES, "presentWait"));
         return hardFeatures;
+    }
+
+    /**
+     * The mod's startup requirements as Minecraft feature sets, one per requirement group that
+     * names an extension or a feature. Minecraft adds them to its own required sets, so device
+     * selection, the missing-capability report and device creation all take them into account.
+     */
+    public static List<FeatureSet> requiredFeatureSets() {
+        return requiredFeatureSets(!TerrainRendererDebugConfig.validationDescriptorBufferOnly());
+    }
+
+    static List<FeatureSet> requiredFeatureSets(boolean requireDescriptorHeap) {
+        List<FeatureSet> featureSets = new ArrayList<>();
+        for (RequirementGroup group : startupRequiredRequirementGroups(requireDescriptorHeap)) {
+            if (!group.deviceExtensions().isEmpty() || !group.deviceFeatures().isEmpty()) {
+                featureSets.add(new FeatureSet(FEATURE_SET_PREFIX + "[" + group.id() + "]", group.deviceExtensions(), group.deviceFeatures()));
+            }
+        }
+        return List.copyOf(featureSets);
     }
 
     static List<RequirementGroup> startupRequiredRequirementGroups(boolean requireDescriptorHeap) {
@@ -244,34 +269,6 @@ public final class VulkanFeatureRequirements {
 
     public static boolean supportsRequiredApi(VkPhysicalDevice physicalDevice) {
         return apiVersion(physicalDevice) >= VK14.VK_API_VERSION_1_4;
-    }
-
-    public static List<String> missingRequiredCapabilities(VkPhysicalDevice vkPhysicalDevice) throws BackendCreationException {
-        List<String> missingCapabilities = new ArrayList<>();
-        int apiVersion = apiVersion(vkPhysicalDevice);
-        if (apiVersion < VK14.VK_API_VERSION_1_4) {
-            missingCapabilities.add(VULKAN_14_CAPABILITY + " (found " + versionString(apiVersion) + ")");
-            return missingCapabilities;
-        }
-
-        try (VulkanPhysicalDevice physicalDevice = new VulkanPhysicalDevice(vkPhysicalDevice)) {
-            missingCapabilities.addAll(physicalDevice.getMissingExtensions(requiredDeviceExtensions()));
-        }
-
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            VkPhysicalDeviceFeatures2 deviceFeatures = VkPhysicalDeviceFeatures2.calloc(stack).sType$Default();
-            for (VulkanFeature requiredDeviceFeature : requiredDeviceFeatures()) {
-                requiredDeviceFeature.struct().findOrCreateStructInPNextChain(deviceFeatures, stack);
-            }
-            VK12.vkGetPhysicalDeviceFeatures2(vkPhysicalDevice, deviceFeatures);
-            for (VulkanFeature requiredDeviceFeature : requiredDeviceFeatures()) {
-                if (!requiredDeviceFeature.get(deviceFeatures)) {
-                    missingCapabilities.add(requiredDeviceFeature.name());
-                }
-            }
-        }
-
-        return List.copyOf(missingCapabilities);
     }
 
     public static int apiVersion(VkPhysicalDevice physicalDevice) {

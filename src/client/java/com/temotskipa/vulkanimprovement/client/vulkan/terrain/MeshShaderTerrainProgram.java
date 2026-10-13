@@ -3,7 +3,6 @@ package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 import com.mojang.renderpearl.api.pipeline.BlendFunction;
 import com.mojang.renderpearl.api.pipeline.ColorTargetState;
 import com.mojang.renderpearl.api.pipeline.DepthStencilState;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.renderpearl.backend.vulkan.*;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
@@ -18,6 +17,7 @@ import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.LongAdder;
@@ -25,13 +25,13 @@ import java.util.concurrent.atomic.LongAdder;
 @SuppressWarnings("resource")
 public final class MeshShaderTerrainProgram {
     private static final MeshShaderTerrainProgram INSTANCE = new MeshShaderTerrainProgram();
-    private static final int DEPTH_ATTACHMENT_FORMAT = 126;
-    private final Map<PipelineKey, MeshPipeline> pipelineCache = new HashMap<>();
+    private final Map<TerrainPipelineState, MeshPipeline> pipelineCache = new HashMap<>();
     private final LongAdder pipelineCompiles = new LongAdder();
     private final LongAdder meshTaskDispatches = new LongAdder();
     private final LongAdder meshTaskDirectDispatches = new LongAdder();
     private final LongAdder meshTaskIndirectDispatches = new LongAdder();
     private final LongAdder meshTaskGpuCommandPreparations = new LongAdder();
+    private final LongAdder meshTaskGpuCommandPreparationsInsideRenderPass = new LongAdder();
     private final LongAdder meshTasksDispatched = new LongAdder();
     private final LongAdder textureDescriptorBufferBinds = new LongAdder();
     private final LongAdder textureDescriptorBufferMissing = new LongAdder();
@@ -197,11 +197,12 @@ public final class MeshShaderTerrainProgram {
         return this.taskModule != 0L && this.meshModule != 0L && this.fragmentModule != 0L && this.commandModule != 0L && this.commandPipeline != null;
     }
 
-    public synchronized boolean drawTerrain(VkCommandBuffer commandBuffer, VulkanRenderPipeline vanillaPipeline, boolean hasDepth, TerrainMeshTaskDispatch dispatch, long meshletHeaderAddress, long vertexPayloadAddress, long indexPayloadAddress) {
-        if (!ready() || dispatch == null || !dispatch.ready() || meshletHeaderAddress == 0L || vertexPayloadAddress == 0L) {
+    public synchronized boolean drawTerrain(VkCommandBuffer commandBuffer, TerrainPipelineState vanillaPipeline, TerrainMeshTaskDispatch dispatch, long meshletHeaderAddress, long vertexPayloadAddress, long indexPayloadAddress) {
+        VulkanDevice activeDevice = this.device;
+        if (activeDevice == null || !ready() || dispatch == null || !dispatch.ready() || meshletHeaderAddress == 0L || vertexPayloadAddress == 0L) {
             return false;
         }
-        MeshPipeline meshPipeline = this.pipelineCache.computeIfAbsent(new PipelineKey(vanillaPipeline.info(), hasDepth), key -> createPipeline(vanillaPipeline.device(), key.info(), key.hasDepth()));
+        MeshPipeline meshPipeline = this.pipelineCache.computeIfAbsent(vanillaPipeline, state -> createPipeline(activeDevice, state));
         if (!bindTerrainTextureDescriptorBuffer(commandBuffer, meshPipeline)) {
             return false;
         }
@@ -261,6 +262,11 @@ public final class MeshShaderTerrainProgram {
         }
 
         VulkanCommandEncoder encoder = activeDevice.createCommandEncoder();
+        if (TerrainRenderPassAccess.insideRenderPass(encoder)) {
+            // Minecraft refuses to execute a command buffer while a render pass is open, and fails the frame.
+            this.meshTaskGpuCommandPreparationsInsideRenderPass.increment();
+            return false;
+        }
         VkCommandBuffer commandBuffer = encoder.allocateAndBeginTransientCommandBuffer();
         if (!recordWorkQueueIndirectCommand(commandBuffer, dispatch)) {
             return false;
@@ -325,6 +331,7 @@ public final class MeshShaderTerrainProgram {
         map.put("meshTaskDirectDispatches", this.meshTaskDirectDispatches.sum());
         map.put("meshTaskIndirectDispatches", this.meshTaskIndirectDispatches.sum());
         map.put("meshTaskGpuCommandPreparations", this.meshTaskGpuCommandPreparations.sum());
+        map.put("meshTaskGpuCommandPreparationsInsideRenderPass", this.meshTaskGpuCommandPreparationsInsideRenderPass.sum());
         map.put("meshTasksDispatched", this.meshTasksDispatched.sum());
         map.put("textureDescriptorBufferBinds", this.textureDescriptorBufferBinds.sum());
         map.put("textureDescriptorBufferMissing", this.textureDescriptorBufferMissing.sum());
@@ -338,7 +345,12 @@ public final class MeshShaderTerrainProgram {
         return map;
     }
 
-    private MeshPipeline createPipeline(VulkanDevice device, RenderPipeline pipelineInfo, boolean hasDepth) {
+    /**
+     * Builds the mesh pipeline that stands in for one vanilla terrain pipeline: the same
+     * rasterization, depth and blend state, for the same render pass, with the terrain task, mesh
+     * and fragment stages.
+     */
+    private MeshPipeline createPipeline(VulkanDevice device, TerrainPipelineState pipelineInfo) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             VkDescriptorSetLayoutBinding.Buffer textureBindings = VkDescriptorSetLayoutBinding.calloc(4, stack);
             textureBindings.get(0).binding(0).descriptorType(VK10.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE).descriptorCount(1).stageFlags(VK10.VK_SHADER_STAGE_FRAGMENT_BIT);
@@ -347,14 +359,14 @@ public final class MeshShaderTerrainProgram {
             textureBindings.get(3).binding(3).descriptorType(VK10.VK_DESCRIPTOR_TYPE_SAMPLER).descriptorCount(1).stageFlags(VK10.VK_SHADER_STAGE_FRAGMENT_BIT);
             VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = VkDescriptorSetLayoutCreateInfo.calloc(stack).sType$Default().flags(EXTDescriptorBuffer.VK_DESCRIPTOR_SET_LAYOUT_CREATE_DESCRIPTOR_BUFFER_BIT_EXT).pBindings(textureBindings);
             LongBuffer descriptorSetLayoutHandle = stack.callocLong(1);
-            VulkanUtils.crashIfFailure(device, VK12.vkCreateDescriptorSetLayout(device.vkDevice(), descriptorSetLayoutCreateInfo, null, descriptorSetLayoutHandle), "Failed to create VIM terrain texture descriptor-buffer layout for " + pipelineInfo.getLocation());
+            VulkanUtils.crashIfFailure(device, VK12.vkCreateDescriptorSetLayout(device.vkDevice(), descriptorSetLayoutCreateInfo, null, descriptorSetLayoutHandle), "Failed to create VIM terrain texture descriptor-buffer layout for " + pipelineInfo.name());
             long textureDescriptorSetLayout = descriptorSetLayoutHandle.get(0);
             DescriptorHeapTerrainResources.TextureDescriptorLayout textureDescriptorLayout = queryTextureDescriptorLayout(device, textureDescriptorSetLayout);
 
             VkPushConstantRange.Buffer pushConstantRanges = VkPushConstantRange.calloc(1, stack).stageFlags(EXTMeshShader.VK_SHADER_STAGE_TASK_BIT_EXT | EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT).offset(0).size(TerrainGpuLayout.TERRAIN_PUSH_CONSTANT_BYTES);
             VkPipelineLayoutCreateInfo layoutCreateInfo = VkPipelineLayoutCreateInfo.calloc(stack).sType$Default().pSetLayouts(stack.longs(textureDescriptorSetLayout)).pPushConstantRanges(pushConstantRanges);
             LongBuffer layoutHandle = stack.callocLong(1);
-            VulkanUtils.crashIfFailure(device, VK12.vkCreatePipelineLayout(device.vkDevice(), layoutCreateInfo, null, layoutHandle), "Failed to create VIM terrain mesh pipeline layout for " + pipelineInfo.getLocation());
+            VulkanUtils.crashIfFailure(device, VK12.vkCreatePipelineLayout(device.vkDevice(), layoutCreateInfo, null, layoutHandle), "Failed to create VIM terrain mesh pipeline layout for " + pipelineInfo.name());
             long pipelineLayout = layoutHandle.get(0);
 
             VkPipelineShaderStageCreateInfo.Buffer shaderStages = VkPipelineShaderStageCreateInfo.calloc(3, stack);
@@ -363,19 +375,19 @@ public final class MeshShaderTerrainProgram {
             shaderStages.get(1).sType$Default().stage(EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT).module(this.meshModule).pName(entryPoint);
             shaderStages.get(2).sType$Default().stage(VK10.VK_SHADER_STAGE_FRAGMENT_BIT).module(this.fragmentModule).pName(entryPoint);
 
-            VkPipelineRasterizationStateCreateInfo rasterizationState = VkPipelineRasterizationStateCreateInfo.calloc(stack).sType$Default().polygonMode(VulkanConst.toVk(pipelineInfo.getPolygonMode())).cullMode(VK10.VK_CULL_MODE_NONE).frontFace(VK10.VK_FRONT_FACE_CLOCKWISE).lineWidth(1.0F);
+            VkPipelineRasterizationStateCreateInfo rasterizationState = VkPipelineRasterizationStateCreateInfo.calloc(stack).sType$Default().polygonMode(VulkanConst.toVk(pipelineInfo.polygonMode())).cullMode(VK10.VK_CULL_MODE_NONE).frontFace(VK10.VK_FRONT_FACE_CLOCKWISE).lineWidth(1.0F);
 
-            DepthStencilState depthStencilStateInfo = hasDepth ? pipelineInfo.getDepthStencilState() : null;
+            DepthStencilState depthStencilStateInfo = pipelineInfo.depthStencilState();
             VkPipelineDepthStencilStateCreateInfo depthStencilState = VkPipelineDepthStencilStateCreateInfo.calloc(stack).sType$Default();
             if (depthStencilStateInfo != null) {
                 rasterizationState.depthBiasEnable(depthStencilStateInfo.depthBiasConstant() != 0.0F && depthStencilStateInfo.depthBiasScaleFactor() != 0.0F).depthBiasConstantFactor(depthStencilStateInfo.depthBiasConstant()).depthBiasSlopeFactor(depthStencilStateInfo.depthBiasScaleFactor());
                 depthStencilState.depthTestEnable(true).depthWriteEnable(depthStencilStateInfo.writeDepth()).depthCompareOp(VulkanConst.toVk(depthStencilStateInfo.depthTest()));
             }
 
-            ColorTargetState[] colorTargets = pipelineInfo.getColorTargetStates();
-            VkPipelineColorBlendAttachmentState.Buffer colorAttachments = VkPipelineColorBlendAttachmentState.calloc(colorTargets.length, stack);
-            for (int i = 0; i < colorTargets.length; i++) {
-                ColorTargetState colorTarget = colorTargets[i];
+            List<ColorTargetState> colorTargets = pipelineInfo.colorTargetStates();
+            VkPipelineColorBlendAttachmentState.Buffer colorAttachments = VkPipelineColorBlendAttachmentState.calloc(colorTargets.size(), stack);
+            for (int i = 0; i < colorTargets.size(); i++) {
+                ColorTargetState colorTarget = colorTargets.get(i);
                 VkPipelineColorBlendAttachmentState attachment = colorAttachments.get(i);
                 attachment.colorWriteMask(colorTarget == null ? 0 : VulkanConst.toVk(colorTarget));
                 if (colorTarget != null) {
@@ -389,21 +401,18 @@ public final class MeshShaderTerrainProgram {
             IntBuffer dynamicStates = stack.ints(VK10.VK_DYNAMIC_STATE_VIEWPORT, VK10.VK_DYNAMIC_STATE_SCISSOR, KHRFragmentShadingRate.VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR);
             VkPipelineDynamicStateCreateInfo dynamicState = VkPipelineDynamicStateCreateInfo.calloc(stack).sType$Default().pDynamicStates(dynamicStates);
 
-            IntBuffer colorAttachmentFormats = stack.mallocInt(colorTargets.length);
-            for (int i = 0; i < colorTargets.length; i++) {
-                ColorTargetState colorTarget = colorTargets[i];
-                colorAttachmentFormats.put(i, colorTarget == null ? 0 : VulkanConst.toVk(colorTarget.format()));
-            }
-            VkPipelineRenderingCreateInfoKHR renderingInfo = VkPipelineRenderingCreateInfoKHR.calloc(stack).sType$Default().pColorAttachmentFormats(colorAttachmentFormats).depthAttachmentFormat(hasDepth ? DEPTH_ATTACHMENT_FORMAT : 0);
+            // Minecraft records terrain inside a render pass object, so the pipeline is created for
+            // the pass Minecraft's own pipeline with these attachment formats was created for.
+            long renderPass = device.renderpassCache().getRenderPass(pipelineInfo.hasDepth() ? VulkanConst.toVk(pipelineInfo.depthStencilFormat()) : 0, colorTargets);
 
-            VkGraphicsPipelineCreateInfo.Buffer pipelineCreateInfo = VkGraphicsPipelineCreateInfo.calloc(1, stack).sType$Default().flags(EXTDescriptorBuffer.VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT).pStages(shaderStages).pRasterizationState(rasterizationState).pDepthStencilState(depthStencilState).pColorBlendState(colorBlendState).pViewportState(viewportState).pMultisampleState(multisampleState).pDynamicState(dynamicState).layout(pipelineLayout).pNext(renderingInfo);
+            VkGraphicsPipelineCreateInfo.Buffer pipelineCreateInfo = VkGraphicsPipelineCreateInfo.calloc(1, stack).sType$Default().flags(EXTDescriptorBuffer.VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT).pStages(shaderStages).pRasterizationState(rasterizationState).pDepthStencilState(depthStencilState).pColorBlendState(colorBlendState).pViewportState(viewportState).pMultisampleState(multisampleState).pDynamicState(dynamicState).layout(pipelineLayout).renderPass(renderPass).subpass(0);
 
             LongBuffer pipelineHandle = stack.callocLong(1);
-            VulkanUtils.crashIfFailure(device, VK12.vkCreateGraphicsPipelines(device.vkDevice(), 0L, pipelineCreateInfo, null, pipelineHandle), "Failed to create VIM terrain mesh pipeline for " + pipelineInfo.getLocation());
+            VulkanUtils.crashIfFailure(device, VK12.vkCreateGraphicsPipelines(device.vkDevice(), 0L, pipelineCreateInfo, null, pipelineHandle), "Failed to create VIM terrain mesh pipeline for " + pipelineInfo.name());
             long pipeline = pipelineHandle.get(0);
             device.instance().debug().setObjectName(device.vkDevice(), VK10.VK_OBJECT_TYPE_PIPELINE_LAYOUT, pipelineLayout, "VIM Terrain Mesh Pipeline Layout");
             device.instance().debug().setObjectName(device.vkDevice(), VK10.VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, textureDescriptorSetLayout, "VIM Terrain Texture Descriptor-Buffer Layout");
-            device.instance().debug().setObjectName(device.vkDevice(), VK10.VK_OBJECT_TYPE_PIPELINE, pipeline, "VIM Terrain Mesh Pipeline " + pipelineInfo.getLocation());
+            device.instance().debug().setObjectName(device.vkDevice(), VK10.VK_OBJECT_TYPE_PIPELINE, pipeline, "VIM Terrain Mesh Pipeline " + pipelineInfo.name());
             this.pipelineCompiles.increment();
             this.lastError = "";
             return new MeshPipeline(pipeline, pipelineLayout, textureDescriptorSetLayout, textureDescriptorLayout);
@@ -458,21 +467,6 @@ public final class MeshShaderTerrainProgram {
             if (this.layout != 0L) {
                 VK12.vkDestroyPipelineLayout(device.vkDevice(), this.layout, null);
             }
-        }
-    }
-
-    private record PipelineKey(RenderPipeline info, boolean hasDepth) {
-
-        @Override
-        public boolean equals(Object other) {
-            return other instanceof PipelineKey(
-                    RenderPipeline info1, boolean depth
-            ) && this.info == info1 && this.hasDepth == depth;
-        }
-
-        @Override
-        public int hashCode() {
-            return 31 * System.identityHashCode(this.info) + Boolean.hashCode(this.hasDepth);
         }
     }
 

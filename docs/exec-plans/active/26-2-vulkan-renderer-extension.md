@@ -189,7 +189,8 @@ LOD, and RT/PT work can share.
   while development builds still skip SPIR-V generation when the validator is
   missing. `checkShaderBuildPipelineInvariants` covers the Gradle wiring.
 - 2026-06-29: The mcdev-confirmed 26.2 client mixin target surface is now
-  recorded in `docs/references/minecraft-26-2-mixin-targets.md`, and
+  recorded in `docs/references/minecraft-26-4-mixin-targets.md` (the 26.2
+  manifest until the 26.4 port replaced it), and
   `checkMinecraft26MixinTargetManifest` keeps the manifest, mixin config, and
   source-level hook tokens aligned.
 - 2026-06-29: `RendererDomain` now includes an explicit `postProcessing`
@@ -303,7 +304,7 @@ The dedicated public plan is
   descriptors before changing the mixin.
 - Add a small source-level manifest or check that documents every Mojang target
   touched by the Vulkan requirement mixins.
-- Done through `docs/references/minecraft-26-2-mixin-targets.md` and
+- Done through `docs/references/minecraft-26-4-mixin-targets.md` and
   `checkMinecraft26MixinTargetManifest`, covering the 26.2 Vulkan, OpenGL,
   Video Settings, and terrain capture mixin targets.
 
