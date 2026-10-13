@@ -1,5 +1,6 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 
 import java.nio.ByteBuffer;
@@ -11,15 +12,15 @@ import java.util.Set;
 public final class TerrainMaterialClassifierInvariantCheck {
     private TerrainMaterialClassifierInvariantCheck() {
     }
-
-    @SuppressWarnings("unused")
+    
+    
     static void main(String[] args) {
         checkMaterialIdsFitTableAndAreStable();
         checkLayerAlphaClassification();
         checkTerrainLayerRecords();
         checkDiagnostics();
     }
-
+    
     @SuppressWarnings("ConstantValue")
     private static void checkMaterialIdsFitTableAndAreStable() {
         Set<Integer> materialIds = new HashSet<>();
@@ -30,27 +31,29 @@ public final class TerrainMaterialClassifierInvariantCheck {
             require(materialIds.add(materialId), layer.label() + " material ID must be unique");
         }
     }
-
+    
     private static void checkLayerAlphaClassification() {
         for (ChunkSectionLayer layer : ChunkSectionLayer.values()) {
             GpuMaterialAlphaMode alphaMode = TerrainMaterialClassifier.alphaModeForLayer(layer);
             String label = layer.label();
             if (label.contains("translucent")) {
                 require(alphaMode == GpuMaterialAlphaMode.BLENDED, "translucent layer must classify as blended");
-            } else if (label.contains("cutout") || label.contains("tripwire")) {
+            }
+            else if (label.contains("cutout") || label.contains("tripwire")) {
                 require(alphaMode == GpuMaterialAlphaMode.MASKED, label + " layer must classify as masked");
-            } else {
+            }
+            else {
                 require(alphaMode == GpuMaterialAlphaMode.OPAQUE, label + " layer must classify as opaque");
             }
         }
     }
-
+    
     private static void checkTerrainLayerRecords() {
         TextureInfo blockAtlas = new TextureInfo(true, 1024, 512, 0, 5);
         TextureInfo lightmap = new TextureInfo(true, 16, 16, 0, 1);
         ByteBuffer table = ByteBuffer.allocate(TerrainGpuLayout.MATERIAL_TABLE_CAPACITY * TerrainGpuLayout.MATERIAL_RECORD_STRIDE).order(ByteOrder.LITTLE_ENDIAN);
         TerrainMaterialClassifier.writeTerrainLayerRecords(table, blockAtlas, lightmap);
-
+        
         for (ChunkSectionLayer layer : ChunkSectionLayer.values()) {
             int materialId = TerrainMaterialClassifier.materialIdForLayer(layer);
             int[] encoded = readRecord(table, materialId);
@@ -62,7 +65,7 @@ public final class TerrainMaterialClassifierInvariantCheck {
             require(encoded[14] == GpuMaterialRecord.MATERIAL_DOMAIN_TERRAIN, layer.label() + " material record must encode terrain domain");
         }
     }
-
+    
     private static void checkDiagnostics() {
         Map<String, Object> diagnostics = TerrainMaterialClassifier.asMap();
         require(diagnostics.size() == ChunkSectionLayer.values().length, "material diagnostics must include every chunk section layer");
@@ -75,17 +78,18 @@ public final class TerrainMaterialClassifierInvariantCheck {
             require(layerMap.get("renderLayerOrdinal").equals(layer.ordinal()), layer.label() + " diagnostics must include render-layer ordinal");
         }
     }
-
+    
     private static int expectedFlags(GpuMaterialAlphaMode alphaMode) {
         int flags = GpuMaterialRecord.FLAG_BLOCK_ATLAS_READY | GpuMaterialRecord.FLAG_LIGHTMAP_READY;
         if (alphaMode == GpuMaterialAlphaMode.MASKED) {
             flags |= GpuMaterialRecord.FLAG_ALPHA_MASKED;
-        } else if (alphaMode == GpuMaterialAlphaMode.BLENDED) {
+        }
+        else if (alphaMode == GpuMaterialAlphaMode.BLENDED) {
             flags |= GpuMaterialRecord.FLAG_ALPHA_BLENDED;
         }
         return flags;
     }
-
+    
     private static int[] readRecord(ByteBuffer table, int materialId) {
         ByteBuffer duplicate = table.duplicate().order(ByteOrder.LITTLE_ENDIAN);
         duplicate.position(materialId * TerrainGpuLayout.MATERIAL_RECORD_STRIDE);
@@ -95,7 +99,7 @@ public final class TerrainMaterialClassifierInvariantCheck {
         }
         return encoded;
     }
-
+    
     private static void require(boolean condition, String message) {
         if (!condition) {
             throw new AssertionError(message);

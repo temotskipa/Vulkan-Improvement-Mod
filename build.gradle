@@ -3,7 +3,7 @@ import groovy.json.JsonSlurper
 import java.util.concurrent.TimeUnit
 
 plugins {
-    id 'net.fabricmc.fabric-loom' version '1.17.13'
+    id 'net.fabricmc.fabric-loom' version '1.18-SNAPSHOT'
     id 'maven-publish'
 }
 
@@ -161,9 +161,10 @@ def allowedVulkanPackages = [
         vulkanPackageRoot + ".rtpt",
         vulkanPackageRoot + ".runtime",
         vulkanPackageRoot + ".terrain",
+        vulkanPackageRoot + ".terrain.util",
 ]
 def terrainShaderSourceDir = layout.projectDirectory.dir("src/client/resources/assets/vulkanimprovement/shaders/terrain")
-def terrainGpuLayoutSource = layout.projectDirectory.file("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/TerrainGpuLayout.java")
+def terrainGpuLayoutSource = layout.projectDirectory.file("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/util/TerrainGpuLayout.java")
 def requireShaderValidator = providers.gradleProperty("vim.requireShaderValidator")
         .map { it.toBoolean() }
         .orElse(false)

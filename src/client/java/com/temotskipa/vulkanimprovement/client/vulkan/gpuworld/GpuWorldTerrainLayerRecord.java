@@ -4,10 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
-public record GpuWorldTerrainLayerRecord(GpuWorldSectionId section, GpuWorldRevision revision,
-                                         GpuWorldPageKind pageKind, int layerOrdinal, int materialId,
-                                         int meshletOffset, int meshletCount, float visibility,
-                                         long sourceUpdateSequence) {
+public record GpuWorldTerrainLayerRecord(GpuWorldSectionId section, GpuWorldRevision revision, GpuWorldPageKind pageKind, int layerOrdinal, int materialId, int meshletOffset, int meshletCount, float visibility, long sourceUpdateSequence) {
     public GpuWorldTerrainLayerRecord {
         Objects.requireNonNull(section, "section");
         Objects.requireNonNull(revision, "revision");
@@ -37,14 +34,11 @@ public record GpuWorldTerrainLayerRecord(GpuWorldSectionId section, GpuWorldRevi
             throw new IllegalArgumentException("sourceUpdateSequence must be positive: " + sourceUpdateSequence);
         }
     }
-
-    public static GpuWorldTerrainLayerRecord from(GpuWorldSectionUpdate update, int meshletOffset, int meshletCount,
-                                                  float visibility) {
-        return new GpuWorldTerrainLayerRecord(update.section(), update.revision(), update.pageKind(),
-                update.layerOrdinal(), update.materialId(), meshletOffset, meshletCount, visibility,
-                update.sequence());
+    
+    public static GpuWorldTerrainLayerRecord from(GpuWorldSectionUpdate update, int meshletOffset, int meshletCount, float visibility) {
+        return new GpuWorldTerrainLayerRecord(update.section(), update.revision(), update.pageKind(), update.layerOrdinal(), update.materialId(), meshletOffset, meshletCount, visibility, update.sequence());
     }
-
+    
     public Map<String, Object> asMap() {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("section", this.section.asMap());

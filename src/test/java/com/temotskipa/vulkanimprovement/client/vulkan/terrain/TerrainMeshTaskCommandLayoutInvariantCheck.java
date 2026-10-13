@@ -1,19 +1,21 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
+
 import java.util.Map;
 
 public final class TerrainMeshTaskCommandLayoutInvariantCheck {
     private TerrainMeshTaskCommandLayoutInvariantCheck() {
     }
-
-    @SuppressWarnings("unused")
+    
+    
     static void main(String[] args) {
         checkCommandLayout();
         checkCapacityBytes();
         checkDiagnostics();
         checkInvalidInputsRejected();
     }
-
+    
     @SuppressWarnings("ConstantValue")
     private static void checkCommandLayout() {
         require(TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_STRIDE == Integer.BYTES * 3, "mesh-task indirect command must stay three uints");
@@ -22,12 +24,12 @@ public final class TerrainMeshTaskCommandLayoutInvariantCheck {
         require(TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_USE_PUSH_TASK_COUNT_FLAG == 1, "push task-count command flag must match shader constant");
         require(TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_STRIDE % Integer.BYTES == 0, "mesh-task command stride must be int-aligned");
     }
-
+    
     private static void checkCapacityBytes() {
         require(TerrainMeshTaskCommandLayout.bytesForCapacity() == TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_STRIDE * (long) TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_CAPACITY, "command byte size must cover every command record");
         require(TerrainMeshTaskCommandLayout.commandOffset(4) == TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_STRIDE * 4L, "command offsets must use command stride");
     }
-
+    
     private static void checkDiagnostics() {
         Map<String, Object> diagnostics = TerrainMeshTaskCommandLayout.asMap();
         require(diagnostics.get("commandStride").equals(TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_STRIDE), "diagnostics must include command stride");
@@ -44,11 +46,11 @@ public final class TerrainMeshTaskCommandLayoutInvariantCheck {
         require(((Map<?, ?>) pushConstants).get("reserved").equals(28), "push constant diagnostics must include reserved offset");
         require(diagnostics.get("usePushTaskCountFlag").equals(TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_USE_PUSH_TASK_COUNT_FLAG), "diagnostics must include push task-count flag");
     }
-
+    
     private static void checkInvalidInputsRejected() {
         requireThrows(() -> TerrainMeshTaskCommandLayout.commandOffset(-1));
     }
-
+    
     private static void requireThrows(Runnable action) {
         try {
             action.run();
@@ -57,7 +59,7 @@ public final class TerrainMeshTaskCommandLayoutInvariantCheck {
         }
         throw new AssertionError("negative command index must be rejected");
     }
-
+    
     private static void require(boolean condition, String message) {
         if (!condition) {
             throw new AssertionError(message);

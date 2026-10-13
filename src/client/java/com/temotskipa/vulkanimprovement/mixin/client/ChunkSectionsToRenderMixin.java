@@ -1,15 +1,15 @@
 package com.temotskipa.vulkanimprovement.mixin.client;
 
-import com.temotskipa.vulkanimprovement.client.vulkan.runtime.VulkanImprovementRuntime;
-import com.temotskipa.vulkanimprovement.client.vulkan.terrain.DescriptorHeapTerrainResources;
-import com.temotskipa.vulkanimprovement.client.vulkan.terrain.MeshTerrainRenderer;
-import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRenderContext;
-import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.commands.RenderPass;
 import com.mojang.renderpearl.api.textures.FilterMode;
 import com.mojang.renderpearl.api.textures.GpuSampler;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
+import com.temotskipa.vulkanimprovement.client.vulkan.runtime.VulkanImprovementRuntime;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.DescriptorHeapTerrainResources;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.MeshTerrainRenderer;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRenderContext;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayerGroup;
 import net.minecraft.client.renderer.chunk.ChunkSectionsToRender;
@@ -42,7 +42,7 @@ public abstract class ChunkSectionsToRenderMixin {
         }
         MeshTerrainRenderer.get().observeTerrainGroup(group, renderWireframeTerrain, improvedFogTextures != null);
     }
-
+    
     @Inject(method = "renderGroup", at = @At("RETURN"))
     private void vim$leaveTerrainGroup(ChunkSectionLayerGroup group, RenderPass renderPass, GpuSampler sampler, GpuTextureView atlas, ChunkSectionsToRender.@Nullable ImprovedFogTextures improvedFogTextures, boolean renderWireframeTerrain, CallbackInfo ci) {
         if (!TerrainRenderContext.isTerrainPass()) {

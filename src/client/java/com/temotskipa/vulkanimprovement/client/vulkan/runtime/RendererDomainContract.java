@@ -3,8 +3,7 @@ package com.temotskipa.vulkanimprovement.client.vulkan.runtime;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-record RendererDomainContract(RendererDomain domain, String vanillaOwner, String assetContract, String orderingContract,
-                              String materialContract, String fallbackReason, boolean replacementAllowed) {
+record RendererDomainContract(RendererDomain domain, String vanillaOwner, String assetContract, String orderingContract, String materialContract, String fallbackReason, boolean replacementAllowed) {
     static RendererDomainContract defaultFor(RendererDomain domain) {
         return switch (domain) {
             case TERRAIN ->

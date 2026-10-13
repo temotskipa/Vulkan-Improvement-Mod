@@ -124,10 +124,10 @@ vec3 cameraRelative(ivec3 section, vec3 local) {
 vec4 projectRelative(vec3 relative) {
     vec4 value = vec4(relative, 1.0);
     return vec4(
-    dot(pc.cameraRight, value),
-    dot(pc.cameraUp, value),
-    dot(pc.cameraForward, value),
-    dot(pc.projection, value)
+            dot(pc.cameraRight, value),
+            dot(pc.cameraUp, value),
+            dot(pc.cameraForward, value),
+            dot(pc.projection, value)
     );
 }
 
@@ -158,12 +158,12 @@ void main() {
     uint vertexCount = indexedTriangles ? uint(clamp(header.indexCount, 0, 128)) : uint(clamp(header.vertexCount, 0, 128));
     uint primitiveCount = indexedTriangles ? min(vertexCount / 3u, 64u) : min(vertexCount / 4u * 2u, 64u);
     TerrainVertices payload = TerrainVertices(
-    pc.vertexPayload
-    + uint64_t(header.vertexByteOffset)
+            pc.vertexPayload
+            + uint64_t(header.vertexByteOffset)
     );
     TerrainIndices indices = TerrainIndices(
-    pc.indexPayload
-    + uint64_t(header.indexByteOffset)
+            pc.indexPayload
+            + uint64_t(header.indexByteOffset)
     );
     uint materialIndex = uint(clamp(header.materialId, 0, MATERIAL_TABLE_CAPACITY - 1));
     uint materialFlags = 3u;
@@ -187,14 +187,14 @@ void main() {
         float cameraDistance = length(relative);
         float fadeApplies = clamp((cameraDistance - SECTION_FADE_FREE_DISTANCE) / SECTION_FADE_FREE_DISTANCE, 0.0, 1.0);
         meshFog[vertex] = vec3(
-        cameraDistance,
-        max(length(relative.xz), abs(relative.y)),
-        mix(1.0, clamp(taskPayload.meshletVisibility, 0.0, 1.0), fadeApplies)
+                cameraDistance,
+                max(length(relative.xz), abs(relative.y)),
+                mix(1.0, clamp(taskPayload.meshletVisibility, 0.0, 1.0), fadeApplies)
         );
         meshUv0[vertex] = blockVertex.uv0;
         meshLightUv[vertex] = vec2(
-        float(blockVertex.uv2 & 65535u) / 256.0,
-        float((blockVertex.uv2 >> 16) & 65535u) / 256.0
+                float(blockVertex.uv2 & 65535u) / 256.0,
+                float((blockVertex.uv2 >> 16) & 65535u) / 256.0
         );
         meshMaterialFlags[vertex] = materialFlags;
     }

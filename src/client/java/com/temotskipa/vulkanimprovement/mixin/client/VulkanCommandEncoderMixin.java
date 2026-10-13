@@ -1,8 +1,8 @@
 package com.temotskipa.vulkanimprovement.mixin.client;
 
-import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRenderPassAccess;
 import com.mojang.renderpearl.backend.vulkan.VulkanCommandEncoder;
 import com.mojang.renderpearl.backend.vulkan.VulkanRenderPass;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRenderPassAccess;
 import org.jspecify.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -15,7 +15,7 @@ import org.spongepowered.asm.mixin.Shadow;
 public abstract class VulkanCommandEncoderMixin implements TerrainRenderPassAccess.Encoder {
     @Shadow
     private @Nullable VulkanRenderPass currentRenderPass;
-
+    
     @Override
     public boolean vim$insideRenderPass() {
         return this.currentRenderPass != null;

@@ -1,6 +1,7 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.device;
 
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -9,7 +10,7 @@ import java.util.Map;
 public final class VulkanRuntimeProfile {
     public static final String RT_PT_ACCELERATION_ALLOCATION = "rtPtAccelerationAllocation";
     static final String RT_PT_ALLOCATION_NOT_PLANNED = "device supports it; no acceleration-structure allocation plan is active";
-
+    
     private final Map<String, Object> hardRequirements;
     private final Map<String, Object> preferredFeatures;
     private final Map<String, Object> rtReadiness;
@@ -79,7 +80,8 @@ public final class VulkanRuntimeProfile {
         }
         if (TerrainRendererDebugConfig.validationDescriptorBufferOnly()) {
             disabledReasons.put("descriptorHeap", "disabled by vim.validationDescriptorBufferOnly");
-        } else if (!descriptorHeapSelected) {
+        }
+        else if (!descriptorHeapSelected) {
             disabledReasons.put("descriptorHeap", "requires descriptor heap extension");
         }
         if (!meshTaskDispatchSelected) {
@@ -87,7 +89,8 @@ public final class VulkanRuntimeProfile {
         }
         if (!TerrainRendererDebugConfig.enableGpuGeneratedMeshTaskCommands()) {
             disabledReasons.put("gpuGeneratedMeshTaskCommands", "disabled by vim.enableGpuGeneratedMeshTaskCommands=false");
-        } else if (!meshTaskDispatchSelected) {
+        }
+        else if (!meshTaskDispatchSelected) {
             disabledReasons.put("gpuGeneratedMeshTaskCommands", "requires mesh-task dispatch");
         }
         if (!snapshot.multiDrawExtension()) {
@@ -102,18 +105,20 @@ public final class VulkanRuntimeProfile {
         disabledReasons.put(RT_PT_ACCELERATION_ALLOCATION, rtPtAllocationBlocker.isEmpty() ? RT_PT_ALLOCATION_NOT_PLANNED : "requires " + rtPtAllocationBlocker);
         if (TerrainRendererDebugConfig.disablePresentPacing()) {
             disabledReasons.put("presentPacing", "disabled by vim.disablePresentPacing");
-        } else if (!snapshot.presentIdExtension() || !snapshot.presentWaitExtension()) {
+        }
+        else if (!snapshot.presentIdExtension() || !snapshot.presentWaitExtension()) {
             disabledReasons.put("presentPacing", "requires present id and present wait");
         }
         if (!TerrainRendererDebugConfig.fragmentShadingRateEnabled()) {
             disabledReasons.put("fragmentShadingRate", "disabled by vim.disableFragmentShadingRate");
-        } else if (!snapshot.fragmentShadingRateExtension()) {
+        }
+        else if (!snapshot.fragmentShadingRateExtension()) {
             disabledReasons.put("fragmentShadingRate", "requires fragment shading-rate extension");
         }
         
         return new VulkanRuntimeProfile(hardRequirements, preferredFeatures, rtReadiness, selectedPaths, disabledReasons, rtPtAllocationBlocker.isEmpty());
     }
-
+    
     /**
      * What the device lacks for allocating acceleration structures, or nothing. Allocation needs
      * the structures themselves, a pipeline to trace them with, device addresses for their build
@@ -135,23 +140,11 @@ public final class VulkanRuntimeProfile {
         }
         return String.join(", ", missing);
     }
-
-    /**
-     * Whether the device could allocate acceleration structures. This is the device half of the
-     * gate; whether allocation is switched on is the acceleration-data registry's to say.
-     */
-    public boolean rtPtAccelerationAllocationSupported() {
-        return this.rtPtAccelerationAllocationSupported;
-    }
-
-    public String rtPtAccelerationAllocationDisabledReason() {
-        return String.valueOf(this.disabledReasons.get(RT_PT_ACCELERATION_ALLOCATION));
-    }
-
+    
     private static String selectedState(boolean selected) {
         return selected ? "selected" : "unavailable";
     }
-
+    
     private static Map<String, Object> preferredFeatures(VulkanImprovementCapabilities.Snapshot snapshot) {
         Map<String, Object> preferredFeatures = new LinkedHashMap<>();
         preferredFeatures.put("deviceGeneratedCommandsExtension", snapshot.deviceGeneratedCommandsExtension());
@@ -165,7 +158,7 @@ public final class VulkanRuntimeProfile {
         preferredFeatures.put("hostImageCopyExtension", snapshot.hostImageCopyExtension());
         return preferredFeatures;
     }
-
+    
     private static Map<String, Object> rtReadiness(VulkanImprovementCapabilities.Snapshot snapshot) {
         Map<String, Object> rtReadiness = new LinkedHashMap<>();
         rtReadiness.put("accelerationStructureExtension", snapshot.accelerationStructureExtension());
@@ -177,21 +170,27 @@ public final class VulkanRuntimeProfile {
         rtReadiness.put("rayTracingInvocationReorderExtension", snapshot.rayTracingInvocationReorderExtension());
         return rtReadiness;
     }
-
+    
     private static boolean rtPtReady(VulkanImprovementCapabilities.Snapshot snapshot) {
-        return snapshot.accelerationStructureExtension()
-                && snapshot.rayQueryExtension()
-                && snapshot.rayTracingPipelineExtension()
-                && snapshot.rayTracingMaintenance1Extension()
-                && snapshot.rayTracingPositionFetchExtension()
-                && snapshot.opacityMicromapExtension()
-                && snapshot.rayTracingInvocationReorderExtension();
+        return snapshot.accelerationStructureExtension() && snapshot.rayQueryExtension() && snapshot.rayTracingPipelineExtension() && snapshot.rayTracingMaintenance1Extension() && snapshot.rayTracingPositionFetchExtension() && snapshot.opacityMicromapExtension() && snapshot.rayTracingInvocationReorderExtension();
     }
     
     private static void addDisabledReason(Map<String, Object> disabledReasons, String name, Object enabled, String reason) {
         if (enabled instanceof Boolean supported && !supported) {
             disabledReasons.put(name, reason);
         }
+    }
+    
+    /**
+     * Whether the device could allocate acceleration structures. This is the device half of the
+     * gate; whether allocation is switched on is the acceleration-data registry's to say.
+     */
+    public boolean rtPtAccelerationAllocationSupported() {
+        return this.rtPtAccelerationAllocationSupported;
+    }
+    
+    public String rtPtAccelerationAllocationDisabledReason() {
+        return String.valueOf(this.disabledReasons.get(RT_PT_ACCELERATION_ALLOCATION));
     }
     
     public Map<String, Object> asMap() {

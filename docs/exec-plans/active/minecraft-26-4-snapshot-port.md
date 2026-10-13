@@ -27,8 +27,9 @@ Minecraft's own structures instead of rebuilding them.
   `RenderPassCache`, not with dynamic rendering, and builds one Vulkan pipeline
   per compiled pipeline. The level renderer opens the render pass before it
   calls `ChunkSectionsToRender.renderGroup`.
-- Loom `1.18` needs Gradle `9.7`; the wrapper is `9.6.1`. Loom `1.17.13`
-  resolves the snapshot, so the wrapper is unchanged.
+- Loom `1.18` needs Gradle `9.7` or newer. The port began on Loom `1.17.13`
+  with the `9.6.1` wrapper, which resolves the snapshot; on 2026-10-14 the
+  build moved to Loom `1.18-SNAPSHOT` and the `9.8.1` wrapper.
 - Fabric Loader reports a snapshot under a normalized name:
   `26.4-snapshot-3` is `26.4-alpha.3`. `gradle.properties` holds both
   (`minecraft_version`, `minecraft_dependency`).
@@ -42,7 +43,7 @@ Minecraft's own structures instead of rebuilding them.
 ## Steps
 
 1. Done: target `26.4-snapshot-3`, Fabric Loader `0.19.5`, Fabric API
-   `0.162.2+26.4`, Loom `1.17.13`, Gradle wrapper `9.6.1`.
+   `0.162.2+26.4`, Loom `1.18-SNAPSHOT`, Gradle wrapper `9.8.1`.
 2. Done: relocate the imports and mixin descriptors that only changed package
    (table below).
 3. Done: device requirements. `VulkanFeatureRequirements` describes them as
@@ -227,6 +228,7 @@ Open:
   compaction for the
   [GPU-resident terrain plan](gpu-resident-terrain-architecture.md): it
   already holds one record per visible section layer.
-- Move the wrapper to Gradle `9.7` or newer when Loom `1.18` is wanted.
+- Pin Loom to a release once `1.18` has one; a snapshot version can change
+  under the build.
 - Rename what still says 26.2 once the 26.2 line is retired
   (`26-2-vulkan-renderer-extension.md`).

@@ -1,11 +1,11 @@
 package com.temotskipa.vulkanimprovement.mixin.client;
 
-import com.temotskipa.vulkanimprovement.client.vulkan.runtime.VulkanImprovementRuntime;
-import com.temotskipa.vulkanimprovement.client.vulkan.terrain.MeshTerrainRenderer;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.renderpearl.api.buffers.GpuBuffer;
 import com.mojang.renderpearl.api.commands.RenderPass;
 import com.mojang.renderpearl.api.pipeline.IndexType;
+import com.temotskipa.vulkanimprovement.client.vulkan.runtime.VulkanImprovementRuntime;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.MeshTerrainRenderer;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.chunk.ChunkSectionsToRender;
 import org.jspecify.annotations.Nullable;

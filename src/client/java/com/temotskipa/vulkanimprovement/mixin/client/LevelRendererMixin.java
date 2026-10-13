@@ -26,7 +26,7 @@ public final class LevelRendererMixin {
     @Shadow
     @Final
     private LevelRenderState levelRenderState;
-
+    
     /**
      * Minecraft collects the section layers of a frame here for both of its terrain draw paths.
      */
@@ -36,7 +36,7 @@ public final class LevelRendererMixin {
             SectionMeshletStore.beginVisibleFrame();
         }
     }
-
+    
     /**
      * The frame's sections are known and no render pass is open yet: the mesh path prepares here.
      */
@@ -47,21 +47,21 @@ public final class LevelRendererMixin {
             MeshTerrainRenderer.get().prepareVisibleFrame(this.levelRenderState.renderWireframeTerrain);
         }
     }
-
+    
     @Inject(method = "invalidateCompiledGeometry", at = @At("HEAD"))
     private void vim$clearMeshletCacheForGeometryInvalidation(ClientLevel level, Options options, Camera camera, BlockColors blockColors, CallbackInfo ci) {
         if (VulkanImprovementRuntime.isVulkanBackendActive() && TerrainRendererDebugConfig.terrainCaptureEnabled()) {
             SectionMeshletStore.clearAll("invalidateCompiledGeometry");
         }
     }
-
+    
     @Inject(method = "resetLevelRenderData", at = @At("HEAD"))
     private void vim$clearMeshletCacheForLevelReset(CallbackInfo ci) {
         if (VulkanImprovementRuntime.isVulkanBackendActive() && TerrainRendererDebugConfig.terrainCaptureEnabled()) {
             SectionMeshletStore.clearAll("resetLevelRenderData");
         }
     }
-
+    
     @Inject(method = "close", at = @At("HEAD"))
     private void vim$clearMeshletCacheForRendererClose(CallbackInfo ci) {
         if (VulkanImprovementRuntime.isVulkanBackendActive() && TerrainRendererDebugConfig.terrainCaptureEnabled()) {

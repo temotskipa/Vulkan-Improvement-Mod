@@ -1,5 +1,6 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 
 import java.nio.ByteBuffer;
@@ -10,8 +11,7 @@ import java.util.Map;
 final class TerrainMaterialClassifier {
     private TerrainMaterialClassifier() {
     }
-
-    @SuppressWarnings("ConstantValue")
+    
     static int materialIdForLayer(ChunkSectionLayer layer) {
         if (layer == null) {
             return GpuMaterialRecord.DEFAULT_TERRAIN_MATERIAL_ID;
@@ -21,7 +21,7 @@ final class TerrainMaterialClassifier {
         }
         return layer.ordinal();
     }
-
+    
     static GpuMaterialAlphaMode alphaModeForLayer(ChunkSectionLayer layer) {
         if (layer == null) {
             return GpuMaterialAlphaMode.OPAQUE;
@@ -35,17 +35,11 @@ final class TerrainMaterialClassifier {
         }
         return GpuMaterialAlphaMode.OPAQUE;
     }
-
+    
     static GpuMaterialRecord recordForLayer(ChunkSectionLayer layer, TextureInfo blockAtlas, TextureInfo lightmap) {
-        return GpuMaterialRecord.terrainLayer(
-                materialIdForLayer(layer),
-                layer == null ? -1 : layer.ordinal(),
-                alphaModeForLayer(layer),
-                blockAtlas,
-                lightmap
-        );
+        return GpuMaterialRecord.terrainLayer(materialIdForLayer(layer), layer == null ? -1 : layer.ordinal(), alphaModeForLayer(layer), blockAtlas, lightmap);
     }
-
+    
     static void writeTerrainLayerRecords(ByteBuffer target, TextureInfo blockAtlas, TextureInfo lightmap) {
         for (ChunkSectionLayer layer : ChunkSectionLayer.values()) {
             int materialId = materialIdForLayer(layer);
@@ -58,7 +52,7 @@ final class TerrainMaterialClassifier {
             recordForLayer(layer, blockAtlas, lightmap).write(duplicate);
         }
     }
-
+    
     static Map<String, Object> asMap() {
         Map<String, Object> map = new LinkedHashMap<>();
         for (ChunkSectionLayer layer : ChunkSectionLayer.values()) {

@@ -17,17 +17,12 @@ public final class TerrainShaderCompileCheck {
      * The compiler recurses deeply; the game compiles on its main thread, which has room for it.
      */
     private static final long COMPILE_THREAD_STACK_BYTES = 64L * 1024L * 1024L;
-    private static final Map<String, Integer> SHADERS = Map.of(
-            TerrainShaderSource.TASK_SHADER, Shaderc.shaderc_task_shader,
-            TerrainShaderSource.MESH_SHADER, Shaderc.shaderc_mesh_shader,
-            TerrainShaderSource.FRAGMENT_SHADER, Shaderc.shaderc_fragment_shader,
-            TerrainShaderSource.MESH_TASK_COMMAND_SHADER, Shaderc.shaderc_compute_shader
-    );
-
+    private static final Map<String, Integer> SHADERS = Map.of(TerrainShaderSource.TASK_SHADER, Shaderc.shaderc_task_shader, TerrainShaderSource.MESH_SHADER, Shaderc.shaderc_mesh_shader, TerrainShaderSource.FRAGMENT_SHADER, Shaderc.shaderc_fragment_shader, TerrainShaderSource.MESH_TASK_COMMAND_SHADER, Shaderc.shaderc_compute_shader);
+    
     private TerrainShaderCompileCheck() {
     }
-
-    @SuppressWarnings("unused")
+    
+    
     static void main(String[] args) throws InterruptedException {
         AtomicReference<Throwable> failure = new AtomicReference<>();
         Thread compileThread = new Thread(null, () -> {
@@ -43,7 +38,7 @@ public final class TerrainShaderCompileCheck {
             throw new AssertionError("terrain shaders must compile", failure.get());
         }
     }
-
+    
     private static void compileAll() {
         long compiler = Shaderc.shaderc_compiler_initialize();
         long options = Shaderc.shaderc_compile_options_initialize();

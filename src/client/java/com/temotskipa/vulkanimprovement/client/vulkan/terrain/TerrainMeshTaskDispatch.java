@@ -1,13 +1,12 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
-public record TerrainMeshTaskDispatch(int meshletOffset, int layerOrdinal, int requestedMeshlets, int taskCount,
-                                      long visibleMeshletListAddress, long workQueueAddress, long indirectCommandBuffer,
-                                      long indirectCommandOffset, int indirectCommandStride, long indirectCommandAddress,
-                                      boolean indirectCommandGpuGenerated, Source source, String reason) {
+public record TerrainMeshTaskDispatch(int meshletOffset, int layerOrdinal, int requestedMeshlets, int taskCount, long visibleMeshletListAddress, long workQueueAddress, long indirectCommandBuffer, long indirectCommandOffset, int indirectCommandStride, long indirectCommandAddress, boolean indirectCommandGpuGenerated, Source source, String reason) {
     static final int MAX_DIRECT_TASKS = 65_535;
     
     public TerrainMeshTaskDispatch {

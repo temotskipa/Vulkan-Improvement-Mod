@@ -1,9 +1,9 @@
 package com.temotskipa.vulkanimprovement.mixin.client;
 
-import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanFeatureRequirements;
+import com.mojang.logging.LogUtils;
 import com.mojang.renderpearl.backend.vulkan.VulkanFeatureSets;
 import com.mojang.renderpearl.backend.vulkan.init.FeatureSet;
-import com.mojang.logging.LogUtils;
+import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanFeatureRequirements;
 import org.slf4j.Logger;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -22,10 +22,10 @@ import java.util.Set;
 public final class VulkanFeatureSetsMixin {
     @Unique
     private static final Logger VIM_LOGGER = LogUtils.getLogger();
-
+    
     @Unique
     private static boolean vim$announced;
-
+    
     @Inject(method = "requiredFeatureSets", at = @At("RETURN"))
     private static void vim$requireModernVulkan(CallbackInfoReturnable<Set<FeatureSet>> cir) {
         List<FeatureSet> featureSets = VulkanFeatureRequirements.requiredFeatureSets();

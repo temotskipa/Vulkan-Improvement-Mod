@@ -16,11 +16,12 @@ final class RendererJson {
         }
         return builder.append('}').toString();
     }
-
+    
     private static void appendValue(StringBuilder builder, Object value) {
         if (value instanceof Number || value instanceof Boolean) {
             builder.append(value);
-        } else if (value instanceof Map<?, ?> map) {
+        }
+        else if (value instanceof Map<?, ?> map) {
             builder.append('{');
             boolean first = true;
             for (Map.Entry<?, ?> entry : map.entrySet()) {
@@ -32,11 +33,12 @@ final class RendererJson {
                 appendValue(builder, entry.getValue());
             }
             builder.append('}');
-        } else {
+        }
+        else {
             builder.append('"').append(escape(String.valueOf(value))).append('"');
         }
     }
-
+    
     private static String escape(String value) {
         return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }

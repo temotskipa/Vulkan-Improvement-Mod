@@ -16,10 +16,10 @@ public final class TerrainFogState {
     private static final float NEVER = Float.MAX_VALUE;
     private static final Fog NONE = new Fog(false, 0.0F, 0.0F, 0.0F, 0.0F, NEVER, NEVER, NEVER, NEVER);
     private static volatile Fog current = NONE;
-
+    
     private TerrainFogState() {
     }
-
+    
     /**
      * @param enabled whether Minecraft's fog is switched on; with it off Minecraft binds a buffer
      *                of fog that never starts instead of the frame's
@@ -27,11 +27,11 @@ public final class TerrainFogState {
     public static void record(boolean enabled, float red, float green, float blue, float alpha, float environmentalStart, float environmentalEnd, float renderDistanceStart, float renderDistanceEnd) {
         current = enabled ? new Fog(true, red, green, blue, alpha, environmentalStart, environmentalEnd, renderDistanceStart, renderDistanceEnd) : NONE;
     }
-
+    
     public static void reset() {
         current = NONE;
     }
-
+    
     /**
      * @param improvedFog whether the terrain being drawn fades into the sky and cloud images
      *                    behind it instead of the fog colour
@@ -42,7 +42,7 @@ public final class TerrainFogState {
         target.putFloat(fog.environmentalStart()).putFloat(fog.environmentalEnd()).putFloat(fog.renderDistanceStart()).putFloat(fog.renderDistanceEnd());
         target.putInt(improvedFog ? 1 : 0).putInt(0).putInt(0).putInt(0);
     }
-
+    
     public static Map<String, Object> asMap() {
         Fog fog = current;
         Map<String, Object> map = new LinkedHashMap<>();
@@ -54,7 +54,7 @@ public final class TerrainFogState {
         map.put("renderDistanceEnd", fog.renderDistanceEnd());
         return map;
     }
-
+    
     private record Fog(boolean enabled, float red, float green, float blue, float alpha, float environmentalStart, float environmentalEnd, float renderDistanceStart, float renderDistanceEnd) {
     }
 }

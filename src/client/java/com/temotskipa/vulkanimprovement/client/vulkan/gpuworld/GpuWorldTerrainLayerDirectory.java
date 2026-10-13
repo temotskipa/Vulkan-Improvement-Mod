@@ -8,29 +8,31 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public final class GpuWorldTerrainLayerDirectory {
     private static final GpuWorldTerrainLayerDirectory INSTANCE = new GpuWorldTerrainLayerDirectory();
-
+    
     private final Map<Key, GpuWorldTerrainLayerRecord> records = new LinkedHashMap<>();
     private final AtomicLong publicationCount = new AtomicLong();
     private final AtomicLong replacementCount = new AtomicLong();
     private final AtomicLong removedSectionCount = new AtomicLong();
     private final AtomicLong clearCount = new AtomicLong();
     private String lastClearReason = "not cleared";
-
+    
     private GpuWorldTerrainLayerDirectory() {
     }
-
+    
     public static GpuWorldTerrainLayerDirectory get() {
         return INSTANCE;
     }
-
-    public synchronized GpuWorldTerrainLayerRecord publish(GpuWorldSectionUpdate update, int meshletOffset,
-                                                          int meshletCount, float visibility) {
-        GpuWorldTerrainLayerRecord record = GpuWorldTerrainLayerRecord.from(update, meshletOffset, meshletCount,
-                visibility);
+    
+    private static String normalizedReason(String reason) {
+        return reason == null || reason.isBlank() ? "unspecified" : reason;
+    }
+    
+    public synchronized GpuWorldTerrainLayerRecord publish(GpuWorldSectionUpdate update, int meshletOffset, int meshletCount, float visibility) {
+        GpuWorldTerrainLayerRecord record = GpuWorldTerrainLayerRecord.from(update, meshletOffset, meshletCount, visibility);
         publish(record);
         return record;
     }
-
+    
     public synchronized void replaceSnapshot(Collection<GpuWorldTerrainLayerRecord> snapshot, String reason) {
         this.records.clear();
         this.lastClearReason = normalizedReason(reason);
@@ -38,28 +40,28 @@ public final class GpuWorldTerrainLayerDirectory {
             publish(record);
         }
     }
-
+    
     public synchronized Optional<GpuWorldTerrainLayerRecord> recordFor(long sectionNode, int layerOrdinal) {
         return Optional.ofNullable(this.records.get(new Key(sectionNode, layerOrdinal)));
     }
-
+    
     public synchronized void removeLayer(long sectionNode, int layerOrdinal) {
         this.records.remove(new Key(sectionNode, layerOrdinal));
     }
-
+    
     public synchronized void removeSection(long sectionNode) {
         boolean removed = this.records.keySet().removeIf(key -> key.sectionNode() == sectionNode);
         if (removed) {
             this.removedSectionCount.incrementAndGet();
         }
     }
-
+    
     public synchronized void clear(String reason) {
         this.records.clear();
         this.clearCount.incrementAndGet();
         this.lastClearReason = normalizedReason(reason);
     }
-
+    
     synchronized void resetForTests() {
         this.records.clear();
         this.publicationCount.set(0L);
@@ -68,7 +70,7 @@ public final class GpuWorldTerrainLayerDirectory {
         this.clearCount.set(0L);
         this.lastClearReason = "not cleared";
     }
-
+    
     public synchronized Map<String, Object> asMap() {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("authority", "cpu-chunk-state");
@@ -83,7 +85,7 @@ public final class GpuWorldTerrainLayerDirectory {
         map.put("sampleRecords", sampleRecords());
         return map;
     }
-
+    
     private void publish(GpuWorldTerrainLayerRecord record) {
         Key key = new Key(record.section().sectionNode(), record.layerOrdinal());
         GpuWorldTerrainLayerRecord previous = this.records.put(key, record);
@@ -92,7 +94,7 @@ public final class GpuWorldTerrainLayerDirectory {
             this.replacementCount.incrementAndGet();
         }
     }
-
+    
     private Map<String, Object> sampleRecords() {
         Map<String, Object> map = new LinkedHashMap<>();
         int count = 0;
@@ -105,11 +107,7 @@ public final class GpuWorldTerrainLayerDirectory {
         }
         return map;
     }
-
-    private static String normalizedReason(String reason) {
-        return reason == null || reason.isBlank() ? "unspecified" : reason;
-    }
-
+    
     private record Key(long sectionNode, int layerOrdinal) {
     }
 }

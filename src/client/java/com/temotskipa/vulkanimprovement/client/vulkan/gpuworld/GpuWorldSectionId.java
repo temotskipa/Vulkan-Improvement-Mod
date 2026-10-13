@@ -12,17 +12,17 @@ public record GpuWorldSectionId(long sectionNode, int sectionX, int sectionY, in
             throw new IllegalArgumentException("Section node does not match coordinates: node=" + sectionNode + ", encoded=" + encoded);
         }
     }
-
+    
     public static GpuWorldSectionId fromSectionNode(long sectionNode) {
         return new GpuWorldSectionId(sectionNode, SectionPos.x(sectionNode), SectionPos.y(sectionNode), SectionPos.z(sectionNode));
     }
-
+    
     public static GpuWorldSectionId fromBlockPosition(int blockX, int blockY, int blockZ) {
         return fromSectionNode(SectionPos.asLong(SectionPos.blockToSectionCoord(blockX), SectionPos.blockToSectionCoord(blockY), SectionPos.blockToSectionCoord(blockZ)));
     }
-
-    public Map<String, Object> asMap() {
-        Map<String, Object> map = new LinkedHashMap<>();
+    
+    public Map<String, ? extends Number> asMap() {
+        Map<String, Number> map = new LinkedHashMap<>();
         map.put("sectionNode", this.sectionNode);
         map.put("sectionX", this.sectionX);
         map.put("sectionY", this.sectionY);

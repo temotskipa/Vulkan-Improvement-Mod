@@ -1,8 +1,8 @@
 package com.temotskipa.vulkanimprovement.mixin.client;
 
-import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRenderPassAccess;
 import com.mojang.renderpearl.backend.vulkan.VulkanRenderPass;
 import com.mojang.renderpearl.backend.vulkan.VulkanRenderPipeline;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRenderPassAccess;
 import org.jspecify.annotations.Nullable;
 import org.lwjgl.vulkan.VK10;
 import org.lwjgl.vulkan.VK12;
@@ -19,25 +19,25 @@ public abstract class VulkanRenderPassMixin implements TerrainRenderPassAccess {
     @Shadow
     @Nullable
     protected VulkanRenderPipeline pipeline;
-
+    
     @Shadow
     private boolean anyDescriptorDirty;
-
+    
     @Shadow
     private VkCommandBuffer commandBuffer() {
         throw new AssertionError();
     }
-
+    
     @Override
     public VkCommandBuffer vim$commandBuffer() {
         return this.commandBuffer();
     }
-
+    
     @Override
     public @Nullable VulkanRenderPipeline vim$boundPipeline() {
         return this.pipeline;
     }
-
+    
     @Override
     public void vim$restoreVanillaPipeline() {
         if (this.pipeline == null) {

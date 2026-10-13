@@ -15,15 +15,53 @@ public final class GpuWorldResidencyStats {
     private long evictedBytes;
     private long overBudgetRefusals;
     private long overBudgetRefusedBytes;
-
+    
     private GpuWorldResidencyStats(GpuWorldResidencyBudget budget) {
         this.budget = Objects.requireNonNull(budget, "budget");
     }
-
+    
     public static GpuWorldResidencyStats empty(GpuWorldResidencyBudget budget) {
         return new GpuWorldResidencyStats(budget);
     }
-
+    
+    private static boolean wouldExceed(long current, long increment, long limit) {
+        try {
+            return Math.addExact(current, increment) > limit;
+        } catch (ArithmeticException exception) {
+            return true;
+        }
+    }
+    
+    private static Map<String, Object> mapByKind(EnumMap<GpuWorldPageKind, Long> source) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        for (GpuWorldPageKind kind : GpuWorldPageKind.values()) {
+            map.put(kind.diagnosticName(), source.get(kind));
+        }
+        return map;
+    }
+    
+    private static EnumMap<GpuWorldPageKind, Long> zeroedPageKindMap() {
+        EnumMap<GpuWorldPageKind, Long> map = new EnumMap<>(GpuWorldPageKind.class);
+        for (GpuWorldPageKind kind : GpuWorldPageKind.values()) {
+            map.put(kind, 0L);
+        }
+        return map;
+    }
+    
+    private static void requireNonNegative(long value, String name) {
+        if (value < 0L) {
+            throw new IllegalArgumentException(name + " must be non-negative: " + value);
+        }
+    }
+    
+    private static long checkedAdd(long left, long right) {
+        try {
+            return Math.addExact(left, right);
+        } catch (ArithmeticException exception) {
+            throw new IllegalArgumentException("GPU world residency stats overflow long", exception);
+        }
+    }
+    
     public synchronized boolean tryReservePage(GpuWorldPageKind pageKind, long residentBytes) {
         requireNonNegative(residentBytes, "residentBytes");
         GpuWorldPageKind kind = Objects.requireNonNull(pageKind, "pageKind");
@@ -38,7 +76,7 @@ public final class GpuWorldResidencyStats {
         this.acceptedBytes = checkedAdd(this.acceptedBytes, residentBytes);
         return true;
     }
-
+    
     public synchronized void releasePage(GpuWorldPageKind pageKind, long residentBytes) {
         requireNonNegative(residentBytes, "residentBytes");
         GpuWorldPageKind kind = Objects.requireNonNull(pageKind, "pageKind");
@@ -48,26 +86,25 @@ public final class GpuWorldResidencyStats {
             throw new IllegalArgumentException("cannot release missing GPU world page kind: " + kind.diagnosticName());
         }
         if (residentBytes > usedBytes) {
-            throw new IllegalArgumentException("cannot release more GPU world bytes than are resident: "
-                    + residentBytes + " > " + usedBytes);
+            throw new IllegalArgumentException("cannot release more GPU world bytes than are resident: " + residentBytes + " > " + usedBytes);
         }
         this.livePageCountsByKind.put(kind, livePageCount - 1L);
         this.usedBytesByKind.put(kind, usedBytes - residentBytes);
     }
-
+    
     public synchronized void recordEviction(GpuWorldPageKind pageKind, long residentBytes) {
         releasePage(pageKind, residentBytes);
         this.evictedPageCount = checkedAdd(this.evictedPageCount, 1L);
         this.evictedBytes = checkedAdd(this.evictedBytes, residentBytes);
     }
-
+    
     public synchronized void resetLivePages() {
         for (GpuWorldPageKind kind : GpuWorldPageKind.values()) {
             this.livePageCountsByKind.put(kind, 0L);
             this.usedBytesByKind.put(kind, 0L);
         }
     }
-
+    
     synchronized void resetForTests() {
         resetLivePages();
         this.acceptedPageCount = 0L;
@@ -77,7 +114,7 @@ public final class GpuWorldResidencyStats {
         this.overBudgetRefusals = 0L;
         this.overBudgetRefusedBytes = 0L;
     }
-
+    
     public synchronized Map<String, Object> asMap() {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("reservedBytes", this.budget.reservedBytes());
@@ -96,23 +133,15 @@ public final class GpuWorldResidencyStats {
         map.put("withinResidentBudget", usedResidentBytes() <= this.budget.maxResidentBytes());
         return map;
     }
-
+    
     private boolean wouldExceedKindBudget(GpuWorldPageKind pageKind, long residentBytes) {
         return wouldExceed(this.usedBytesByKind.get(pageKind), residentBytes, this.budget.pageKindBudgetBytes(pageKind));
     }
-
+    
     private boolean wouldExceedResidentBudget(long residentBytes) {
         return wouldExceed(usedResidentBytes(), residentBytes, this.budget.maxResidentBytes());
     }
-
-    private static boolean wouldExceed(long current, long increment, long limit) {
-        try {
-            return Math.addExact(current, increment) > limit;
-        } catch (ArithmeticException exception) {
-            return true;
-        }
-    }
-
+    
     private long livePageCount() {
         long count = 0L;
         for (long pageCount : this.livePageCountsByKind.values()) {
@@ -120,42 +149,12 @@ public final class GpuWorldResidencyStats {
         }
         return count;
     }
-
+    
     private long usedResidentBytes() {
         long bytes = 0L;
         for (long usedBytes : this.usedBytesByKind.values()) {
             bytes = checkedAdd(bytes, usedBytes);
         }
         return bytes;
-    }
-
-    private static Map<String, Object> mapByKind(EnumMap<GpuWorldPageKind, Long> source) {
-        Map<String, Object> map = new LinkedHashMap<>();
-        for (GpuWorldPageKind kind : GpuWorldPageKind.values()) {
-            map.put(kind.diagnosticName(), source.get(kind));
-        }
-        return map;
-    }
-
-    private static EnumMap<GpuWorldPageKind, Long> zeroedPageKindMap() {
-        EnumMap<GpuWorldPageKind, Long> map = new EnumMap<>(GpuWorldPageKind.class);
-        for (GpuWorldPageKind kind : GpuWorldPageKind.values()) {
-            map.put(kind, 0L);
-        }
-        return map;
-    }
-
-    private static void requireNonNegative(long value, String name) {
-        if (value < 0L) {
-            throw new IllegalArgumentException(name + " must be non-negative: " + value);
-        }
-    }
-
-    private static long checkedAdd(long left, long right) {
-        try {
-            return Math.addExact(left, right);
-        } catch (ArithmeticException exception) {
-            throw new IllegalArgumentException("GPU world residency stats overflow long", exception);
-        }
     }
 }

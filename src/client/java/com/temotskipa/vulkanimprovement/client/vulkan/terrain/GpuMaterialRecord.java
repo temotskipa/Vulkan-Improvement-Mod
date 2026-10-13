@@ -4,13 +4,10 @@ import java.nio.ByteBuffer;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-public record GpuMaterialRecord(int materialId, int flags, int blockAtlasWidth, int blockAtlasHeight, int blockAtlasBaseMip,
-                                int blockAtlasMipLevels, int lightmapWidth, int lightmapHeight, int normalTextureIndex,
-                                int specularTextureIndex, int emissionTextureIndex, int tintFlags, int alphaMode,
-                                int renderLayerOrdinal, int materialDomain, int reserved0) {
+public record GpuMaterialRecord(int materialId, int flags, int blockAtlasWidth, int blockAtlasHeight, int blockAtlasBaseMip, int blockAtlasMipLevels, int lightmapWidth, int lightmapHeight, int normalTextureIndex, int specularTextureIndex, int emissionTextureIndex, int tintFlags, int alphaMode, int renderLayerOrdinal, int materialDomain, int reserved0) {
+    public static final int DEFAULT_TERRAIN_MATERIAL_ID = 0;
     static final int INT_COUNT = 16;
     public static final int BYTES = INT_COUNT * Integer.BYTES;
-    public static final int DEFAULT_TERRAIN_MATERIAL_ID = 0;
     static final int FLAG_BLOCK_ATLAS_READY = 1;
     static final int FLAG_LIGHTMAP_READY = 1 << 1;
     static final int FLAG_ALPHA_MASKED = 1 << 2;
@@ -18,11 +15,11 @@ public record GpuMaterialRecord(int materialId, int flags, int blockAtlasWidth, 
     static final int MISSING_TEXTURE_INDEX = -1;
     static final int TINT_FLAGS_NONE = 0;
     static final int MATERIAL_DOMAIN_TERRAIN = 1;
-
+    
     static GpuMaterialRecord vanillaTerrain(TextureInfo blockAtlas, TextureInfo lightmap) {
         return terrainLayer(DEFAULT_TERRAIN_MATERIAL_ID, 0, GpuMaterialAlphaMode.OPAQUE, blockAtlas, lightmap);
     }
-
+    
     static GpuMaterialRecord terrainLayer(int materialId, int renderLayerOrdinal, GpuMaterialAlphaMode alphaMode, TextureInfo blockAtlas, TextureInfo lightmap) {
         int flags = 0;
         if (blockAtlas.available()) {
@@ -33,12 +30,13 @@ public record GpuMaterialRecord(int materialId, int flags, int blockAtlasWidth, 
         }
         if (alphaMode == GpuMaterialAlphaMode.MASKED) {
             flags |= FLAG_ALPHA_MASKED;
-        } else if (alphaMode == GpuMaterialAlphaMode.BLENDED) {
+        }
+        else if (alphaMode == GpuMaterialAlphaMode.BLENDED) {
             flags |= FLAG_ALPHA_BLENDED;
         }
         return new GpuMaterialRecord(materialId, flags, blockAtlas.width(), blockAtlas.height(), blockAtlas.baseMipLevel(), blockAtlas.mipLevels(), lightmap.width(), lightmap.height(), MISSING_TEXTURE_INDEX, MISSING_TEXTURE_INDEX, MISSING_TEXTURE_INDEX, TINT_FLAGS_NONE, alphaMode.id(), renderLayerOrdinal, MATERIAL_DOMAIN_TERRAIN, 0);
     }
-
+    
     static Map<String, Object> layoutMap() {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("intCount", INT_COUNT);
@@ -53,7 +51,7 @@ public record GpuMaterialRecord(int materialId, int flags, int blockAtlasWidth, 
         map.put("materialDomainTerrain", MATERIAL_DOMAIN_TERRAIN);
         return map;
     }
-
+    
     void write(ByteBuffer target) {
         target.putInt(this.materialId);
         target.putInt(this.flags);

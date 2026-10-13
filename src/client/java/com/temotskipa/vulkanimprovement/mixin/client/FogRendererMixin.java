@@ -17,7 +17,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class FogRendererMixin {
     @Shadow
     private static boolean fogEnabled;
-
+    
     @Inject(method = "updateBuffer(Lnet/minecraft/client/renderer/fog/FogData;)V", at = @At("HEAD"))
     private void vim$rememberFrameFog(FogData fog, CallbackInfo ci) {
         TerrainFogState.record(fogEnabled, fog.color.x(), fog.color.y(), fog.color.z(), fog.color.w(), fog.environmentalStart, fog.environmentalEnd, fog.renderDistanceStart, fog.renderDistanceEnd);

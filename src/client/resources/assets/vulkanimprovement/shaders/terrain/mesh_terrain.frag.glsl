@@ -23,10 +23,10 @@ layout(location = 0) out vec4 fragColor;
 // own the push constants below this block's first offset.
 layout(push_constant, std430) uniform TerrainFogConstants {
     layout(offset = 176) vec4 fogColor;
-    // Where environmental fog starts and ends, then where render-distance fog starts and ends.
+// Where environmental fog starts and ends, then where render-distance fog starts and ends.
     layout(offset = 192) vec4 fogRange;
-    // x: whether terrain fades into the sky and clouds behind it instead of the fog colour, which
-    // is what Minecraft's improved transparency setting asks for.
+// x: whether terrain fades into the sky and clouds behind it instead of the fog colour, which
+// is what Minecraft's improved transparency setting asks for.
     layout(offset = 208) ivec4 fogMode;
 } fog;
 

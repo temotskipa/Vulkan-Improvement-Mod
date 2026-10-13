@@ -23,7 +23,8 @@ public final class GpuWorldDatabase {
     private GpuWorldMaterialTableContract materialTable = GpuWorldMaterialTableContract.terrainDefault();
     private GpuWorldSectionUpdate lastUpdate;
     private String lastClearReason = "not cleared";
-    
+    private ResidentTerrainUsage residentTerrain = new ResidentTerrainUsage(0L, 0L, 0L, 0L);
+
     private GpuWorldDatabase() {
     }
     
@@ -57,8 +58,7 @@ public final class GpuWorldDatabase {
         }
         GpuWorldSectionId id = GpuWorldSectionId.fromSectionNode(sectionNode);
         SectionRecord previous = this.sections.get(sectionNode);
-        if (previous == null && !this.residencyStats.tryReservePage(GpuWorldPageKind.CANONICAL_MIRROR,
-                SECTION_PAGE_BYTES_PENDING_REAL_ALLOCATION)) {
+        if (previous == null && !this.residencyStats.tryReservePage(GpuWorldPageKind.CANONICAL_MIRROR, SECTION_PAGE_BYTES_PENDING_REAL_ALLOCATION)) {
             throw new IllegalStateException("GPU world residency budget refused canonical section page");
         }
         GpuWorldRevision revision = previous == null ? GpuWorldRevision.initial().next() : previous.revision().next();
@@ -72,9 +72,7 @@ public final class GpuWorldDatabase {
         if (layerOrdinal >= 0) {
             materialIdsByLayer.put(layerOrdinal, materialId);
         }
-        SectionRecord next = new SectionRecord(id, revision, GpuWorldPageKind.CANONICAL_MIRROR, dirtyMask,
-                this.materialTable.revision(), capturedLayerMask, materialId, Map.copyOf(materialIdsByLayer),
-                GpuWorldDirtyReason.TERRAIN_LAYER_CAPTURED, sequence);
+        SectionRecord next = new SectionRecord(id, revision, GpuWorldPageKind.CANONICAL_MIRROR, dirtyMask, this.materialTable.revision(), capturedLayerMask, materialId, Map.copyOf(materialIdsByLayer), GpuWorldDirtyReason.TERRAIN_LAYER_CAPTURED, sequence);
         this.sections.put(sectionNode, next);
         this.lastUpdate = next.asUpdate(sequence, layerOrdinal);
         return this.lastUpdate;
@@ -89,9 +87,7 @@ public final class GpuWorldDatabase {
         GpuWorldRevision revision = previous == null ? GpuWorldRevision.initial().next() : previous.revision().next();
         long sequence = this.updateSequence.incrementAndGet();
         GpuWorldTerrainLayerDirectory.get().removeSection(sectionNode);
-        this.lastUpdate = new GpuWorldSectionUpdate(sequence, id, revision, GpuWorldPageKind.CANONICAL_MIRROR,
-                GpuWorldDirtyReason.SECTION_RELEASED, DIRTY_REMOVED, this.materialTable.revision(),
-                previous == null ? this.materialTable.defaultMaterialId() : previous.latestMaterialId(), -1);
+        this.lastUpdate = new GpuWorldSectionUpdate(sequence, id, revision, GpuWorldPageKind.CANONICAL_MIRROR, GpuWorldDirtyReason.SECTION_RELEASED, DIRTY_REMOVED, this.materialTable.revision(), previous == null ? this.materialTable.defaultMaterialId() : previous.latestMaterialId(), -1);
         return this.lastUpdate;
     }
     
@@ -103,30 +99,35 @@ public final class GpuWorldDatabase {
         this.lastClearReason = reason == null || reason.isBlank() ? "unspecified" : reason;
         GpuWorldTerrainLayerDirectory.get().clear(this.lastClearReason);
     }
-
+    
     public synchronized Optional<GpuWorldSectionUpdate> currentTerrainLayerUpdate(long sectionNode, int layerOrdinal) {
         SectionRecord current = this.sections.get(sectionNode);
-        if (current == null || layerOrdinal < 0 || layerOrdinal >= Integer.SIZE
-                || (current.capturedLayerMask() & (1 << layerOrdinal)) == 0) {
+        if (current == null || layerOrdinal < 0 || layerOrdinal >= Integer.SIZE || (current.capturedLayerMask() & (1 << layerOrdinal)) == 0) {
             return Optional.empty();
         }
         return Optional.of(current.asUpdate(current.lastUpdateSequence(), layerOrdinal));
     }
-
-    public synchronized void recordVisibilityCommandPass(long inputSectionCount, long culledSectionCount,
-                                                         long visibleSectionCount, long emittedCommandCount,
-                                                         long overflowedCommandCount, long fallbackCommandCount) {
-        this.visibilityCommandStats.recordPass(inputSectionCount, culledSectionCount, visibleSectionCount,
-                emittedCommandCount, overflowedCommandCount, fallbackCommandCount);
+    
+    public synchronized void recordVisibilityCommandPass(long inputSectionCount, long culledSectionCount, long visibleSectionCount, long emittedCommandCount, long overflowedCommandCount, long fallbackCommandCount) {
+        this.visibilityCommandStats.recordPass(inputSectionCount, culledSectionCount, visibleSectionCount, emittedCommandCount, overflowedCommandCount, fallbackCommandCount);
     }
     
-    @SuppressWarnings("unused")
+    
     synchronized GpuWorldMaterialTableContract advanceMaterialTableRevision() {
         this.materialTable = this.materialTable.nextRevision();
         this.updateSequence.incrementAndGet();
         return this.materialTable;
     }
     
+    /**
+     * What the resident terrain pages occupy on the GPU, as their allocators count it.
+     *
+     * @param allocationRefusals pages that found no room in a buffer; the buffers are then grown
+     */
+    public synchronized void recordResidentTerrainUsage(long livePages, long usedBytes, long capacityBytes, long allocationRefusals) {
+        this.residentTerrain = new ResidentTerrainUsage(livePages, usedBytes, capacityBytes, allocationRefusals);
+    }
+
     public synchronized Map<String, Object> asMap() {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("authority", "cpu-chunk-state");
@@ -141,7 +142,8 @@ public final class GpuWorldDatabase {
         map.put("materialTable", this.materialTable.asMap());
         map.put("residencyBudget", DEFAULT_RESIDENCY_BUDGET.asMap());
         map.put("residencyStats", this.residencyStats.asMap());
-        map.put("visibilityCommandStats", this.visibilityCommandStats.asMap());
+        map.put("residentTerrain", this.residentTerrain.asMap());
+map.put("visibilityCommandStats", this.visibilityCommandStats.asMap());
         map.put("pipelineStages", GpuWorldPipelineStage.asDiagnostics());
         map.put("terrainLayerDirectory", GpuWorldTerrainLayerDirectory.get().asMap());
         map.put("pageKinds", pageKindsMap());
@@ -150,6 +152,17 @@ public final class GpuWorldDatabase {
         return map;
     }
     
+    private record ResidentTerrainUsage(long livePages, long usedBytes, long capacityBytes, long allocationRefusals) {
+        private Map<String, Object> asMap() {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("livePages", this.livePages);
+            map.put("usedBytes", this.usedBytes);
+            map.put("capacityBytes", this.capacityBytes);
+            map.put("allocationRefusals", this.allocationRefusals);
+            return map;
+        }
+    }
+
     private Map<String, Object> sampleSections() {
         Map<String, Object> map = new LinkedHashMap<>();
         int count = 0;
@@ -163,14 +176,10 @@ public final class GpuWorldDatabase {
         return map;
     }
     
-    private record SectionRecord(GpuWorldSectionId section, GpuWorldRevision revision, GpuWorldPageKind pageKind,
-                                 int dirtyMask, int materialTableRevision, int capturedLayerMask, int latestMaterialId,
-                                 Map<Integer, Integer> materialIdsByLayer, GpuWorldDirtyReason lastReason,
-                                 long lastUpdateSequence) {
+    private record SectionRecord(GpuWorldSectionId section, GpuWorldRevision revision, GpuWorldPageKind pageKind, int dirtyMask, int materialTableRevision, int capturedLayerMask, int latestMaterialId, Map<Integer, Integer> materialIdsByLayer, GpuWorldDirtyReason lastReason, long lastUpdateSequence) {
         private GpuWorldSectionUpdate asUpdate(long sequence, int layerOrdinal) {
             int materialId = this.materialIdsByLayer.getOrDefault(layerOrdinal, this.latestMaterialId);
-            return new GpuWorldSectionUpdate(sequence, this.section, this.revision, this.pageKind, this.lastReason,
-                    this.dirtyMask, this.materialTableRevision, materialId, layerOrdinal);
+            return new GpuWorldSectionUpdate(sequence, this.section, this.revision, this.pageKind, this.lastReason, this.dirtyMask, this.materialTableRevision, materialId, layerOrdinal);
         }
         
         private Map<String, Object> asMap() {

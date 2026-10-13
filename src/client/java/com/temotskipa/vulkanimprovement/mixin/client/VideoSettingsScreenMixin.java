@@ -20,7 +20,7 @@ public abstract class VideoSettingsScreenMixin extends OptionsSubScreen {
     protected VideoSettingsScreenMixin(Screen lastScreen, Options options, Component title) {
         super(lastScreen, options, title);
     }
-
+    
     @Inject(method = "addOptions", at = @At("TAIL"))
     private void vim$addRendererOptions(CallbackInfo ci) {
         if (!VulkanImprovementRuntime.shouldShowVideoOptions(Minecraft.getInstance())) {
@@ -37,7 +37,7 @@ public abstract class VideoSettingsScreenMixin extends OptionsSubScreen {
         optionsList.addHeader(VulkanImprovementVideoOptions.HEADER);
         optionsList.addSmall(options);
     }
-
+    
     @Inject(method = "tick", at = @At("TAIL"))
     private void vim$updateRendererOptions(CallbackInfo ci) {
         VulkanImprovementVideoOptions.updateWidgetState(this.list);

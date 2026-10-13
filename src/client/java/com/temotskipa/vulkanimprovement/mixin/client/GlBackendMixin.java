@@ -1,10 +1,10 @@
 package com.temotskipa.vulkanimprovement.mixin.client;
 
-import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
-import com.mojang.renderpearl.backend.opengl.GlBackend;
-import com.mojang.renderpearl.api.device.GpuDebugOptions;
 import com.mojang.renderpearl.api.device.BackendCreationException;
+import com.mojang.renderpearl.api.device.GpuDebugOptions;
 import com.mojang.renderpearl.api.device.GpuDevice;
+import com.mojang.renderpearl.backend.opengl.GlBackend;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
