@@ -501,7 +501,7 @@ tasks.register("checkTerrainLayoutManifest") {
                 taskShader,
                 "layout(buffer_reference, scalar, buffer_reference_align = 4) readonly buffer TerrainWorkQueue { uint producedCount; uint consumedCount; uint droppedCount; uint reserved; TerrainWorkQueueRecord records[]; };")
 
-        def pushConstantBlock = "layout(push_constant, scalar) uniform TerrainPushConstants { uint64_t meshletHeaders; uint64_t vertexPayload; uint64_t indexPayload; uint64_t debugCounters; uint64_t visibleMeshlets; uint64_t workQueue; uint64_t materialTable; uint meshletCount; uint enableMeshletFrustumCulling; uint meshletOffset; int layerOrdinal; vec4 cameraPosition; vec4 cameraRight; vec4 cameraUp; vec4 cameraForward; vec4 projection; } pc;"
+        def pushConstantBlock = "layout(push_constant, scalar) uniform TerrainPushConstants { uint64_t meshletHeaders; uint64_t vertexPayload; uint64_t indexPayload; uint64_t debugCounters; uint64_t visibleMeshlets; uint64_t workQueue; uint64_t materialTable; uint meshletCount; uint enableMeshletFrustumCulling; uint meshletOffset; int layerOrdinal; ivec4 cameraBlock; vec4 cameraOffset; vec4 cameraRight; vec4 cameraUp; vec4 cameraForward; vec4 projection; } pc;"
         requireNormalizedText("task terrain shader", taskShader, pushConstantBlock)
         requireNormalizedText("mesh terrain shader", meshShader, pushConstantBlock)
         requireText("task terrain shader", taskShader, "TerrainWorkQueue queue = TerrainWorkQueue(pc.workQueue);")
@@ -559,7 +559,7 @@ tasks.register("checkTerrainLayoutManifest") {
             throw new GradleException("TerrainGpuLayout.MATERIAL_TABLE_CAPACITY must be positive.")
         }
 
-        def minimumPushConstantBytes = Long.BYTES * 7 + Integer.BYTES * 4 + Float.BYTES * 4 * 5
+        def minimumPushConstantBytes = Long.BYTES * 7 + Integer.BYTES * 4 + Float.BYTES * 4 * 6
         if (constants.TERRAIN_PUSH_CONSTANT_BYTES < minimumPushConstantBytes || constants.TERRAIN_PUSH_CONSTANT_BYTES % Long.BYTES != 0) {
             throw new GradleException("TerrainGpuLayout.TERRAIN_PUSH_CONSTANT_BYTES must cover the terrain push constant block and stay ${Long.BYTES}-byte aligned.")
         }
@@ -738,6 +738,16 @@ tasks.register("checkTerrainMeshTaskCommandLayoutInvariants", JavaExec) {
     mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainMeshTaskCommandLayoutInvariantCheck"
 }
 
+tasks.register("checkTerrainShadersCompile", JavaExec) {
+    group = "verification"
+    description = "Compiles the terrain shaders with the compiler the game uses at startup."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainShaderCompileCheck"
+    inputs.dir(terrainShaderSourceDir)
+}
+
 tasks.register("checkTerrainRenderPassStateInvariants", JavaExec) {
     group = "verification"
     description = "Runs pure Java terrain render-pass state restoration invariant checks."
@@ -825,6 +835,7 @@ tasks.named("check") {
     dependsOn tasks.named("checkVisibleMeshletRingInvariants")
     dependsOn tasks.named("checkTerrainWorkQueueLayoutInvariants")
     dependsOn tasks.named("checkTerrainMeshTaskCommandLayoutInvariants")
+    dependsOn tasks.named("checkTerrainShadersCompile")
     dependsOn tasks.named("checkTerrainRenderPassStateInvariants")
     dependsOn tasks.named("checkTerrainRuntimeValidationPlanInvariants")
     dependsOn tasks.named("checkVulkanVideoOptionsInvariants")

@@ -34,7 +34,21 @@ public interface TerrainGpuLayout {
     int DEBUG_COUNTER_BYTES = 64;
     int MATERIAL_RECORD_STRIDE = 64;
     int MATERIAL_TABLE_CAPACITY = 256;
-    int TERRAIN_PUSH_CONSTANT_BYTES = 152;
+    /**
+     * The task and mesh stages' push constants: seven buffer addresses, four integers, the camera's
+     * block and its offset inside that block, and four rows of the view-projection matrix.
+     */
+    int TERRAIN_PUSH_CONSTANT_BYTES = 168;
+    /**
+     * The fragment stage's push constants follow the other stages' at the next offset a
+     * {@code vec4} may start at: the frame's fog colour, its four distances, and its mode.
+     */
+    int TERRAIN_FOG_PUSH_CONSTANT_OFFSET = 176;
+    int TERRAIN_FOG_PUSH_CONSTANT_BYTES = 48;
+    /**
+     * What every Vulkan 1.4 device accepts, and the mod requires Vulkan 1.4.
+     */
+    int VULKAN_1_4_MIN_PUSH_CONSTANT_BYTES = 256;
     int TARGET_VERTICES_PER_MESHLET = 128;
     int TARGET_TRIANGLES_PER_INDEXED_MESHLET = 32;
     int MAX_MESH_OUTPUT_VERTICES = 128;

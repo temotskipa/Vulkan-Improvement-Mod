@@ -121,6 +121,7 @@ public final class Minecraft26MixinTargetManifestInvariantCheck {
                     "@Mixin(LevelRenderer.class)",
                     "net.minecraft.client.renderer.LevelRenderer",
                     List.of(
+                            "private LevelRenderState levelRenderState",
                             "method = \"extractSectionDrawGroups\"",
                             "method = \"invalidateCompiledGeometry\"",
                             "method = \"resetLevelRenderData\"",
@@ -151,7 +152,17 @@ public final class Minecraft26MixinTargetManifestInvariantCheck {
                     "net.minecraft.client.renderer.chunk.ChunkSectionsToRender",
                     List.of(
                             "method = \"renderGroup\"",
+                            "ImprovedFogTextures improvedFogTextures",
                             "boolean renderWireframeTerrain"
+                    )
+            ),
+            target(
+                    "FogRendererMixin",
+                    "@Mixin(FogRenderer.class)",
+                    "net.minecraft.client.renderer.fog.FogRenderer",
+                    List.of(
+                            "private static boolean fogEnabled",
+                            "method = \"updateBuffer(Lnet/minecraft/client/renderer/fog/FogData;)V\""
                     )
             ),
             target(

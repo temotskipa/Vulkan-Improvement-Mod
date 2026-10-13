@@ -20,6 +20,7 @@ public final class MeshTerrainRenderer {
     private static final MeshTerrainRenderer INSTANCE = new MeshTerrainRenderer();
 
     private final LongAdder terrainGroupCalls = new LongAdder();
+    private final LongAdder improvedFogTerrainGroups = new LongAdder();
     private final LongAdder capturedSections = new LongAdder();
     private final LongAdder releasedSections = new LongAdder();
     private final LongAdder capturedVertexBytes = new LongAdder();
@@ -79,14 +80,21 @@ public final class MeshTerrainRenderer {
     /**
      * Called when Minecraft starts drawing a group of terrain layers, before it sets a pipeline.
      * Wireframe terrain is left to Minecraft: its pipelines are not ones the mesh path stands in for.
+     *
+     * @param improvedFog whether the group fades into the sky and cloud images instead of the fog
+     *                    colour, which Minecraft draws when improved transparency is on
      */
-    public void observeTerrainGroup(ChunkSectionLayerGroup group, boolean wireframe) {
+    public void observeTerrainGroup(ChunkSectionLayerGroup group, boolean wireframe, boolean improvedFog) {
         if (!TerrainRendererDebugConfig.terrainCaptureEnabled()) {
             return;
         }
         this.terrainGroupCalls.increment();
+        if (improvedFog) {
+            this.improvedFogTerrainGroups.increment();
+        }
         TerrainRenderContext.setCurrentTerrainGroup(group);
         TerrainRenderContext.setReplacementAllowed(!wireframe);
+        TerrainRenderContext.setImprovedFog(improvedFog);
     }
 
     /**
@@ -94,8 +102,10 @@ public final class MeshTerrainRenderer {
      * pass. Minecraft hands the terrain renderers a pass that is already open, and neither an
      * upload nor the compute step that writes mesh-task commands can be recorded inside one, so
      * everything the layers need from the GPU this frame is prepared here.
+     *
+     * @param wireframe whether Minecraft draws this frame's terrain as wireframe
      */
-    public void prepareVisibleFrame() {
+    public void prepareVisibleFrame(boolean wireframe) {
         if (!TerrainRendererDebugConfig.terrainCaptureEnabled()) {
             return;
         }
@@ -104,7 +114,10 @@ public final class MeshTerrainRenderer {
         if (unconsumedPreparedDispatches > 0) {
             this.meshReplacementPreparedDispatchQueueLeaks.add(unconsumedPreparedDispatches);
         }
-        prepareTerrainCommands();
+        // Wireframe terrain is Minecraft's to draw, so commands prepared for it would never be used.
+        if (!wireframe) {
+            prepareTerrainCommands();
+        }
     }
 
     /**
@@ -423,6 +436,8 @@ public final class MeshTerrainRenderer {
         map.put("lifecycleReason", coreServices.lifecycleReason());
         map.put("mode", TerrainRendererDebugConfig.rendererMode());
         map.put("terrainGroupCalls", this.terrainGroupCalls.sum());
+        map.put("improvedFogTerrainGroups", this.improvedFogTerrainGroups.sum());
+        map.put("fog", TerrainFogState.asMap());
         map.put("capturedSections", this.capturedSections.sum());
         map.put("releasedSections", this.releasedSections.sum());
         map.put("capturedVertexBytes", this.capturedVertexBytes.sum());

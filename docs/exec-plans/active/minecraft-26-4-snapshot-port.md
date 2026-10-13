@@ -1,8 +1,9 @@
 # Minecraft 26.4 Snapshot Port
 
 **Status:** Active. Started 2026-10-13 on branch `mc-26.4-snapshot`. The mod
-builds, passes its checks and runs on `26.4-snapshot-3`; the default mode and
-the mesh modes were exercised once each. The longer runtime matrix is open.
+builds, passes its checks and runs on `26.4-snapshot-3`. The runtime matrix
+passed and mesh terrain matches vanilla terrain in same-camera comparisons.
+What is left is listed under Open.
 
 ## Goal
 
@@ -54,7 +55,8 @@ Minecraft's own structures instead of rebuilding them.
    `docs/references/minecraft-26-4-mixin-targets.md`.
 6. Done: `ARCHITECTURE.md`, `docs/RELIABILITY.md` and the invariant checks
    that named 26.2 classes.
-7. Open: the runtime matrix in Validation.
+7. Done: the runtime matrix in Validation.
+8. Done: vanilla parity of the mesh fragment path (section below).
 
 ### Package relocations
 
@@ -99,6 +101,38 @@ Minecraft's own structures instead of rebuilding them.
 - **Textures.** The atlas, its sampler and the lightmap are taken from the
   arguments of `renderGroup` instead of from a hook on texture binding.
 
+### Vanilla parity of the mesh path
+
+Found by comparing same-camera screenshots of vanilla and strict mesh terrain
+with the game ticking frozen, against a noise floor of two vanilla screenshots
+(mean difference 0.03 of 255 per channel):
+
+- **Atlas sampling.** Fetching mip 0 was sharp up close and shimmered at a
+  distance. The atlas is now sampled through Minecraft's sampler with the
+  gradients of the unmodified coordinate, and the sample point is pulled to
+  the texel centre while a texel covers more than a pixel.
+- **Culling.** The mesh pipeline drew both faces of everything. A plant's
+  crossed planes then show their mirrored back faces too, which reads as
+  denser foliage. The pipeline now culls as the vanilla pipeline it stands in
+  for does (`TerrainPipelineState.cull`).
+- **Lighting.** The lightmap is sampled at texel centres and no longer has a
+  floor of 0.35 under it, which made night and caves brighter than vanilla.
+- **Fog.** `FogRendererMixin` remembers the fog Minecraft uploads for the
+  frame; the fragment stage gets it as push constants and the mesh stage
+  supplies the two distances Minecraft's fogs use. With improved transparency
+  on, Minecraft fades terrain into the sky and cloud images instead of the fog
+  colour; the mesh path reads the same three images, taken from the arguments
+  of `renderGroup`. Improved transparency is on in the `fabulous` preset, so
+  this is the path that preset's users see.
+- **Section fade-in.** A section's visibility no longer scales the alpha that
+  cutout terrain is tested on; it blends the section out of what is behind
+  it, as vanilla does. Only the visible-list fallback carries visibility; the
+  work-queue paths draw sections at full visibility (see Open).
+- **Precision.** Positions were formed from float section coordinates minus a
+  float camera position. The camera's block is now subtracted as integers
+  first, so terrain three million blocks from the origin is as steady as
+  vanilla's.
+
 ## Validation
 
 Done on 2026-10-13, Windows 11, RTX 4070 Ti, driver 616.92, Vulkan 1.4.351:
@@ -139,18 +173,34 @@ Done on 2026-10-13, Windows 11, RTX 4070 Ti, driver 616.92, Vulkan 1.4.351:
   `meshReplacementTaskTruncations=0`.
 - The Video Settings screen opens with its mixin applied. That the mod's
   controls are listed in it was not looked at.
+- Record-first jitter, `mc_record_video(frames=300, interval=100)` with 27
+  scheduled camera turns, in four modes: capture only, overlay, strict with
+  GPU-generated commands, and every diagnostic flag on
+  (`drawAllCapturedTerrainLayers`, `enableMeshTranslucentTerrain`,
+  `allowCpuVisibleMeshletFallback`). Recordings `jitter-300-*.jpg`. In every
+  mode `meshReplacementTaskTruncations=0`, no prepared-dispatch leaks, no
+  draws for the translucent layer, and no device loss.
+- Events in strict mode with GPU-generated commands: wireframe terrain on and
+  off, render distance 6 and back to 16, a resource reload, the Nether and
+  back. The client then quit normally. Wireframe first counted 226 prepared
+  dispatches as leaked, because commands were prepared for terrain Minecraft
+  draws itself; preparation now skips wireframe frames and the count stays 0.
+- Vanilla against strict mesh terrain, same camera, 854x480, the chat and
+  hotbar excluded. Mean difference per channel of 255, and the share of pixels
+  differing by more than 60 of 765: noon 1.03 and 0.06 %; render distance 4,
+  where the fog band is in view, 0.86 and 0.06 %; midnight 0.83 and 0.00 %;
+  blindness, which brings environmental fog to five blocks, 0.17 and 0.00 %;
+  at x = z = 3,000,000, 0.42 and 0.01 %; and with improved transparency off,
+  noon 1.06 and 0.06 %, render distance 4 0.87 and 0.06 %. Before the parity
+  work the noon figures were 6.45 and 2.69 %. What is left is single pixels on
+  foliage edges. Images in `parity/`.
 
 Open:
 
-- A long record-first jitter run (`mc_record_video(frames=300, interval=100)`)
-  in each mode, exceeding the 26.2 crash window.
-- Full-resolution nearest-filter texture comparison; the 26.2 cutout and
-  softness caveats are not re-examined on 26.4.
-- `vim.drawAllCapturedTerrainLayers`, `vim.allowCpuVisibleMeshletFallback`,
-  `vim.validationDescriptorBufferOnly` and `vim.enableMeshletFrustumCulling`.
-- Wireframe terrain, resource reload, dimension change and render-distance
-  change with capture enabled.
+- `vim.validationDescriptorBufferOnly` and `vim.enableMeshletFrustumCulling`.
 - An OpenGL-active session.
+- Section fade-in on the work-queue paths, which is where the GPU-resident
+  terrain plan replaces the per-meshlet work queue.
 
 ## Decisions
 

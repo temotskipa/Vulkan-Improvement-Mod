@@ -26,6 +26,12 @@ import java.util.concurrent.atomic.LongAdder;
 public final class DescriptorHeapTerrainResources {
     private static final DescriptorHeapTerrainResources INSTANCE = new DescriptorHeapTerrainResources();
     private final AtomicBoolean terrainDataDirty = new AtomicBoolean();
+    /**
+     * The images improved fog reads, under the names Minecraft's terrain shaders give them.
+     */
+    public static final String SKY_IMAGE = "SkySampler";
+    public static final String CLOUDS_IMAGE = "CloudsSampler";
+    public static final String CLOUDS_DEPTH_IMAGE = "CloudsDepthSampler";
     private final Map<String, TextureBinding> textureBindings = new ConcurrentHashMap<>();
     private final LongAdder descriptorBufferWrites = new LongAdder();
     private final LongAdder descriptorBufferMissing = new LongAdder();
@@ -245,6 +251,22 @@ public final class DescriptorHeapTerrainResources {
         return stats;
     }
 
+    /**
+     * Records an image the terrain fragment stage reads texel by texel, which takes no sampler.
+     */
+    public void recordImageBinding(String name, GpuTextureView view) {
+        if (!(view instanceof VulkanGpuTextureView vulkanView)) {
+            this.textureBindings.put(name, TextureBinding.unavailable(name, view, null));
+            return;
+        }
+        this.textureBindings.put(name, new TextureBinding(name, vulkanView.vkImageView(), 0L, view.getWidth(0), view.getHeight(0), view.baseMipLevel(), view.mipLevels(), 0, "none", "none", "none", view.isClosed(), false));
+    }
+
+    public boolean imageBindingReady(String name) {
+        TextureBinding binding = this.textureBindings.get(name);
+        return binding != null && !binding.unavailable() && !binding.closed() && binding.imageView() != 0L;
+    }
+
     public void recordTextureBinding(String name, GpuTextureView view, GpuSampler sampler) {
         if (!(view instanceof VulkanGpuTextureView vulkanView) || !(sampler instanceof VulkanGpuSampler vulkanSampler)) {
             this.textureBindings.put(name, TextureBinding.unavailable(name, view, sampler));
@@ -458,9 +480,17 @@ public final class DescriptorHeapTerrainResources {
         return buffer == null ? 0L : buffer.deviceAddress();
     }
 
-    public boolean writeTerrainTextureDescriptors(VulkanDevice device, TextureDescriptorLayout textureLayout) {
+    /**
+     * @param improvedFog whether the draw reads the sky and cloud images, which then have to be
+     *                    known; otherwise their descriptors are left as they are and not read
+     */
+    public boolean writeTerrainTextureDescriptors(VulkanDevice device, TextureDescriptorLayout textureLayout, boolean improvedFog) {
         GpuResources activeResources = this.resources;
         if (!this.layout.descriptorBufferEnabled || !activeResources.readyForDescriptorBuffer() || !textureBindingReady("Sampler0") || !textureBindingReady("Sampler2")) {
+            this.descriptorBufferMissing.increment();
+            return false;
+        }
+        if (improvedFog && !(imageBindingReady(SKY_IMAGE) && imageBindingReady(CLOUDS_IMAGE) && imageBindingReady(CLOUDS_DEPTH_IMAGE))) {
             this.descriptorBufferMissing.increment();
             return false;
         }
@@ -473,6 +503,11 @@ public final class DescriptorHeapTerrainResources {
             writeSamplerDescriptor(device, stack, descriptors, textureLayout.blockAtlasSamplerOffset(), textureLayout.samplerDescriptorBytes(), blockAtlas);
             writeSampledImageDescriptor(device, stack, descriptors, textureLayout.lightmapImageOffset(), textureLayout.sampledImageDescriptorBytes(), lightmap);
             writeSamplerDescriptor(device, stack, descriptors, textureLayout.lightmapSamplerOffset(), textureLayout.samplerDescriptorBytes(), lightmap);
+            if (improvedFog) {
+                writeSampledImageDescriptor(device, stack, descriptors, textureLayout.skyImageOffset(), textureLayout.sampledImageDescriptorBytes(), this.textureBindings.get(SKY_IMAGE));
+                writeSampledImageDescriptor(device, stack, descriptors, textureLayout.cloudsImageOffset(), textureLayout.sampledImageDescriptorBytes(), this.textureBindings.get(CLOUDS_IMAGE));
+                writeSampledImageDescriptor(device, stack, descriptors, textureLayout.cloudsDepthImageOffset(), textureLayout.sampledImageDescriptorBytes(), this.textureBindings.get(CLOUDS_DEPTH_IMAGE));
+            }
         }
         activeResources.resourceDescriptorBuffer().flush();
         writeTerrainMaterialRecords(activeResources, blockAtlas, lightmap);
@@ -919,6 +954,7 @@ public final class DescriptorHeapTerrainResources {
 
     public record TextureDescriptorLayout(long layoutBytes, long blockAtlasImageOffset, long blockAtlasSamplerOffset,
                                           long lightmapImageOffset, long lightmapSamplerOffset,
+                                          long skyImageOffset, long cloudsImageOffset, long cloudsDepthImageOffset,
                                           long sampledImageDescriptorBytes, long samplerDescriptorBytes) {
         public Map<String, Object> asMap() {
             Map<String, Object> map = new LinkedHashMap<>();
@@ -927,6 +963,9 @@ public final class DescriptorHeapTerrainResources {
             map.put("blockAtlasSamplerOffset", this.blockAtlasSamplerOffset);
             map.put("lightmapImageOffset", this.lightmapImageOffset);
             map.put("lightmapSamplerOffset", this.lightmapSamplerOffset);
+            map.put("skyImageOffset", this.skyImageOffset);
+            map.put("cloudsImageOffset", this.cloudsImageOffset);
+            map.put("cloudsDepthImageOffset", this.cloudsDepthImageOffset);
             map.put("sampledImageDescriptorBytes", this.sampledImageDescriptorBytes);
             map.put("samplerDescriptorBytes", this.samplerDescriptorBytes);
             return map;

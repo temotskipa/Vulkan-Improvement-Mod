@@ -21,7 +21,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * Brackets Minecraft's drawing of a group of terrain layers. The textures the mesh path samples
- * are the ones Minecraft is about to bind for the same layers.
+ * are the ones Minecraft is about to bind for the same layers, the sky and cloud images of
+ * improved fog among them.
  */
 @Mixin(ChunkSectionsToRender.class)
 public abstract class ChunkSectionsToRenderMixin {
@@ -34,7 +35,12 @@ public abstract class ChunkSectionsToRenderMixin {
         DescriptorHeapTerrainResources resources = DescriptorHeapTerrainResources.get();
         resources.recordTextureBinding("Sampler0", atlas, sampler);
         resources.recordTextureBinding("Sampler2", Minecraft.getInstance().gameRenderer.lightmap(), RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
-        MeshTerrainRenderer.get().observeTerrainGroup(group, renderWireframeTerrain);
+        if (improvedFogTextures != null) {
+            resources.recordImageBinding(DescriptorHeapTerrainResources.SKY_IMAGE, improvedFogTextures.skyView());
+            resources.recordImageBinding(DescriptorHeapTerrainResources.CLOUDS_IMAGE, improvedFogTextures.cloudsView());
+            resources.recordImageBinding(DescriptorHeapTerrainResources.CLOUDS_DEPTH_IMAGE, improvedFogTextures.cloudsDepthView());
+        }
+        MeshTerrainRenderer.get().observeTerrainGroup(group, renderWireframeTerrain, improvedFogTextures != null);
     }
 
     @Inject(method = "renderGroup", at = @At("RETURN"))

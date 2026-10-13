@@ -9,6 +9,7 @@
     "ChunkSectionsToRenderDrawSeparateMixin",
     "ChunkSectionsToRenderMixin",
     "CompiledSectionMeshMixin",
+    "FogRendererMixin",
     "FrontendRenderPassMixin",
     "GlBackendMixin",
     "LevelRendererMixin",

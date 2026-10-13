@@ -135,6 +135,17 @@ renderer code does not drift back into a catch-all root package.
   material flags to the fragment shader. Its diagnostics also expose retired GPU
   resource-set, buffer, and byte counts so terrain capacity growth and shutdown
   pressure are visible.
+- The mesh terrain pipeline stands in for a vanilla terrain pipeline and is
+  meant to be indistinguishable from it. `TerrainPipelineState` carries the
+  vanilla pipeline's polygon mode, culling, depth and blend state; the fragment
+  stage samples the atlas and the lightmap as vanilla terrain does, applies the
+  frame's fog from `TerrainFogState`, and with improved transparency fades into
+  the sky and cloud images Minecraft binds for the group. A change to any of
+  these is checked against same-camera vanilla screenshots; the method is in the
+  26.4 port plan.
+- `checkTerrainShadersCompile` compiles the terrain shaders with the compiler
+  the game uses at startup, so a development build without the Vulkan SDK still
+  fails on a shader that does not compile.
 - `TerrainRendererDebugConfig` exposes JVM system-property flags. Treat these as
   operational controls and keep docs synchronized when adding flags.
 - `vulkanimprovement.client.mixins.json` must list every active client mixin

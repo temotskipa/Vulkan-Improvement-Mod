@@ -167,9 +167,9 @@ the safe default and capture/bootstrap as an explicit diagnostic opt-in.
       `vim.strictMeshTerrainReplacement=true`; non-strict visible draws are
       overlay/fallback diagnostics because `req_63` proved a successful mesh
       dispatch is not sufficient coverage evidence.
-    - The terrain fragment shader must fetch the block atlas with `texelFetch`
-     so the replacement path cannot soften nearest-filter terrain via sampler
-     filtering or derivative-selected LOD.
+    - The terrain fragment shader fetched the block atlas with `texelFetch`
+     so the replacement path could not soften nearest-filter terrain. On 26.4
+     this was measured against vanilla and reversed: see Decisions.
    - Alpha-masked cutout materials must use a strict cutout threshold and render
      opaque; visible translucent terrain remains on vanilla.
    - Visible translucent replacement must fall back to vanilla until the
@@ -222,6 +222,19 @@ the safe default and capture/bootstrap as an explicit diagnostic opt-in.
   visible coverage is proven.
 - Texture blur in `req_43` is treated as unproven until a full-resolution
   nearest-filter capture rules out expected mipmapping or contact-sheet scaling.
+- 2026-10-13, on `26.4-snapshot-3`: the `texelFetch` rule is withdrawn.
+  Same-camera full-resolution captures showed that vanilla terrain is not
+  nearest-filtered at a distance: it uses the mip chain, with the sample point
+  pulled to the texel centre up close. Fetching mip 0 made distant terrain
+  shimmer and differed from vanilla by a mean of 6.45 of 255 per channel. The
+  shader now samples the way vanilla does, and with culling, lighting and fog
+  brought into line the difference is about 1.0, on foliage edges only. The
+  figures and the method are in the
+  [26.4 port plan](minecraft-26-4-snapshot-port.md).
+- The same day's matrix passed in all four modes of Validation with 300-frame
+  record-first jitter, exceeding the crash window of
+  `crash-2026-06-29_08.25.58-client.txt`, without device loss, truncation or
+  leaked dispatches.
 - Enabling every VIM diagnostic flag for validation does not mean every
   renderer domain is replaceable. Translucent terrain, underwater overlays, and
   environment screen effects remain vanilla-rendered until their compatibility

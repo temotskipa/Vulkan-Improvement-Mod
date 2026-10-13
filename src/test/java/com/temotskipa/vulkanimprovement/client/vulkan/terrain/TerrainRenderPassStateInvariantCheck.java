@@ -78,8 +78,12 @@ public final class TerrainRenderPassStateInvariantCheck {
                 "frame preparation must upload terrain data and generate mesh-task commands");
         require(prepareFrame.indexOf("uploadDirtyTerrainData()") < prepareFrame.indexOf("prepareTerrainCommands()"),
                 "terrain data must be uploaded before the frame's commands are generated from it");
-        require(methodBody(levelRendererMixin, "private void vim$endVisibleFrame").contains("MeshTerrainRenderer.get().prepareVisibleFrame()"),
-                "frame preparation must run when Minecraft has collected the frame's sections");
+        require(methodBody(levelRendererMixin, "private void vim$endVisibleFrame").contains("MeshTerrainRenderer.get().prepareVisibleFrame(this.levelRenderState.renderWireframeTerrain)"),
+                "frame preparation must run when Minecraft has collected the frame's sections, and know whether they are drawn as wireframe");
+        require(prepareFrame.contains("if (!wireframe)") && prepareFrame.indexOf("if (!wireframe)") < prepareFrame.indexOf("prepareTerrainCommands()"),
+                "commands must not be prepared for wireframe terrain, which the mesh path does not draw");
+        require(observe.contains("TerrainRenderContext.setReplacementAllowed(!wireframe);") && observe.contains("TerrainRenderContext.setImprovedFog(improvedFog);"),
+                "wireframe terrain must be left to Minecraft, and a group's kind of fog must be known to its draws");
         require(levelRendererMixin.contains("method = \"extractSectionDrawGroups\""), "the frame's sections must be taken from the method both Minecraft terrain paths share");
 
         String prepareCommand = methodBody(meshProgram, "public synchronized boolean prepareWorkQueueIndirectCommand");
@@ -98,6 +102,10 @@ public final class TerrainRenderPassStateInvariantCheck {
         require(createPipeline.contains(".renderPass(renderPass).subpass(0)"), "the mesh pipeline must name its render pass and subpass");
         require(!createPipeline.contains("VkPipelineRenderingCreateInfo"), "the mesh pipeline must not be created for dynamic rendering");
         require(meshProgram.contains("Map<TerrainPipelineState, MeshPipeline> pipelineCache"), "mesh pipelines must be cached by the vanilla pipeline state they stand in for");
+        // Minecraft culls the back faces of terrain. Drawn unculled, both faces of a plant's crossed
+        // planes show and their mirrored textures add up to foliage denser than Minecraft's.
+        require(createPipeline.contains(".cullMode(pipelineInfo.cull() ? VK10.VK_CULL_MODE_BACK_BIT : VK10.VK_CULL_MODE_NONE).frontFace(VK10.VK_FRONT_FACE_CLOCKWISE)"),
+                "the mesh pipeline must cull the faces the vanilla pipeline it stands in for culls");
     }
 
     private static void checkPartialMeshReplacementFallsBackToVanilla(String source) {
@@ -146,7 +154,7 @@ public final class TerrainRenderPassStateInvariantCheck {
         int drawMethod = source.indexOf("public synchronized boolean drawTerrain");
         require(drawMethod >= 0, "mesh shader program must expose drawTerrain");
 
-        int descriptorBind = source.indexOf("bindTerrainTextureDescriptorBuffer(commandBuffer, meshPipeline)", drawMethod);
+        int descriptorBind = source.indexOf("bindTerrainTextureDescriptorBuffer(commandBuffer, meshPipeline, improvedFog)", drawMethod);
         int pipelineBind = source.indexOf("VK12.vkCmdBindPipeline(commandBuffer, VK10.VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline.handle())", drawMethod);
         require(descriptorBind >= 0, "mesh shader program must bind terrain descriptors before drawing");
         require(pipelineBind >= 0, "mesh shader program must bind the mesh graphics pipeline before drawing");

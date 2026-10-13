@@ -89,7 +89,8 @@ layout(push_constant, scalar) uniform TerrainPushConstants {
     uint enableMeshletFrustumCulling;
     uint meshletOffset;
     int layerOrdinal;
-    vec4 cameraPosition;
+    ivec4 cameraBlock;
+    vec4 cameraOffset;
     vec4 cameraRight;
     vec4 cameraUp;
     vec4 cameraForward;
@@ -106,6 +107,19 @@ layout(location = 0) out vec4 meshColor[];
 layout(location = 1) out vec2 meshUv0[];
 layout(location = 2) out vec2 meshLightUv[];
 layout(location = 3) out flat uint meshMaterialFlags[];
+// x: distance from the camera. y: the larger of the horizontal distance and the height difference.
+// z: how far the section has faded in.
+layout(location = 4) out vec3 meshFog[];
+
+// A section this close to the camera is shown in full even while it is still fading in.
+const float SECTION_FADE_FREE_DISTANCE = 16.0;
+
+// Where a point of a section is, seen from the camera. The section's block coordinates and the
+// camera's are subtracted as integers, so the result is as exact a million blocks from the world
+// origin as it is next to it.
+vec3 cameraRelative(ivec3 section, vec3 local) {
+    return vec3(section * 16 - pc.cameraBlock.xyz) + (local - pc.cameraOffset.xyz);
+}
 
 vec4 projectRelative(vec3 relative) {
     vec4 value = vec4(relative, 1.0);
@@ -118,12 +132,7 @@ vec4 projectRelative(vec3 relative) {
 }
 
 bool cullMeshlet(MeshletHeader header) {
-    vec3 center = vec3(
-    float(header.sectionX * 16) + 8.0,
-    float(header.sectionY * 16) + 8.0,
-    float(header.sectionZ * 16) + 8.0
-    );
-    vec3 relative = center - pc.cameraPosition.xyz;
+    vec3 relative = cameraRelative(ivec3(header.sectionX, header.sectionY, header.sectionZ), vec3(8.0));
     vec4 clip = projectRelative(relative);
     float margin = 14.0;
     return clip.w <= 0.0 || clip.z < -margin || clip.z > clip.w + margin || abs(clip.x) > abs(clip.w) + margin || abs(clip.y) > abs(clip.w) + margin;
@@ -172,15 +181,16 @@ void main() {
         ? indices.indices[uint(max(header.firstIndex, 0)) + vertex]
         : uint(max(header.firstVertex, 0)) + vertex;
         BlockVertex blockVertex = payload.vertices[sourceVertex];
-        vec3 world = vec3(
-        float(header.sectionX * 16) + blockVertex.position.x,
-        float(header.sectionY * 16) + blockVertex.position.y,
-        float(header.sectionZ * 16) + blockVertex.position.z
-        );
-        vec3 relative = world - pc.cameraPosition.xyz;
+        vec3 relative = cameraRelative(ivec3(header.sectionX, header.sectionY, header.sectionZ), blockVertex.position);
         gl_MeshVerticesEXT[vertex].gl_Position = projectRelative(relative);
-        vec4 vertexColor = unpackUnorm4x8(blockVertex.color);
-        meshColor[vertex] = vec4(vertexColor.rgb, vertexColor.a * clamp(taskPayload.meshletVisibility, 0.0, 1.0));
+        meshColor[vertex] = unpackUnorm4x8(blockVertex.color);
+        float cameraDistance = length(relative);
+        float fadeApplies = clamp((cameraDistance - SECTION_FADE_FREE_DISTANCE) / SECTION_FADE_FREE_DISTANCE, 0.0, 1.0);
+        meshFog[vertex] = vec3(
+        cameraDistance,
+        max(length(relative.xz), abs(relative.y)),
+        mix(1.0, clamp(taskPayload.meshletVisibility, 0.0, 1.0), fadeApplies)
+        );
         meshUv0[vertex] = blockVertex.uv0;
         meshLightUv[vertex] = vec2(
         float(blockVertex.uv2 & 65535u) / 256.0,

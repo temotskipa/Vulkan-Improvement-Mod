@@ -9,7 +9,10 @@ import net.minecraft.client.Options;
 import net.minecraft.client.color.block.BlockColors;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.client.renderer.state.level.LevelRenderState;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -20,6 +23,10 @@ import java.util.Map;
 
 @Mixin(LevelRenderer.class)
 public final class LevelRendererMixin {
+    @Shadow
+    @Final
+    private LevelRenderState levelRenderState;
+
     /**
      * Minecraft collects the section layers of a frame here for both of its terrain draw paths.
      */
@@ -37,7 +44,7 @@ public final class LevelRendererMixin {
     private void vim$endVisibleFrame(boolean respectTranslucentOrder, List<?> sectionInfos, Map<?, ?> drawGroups, CallbackInfoReturnable<Integer> cir) {
         SectionMeshletStore.endVisibleFrame();
         if (VulkanImprovementRuntime.isVulkanBackendActive()) {
-            MeshTerrainRenderer.get().prepareVisibleFrame();
+            MeshTerrainRenderer.get().prepareVisibleFrame(this.levelRenderState.renderWireframeTerrain);
         }
     }
 

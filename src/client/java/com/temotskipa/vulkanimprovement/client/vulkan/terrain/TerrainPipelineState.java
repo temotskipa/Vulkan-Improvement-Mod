@@ -17,14 +17,14 @@ import java.util.List;
  * it, so it is remembered when the pipeline is compiled; the mesh terrain pipeline that stands in
  * for a vanilla terrain pipeline is built from it and for the same render pass.
  */
-public record TerrainPipelineState(String name, PolygonMode polygonMode, @Nullable DepthStencilState depthStencilState,
+public record TerrainPipelineState(String name, PolygonMode polygonMode, boolean cull, @Nullable DepthStencilState depthStencilState,
                                    GpuFormat depthStencilFormat, List<@Nullable ColorTargetState> colorTargetStates) {
     public TerrainPipelineState {
         colorTargetStates = Collections.unmodifiableList(new ArrayList<>(colorTargetStates));
     }
 
     public static TerrainPipelineState from(CompiledRenderPipeline.CreateInfo info) {
-        return new TerrainPipelineState(info.name(), info.polygonMode(), info.depthStencilState(), info.depthStencilFormat(), info.colorTargetStates());
+        return new TerrainPipelineState(info.name(), info.polygonMode(), info.cull(), info.depthStencilState(), info.depthStencilFormat(), info.colorTargetStates());
     }
 
     public static @Nullable TerrainPipelineState of(@Nullable VulkanRenderPipeline pipeline) {

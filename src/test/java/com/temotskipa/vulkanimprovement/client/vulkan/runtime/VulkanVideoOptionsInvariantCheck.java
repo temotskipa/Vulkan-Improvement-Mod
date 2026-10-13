@@ -153,7 +153,7 @@ public final class VulkanVideoOptionsInvariantCheck {
         );
         requireCallGuard(
                 methodBody(levelRendererSource, "private void vim$endVisibleFrame"),
-                "MeshTerrainRenderer.get().prepareVisibleFrame",
+                "MeshTerrainRenderer.get().prepareVisibleFrame(",
                 "terrain frame preparation must be gated off for OpenGL-active sessions"
         );
         for (Path layerMixin : List.of(DRAW_INDIRECT_MIXIN, DRAW_SEPARATE_MIXIN)) {

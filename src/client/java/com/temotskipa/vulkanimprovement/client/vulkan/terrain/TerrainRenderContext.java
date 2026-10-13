@@ -17,6 +17,7 @@ public final class TerrainRenderContext {
     private static final ThreadLocal<Boolean> DISPATCHED_WHOLE_SET = ThreadLocal.withInitial(() -> false);
     private static final ThreadLocal<Boolean> REPLACEMENT_ALLOWED = ThreadLocal.withInitial(() -> true);
     private static final ThreadLocal<Boolean> MESH_PIPELINE_BOUND = ThreadLocal.withInitial(() -> false);
+    private static final ThreadLocal<Boolean> IMPROVED_FOG = ThreadLocal.withInitial(() -> false);
     /**
      * The mesh-task dispatches prepared for the frame, per layer. They are prepared before
      * Minecraft opens a render pass and drawn inside it, possibly over several layer groups, so
@@ -37,6 +38,7 @@ public final class TerrainRenderContext {
             DISPATCHED_WHOLE_SET.set(false);
             REPLACEMENT_ALLOWED.set(true);
             MESH_PIPELINE_BOUND.set(false);
+            IMPROVED_FOG.set(false);
             CURRENT_GROUP.remove();
         }
     }
@@ -50,6 +52,7 @@ public final class TerrainRenderContext {
             DISPATCHED_WHOLE_SET.remove();
             REPLACEMENT_ALLOWED.remove();
             MESH_PIPELINE_BOUND.remove();
+            IMPROVED_FOG.remove();
             CURRENT_GROUP.remove();
         } else {
             DEPTH.set(depth);
@@ -84,6 +87,18 @@ public final class TerrainRenderContext {
 
     public static boolean replacementAllowed() {
         return REPLACEMENT_ALLOWED.get();
+    }
+
+    /**
+     * @param improvedFog whether Minecraft draws the current group with the pipelines that fade
+     *                    terrain into the sky and cloud images
+     */
+    public static void setImprovedFog(boolean improvedFog) {
+        IMPROVED_FOG.set(improvedFog);
+    }
+
+    public static boolean improvedFog() {
+        return IMPROVED_FOG.get();
     }
 
     @SuppressWarnings("unused")
