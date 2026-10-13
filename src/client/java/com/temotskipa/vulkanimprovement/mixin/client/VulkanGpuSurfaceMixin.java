@@ -1,8 +1,8 @@
 package com.temotskipa.vulkanimprovement.mixin.client;
 
 import com.temotskipa.vulkanimprovement.client.vulkan.presentation.PresentPacingController;
-import com.mojang.blaze3d.vulkan.VulkanDevice;
-import com.mojang.blaze3d.vulkan.VulkanGpuSurface;
+import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
+import com.mojang.renderpearl.backend.vulkan.VulkanGpuSurface;
 import org.lwjgl.vulkan.VkPresentInfoKHR;
 import org.lwjgl.vulkan.VkQueue;
 import org.spongepowered.asm.mixin.Final;

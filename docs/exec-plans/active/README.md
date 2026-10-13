@@ -8,6 +8,7 @@ In-progress execution plans:
 - [Minecraft 26.2 Vulkan Renderer Extension](26-2-vulkan-renderer-extension.md)
 - [Non-Terrain Domain Contracts](non-terrain-domain-contracts.md)
 - [RT PT Acceleration Data](rt-pt-acceleration-data.md)
+- [Minecraft 26.4 Snapshot Port](minecraft-26-4-snapshot-port.md)
 
 Recent completions:
 

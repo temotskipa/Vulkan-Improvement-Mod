@@ -1,10 +1,10 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.device;
 
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
-import com.mojang.blaze3d.systems.BackendCreationException;
-import com.mojang.blaze3d.vulkan.VulkanPhysicalDevice;
-import com.mojang.blaze3d.vulkan.init.VulkanFeature;
-import com.mojang.blaze3d.vulkan.init.VulkanPNextStruct;
+import com.mojang.renderpearl.api.device.BackendCreationException;
+import com.mojang.renderpearl.backend.vulkan.VulkanPhysicalDevice;
+import com.mojang.renderpearl.backend.vulkan.init.VulkanFeature;
+import com.mojang.renderpearl.backend.vulkan.init.VulkanPNextStruct;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.*;
 

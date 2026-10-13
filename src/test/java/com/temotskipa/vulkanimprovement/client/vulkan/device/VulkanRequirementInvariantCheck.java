@@ -1,6 +1,6 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.device;
 
-import com.mojang.blaze3d.vulkan.init.VulkanFeature;
+import com.mojang.renderpearl.backend.vulkan.init.VulkanFeature;
 import org.lwjgl.vulkan.*;
 
 import java.util.List;

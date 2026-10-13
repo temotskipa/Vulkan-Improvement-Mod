@@ -14,7 +14,7 @@ public final class Minecraft26MixinTargetManifestInvariantCheck {
             target(
                     "VulkanBackendMixin",
                     "@Mixin(VulkanBackend.class)",
-                    "com.mojang.blaze3d.vulkan.VulkanBackend",
+                    "com.mojang.renderpearl.backend.vulkan.VulkanBackend",
                     List.of(
                             "REQUIRED_DEVICE_EXTENSIONS",
                             "REQUIRED_DEVICE_FEATURES",
@@ -27,7 +27,7 @@ public final class Minecraft26MixinTargetManifestInvariantCheck {
             target(
                     "VulkanInstanceMixin",
                     "@Mixin(VulkanInstance.class)",
-                    "com.mojang.blaze3d.vulkan.VulkanInstance",
+                    "com.mojang.renderpearl.backend.vulkan.VulkanInstance",
                     List.of(
                             "method = \"<init>\"",
                             "VkApplicationInfo;apiVersion(I)"
@@ -36,7 +36,7 @@ public final class Minecraft26MixinTargetManifestInvariantCheck {
             target(
                     "VulkanDeviceMixin",
                     "@Mixin(VulkanDevice.class)",
-                    "com.mojang.blaze3d.vulkan.VulkanDevice",
+                    "com.mojang.renderpearl.backend.vulkan.VulkanDevice",
                     List.of(
                             "private VkDevice vkDevice",
                             "method = \"<init>\"",
@@ -47,7 +47,7 @@ public final class Minecraft26MixinTargetManifestInvariantCheck {
             target(
                     "VulkanGpuSurfaceMixin",
                     "@Mixin(VulkanGpuSurface.class)",
-                    "com.mojang.blaze3d.vulkan.VulkanGpuSurface",
+                    "com.mojang.renderpearl.backend.vulkan.VulkanGpuSurface",
                     List.of(
                             "private VulkanDevice device",
                             "private long swapchain",
@@ -58,7 +58,7 @@ public final class Minecraft26MixinTargetManifestInvariantCheck {
             target(
                     "VulkanRenderPassMixin",
                     "@Mixin(VulkanRenderPass.class)",
-                    "com.mojang.blaze3d.vulkan.VulkanRenderPass",
+                    "com.mojang.renderpearl.backend.vulkan.VulkanRenderPass",
                     List.of(
                             "protected VulkanRenderPipeline pipeline",
                             "private boolean hasDepth",
@@ -72,7 +72,7 @@ public final class Minecraft26MixinTargetManifestInvariantCheck {
             target(
                     "GlBackendMixin",
                     "@Mixin(GlBackend.class)",
-                    "com.mojang.blaze3d.opengl.GlBackend",
+                    "com.mojang.renderpearl.backend.opengl.GlBackend",
                     List.of("method = \"createDevice\"")
             ),
             target(
@@ -121,8 +121,8 @@ public final class Minecraft26MixinTargetManifestInvariantCheck {
             ),
             target(
                     "ChunkSectionInfoMixin",
-                    "@Mixin(DynamicUniforms.ChunkSectionInfo.class)",
-                    "net.minecraft.client.renderer.DynamicUniforms.ChunkSectionInfo",
+                    "@Mixin(DynamicGpuData.ChunkSectionInfo.class)",
+                    "net.minecraft.client.renderer.DynamicGpuData.ChunkSectionInfo",
                     List.of(
                             "method = \"<init>\"",
                             "Matrix4fc modelView",

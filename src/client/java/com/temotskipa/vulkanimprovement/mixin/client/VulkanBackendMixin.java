@@ -2,9 +2,9 @@ package com.temotskipa.vulkanimprovement.mixin.client;
 
 import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanFeatureRequirements;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
-import com.mojang.blaze3d.systems.BackendCreationException;
-import com.mojang.blaze3d.vulkan.VulkanBackend;
-import com.mojang.blaze3d.vulkan.init.VulkanFeature;
+import com.mojang.renderpearl.api.device.BackendCreationException;
+import com.mojang.renderpearl.backend.vulkan.VulkanBackend;
+import com.mojang.renderpearl.backend.vulkan.init.VulkanFeature;
 import com.mojang.logging.LogUtils;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.util.vma.Vma;

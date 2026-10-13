@@ -4,7 +4,7 @@ import com.temotskipa.vulkanimprovement.client.vulkan.runtime.VulkanImprovementR
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.MeshTerrainRenderer;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRenderContext;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
-import com.mojang.blaze3d.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuSampler;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayerGroup;
 import net.minecraft.client.renderer.chunk.ChunkSectionsToRender;
 import org.spongepowered.asm.mixin.Mixin;

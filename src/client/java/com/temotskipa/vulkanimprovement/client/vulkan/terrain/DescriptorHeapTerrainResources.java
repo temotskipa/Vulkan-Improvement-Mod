@@ -1,13 +1,13 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
 import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanImprovementCapabilities;
-import com.mojang.blaze3d.buffers.GpuFence;
-import com.mojang.blaze3d.textures.GpuSampler;
-import com.mojang.blaze3d.textures.GpuTextureView;
-import com.mojang.blaze3d.vulkan.VulkanDevice;
-import com.mojang.blaze3d.vulkan.VulkanGpuSampler;
-import com.mojang.blaze3d.vulkan.VulkanGpuTextureView;
-import com.mojang.blaze3d.vulkan.VulkanUtils;
+import com.mojang.renderpearl.api.commands.GpuFence;
+import com.mojang.renderpearl.api.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
+import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
+import com.mojang.renderpearl.backend.vulkan.VulkanGpuSampler;
+import com.mojang.renderpearl.backend.vulkan.VulkanGpuTextureView;
+import com.mojang.renderpearl.backend.vulkan.VulkanUtils;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.*;

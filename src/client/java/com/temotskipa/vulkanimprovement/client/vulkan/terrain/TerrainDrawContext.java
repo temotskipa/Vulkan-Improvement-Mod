@@ -1,7 +1,7 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
-import com.mojang.blaze3d.systems.RenderPass;
-import com.mojang.blaze3d.vulkan.VulkanRenderPipeline;
+import com.mojang.renderpearl.api.commands.RenderPass;
+import com.mojang.renderpearl.backend.vulkan.VulkanRenderPipeline;
 import org.jspecify.annotations.Nullable;
 import org.lwjgl.vulkan.VkCommandBuffer;
 

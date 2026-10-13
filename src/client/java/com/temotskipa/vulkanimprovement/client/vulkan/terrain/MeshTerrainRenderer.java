@@ -6,10 +6,10 @@ import com.temotskipa.vulkanimprovement.client.vulkan.runtime.RendererCoreServic
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.RendererDomainObserver;
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.RendererDomainRegistry;
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.RendererLifecycleState;
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
-import com.mojang.blaze3d.systems.RenderPass;
-import com.mojang.blaze3d.vulkan.VulkanDevice;
-import com.mojang.blaze3d.vulkan.VulkanRenderPipeline;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.commands.RenderPass;
+import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
+import com.mojang.renderpearl.backend.vulkan.VulkanRenderPipeline;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayerGroup;

@@ -1,7 +1,7 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.device;
 
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
-import com.mojang.blaze3d.vulkan.VulkanPhysicalDevice;
+import com.mojang.renderpearl.backend.vulkan.VulkanPhysicalDevice;
 import com.mojang.logging.LogUtils;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.*;
