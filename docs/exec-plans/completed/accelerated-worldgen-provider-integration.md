@@ -1,6 +1,6 @@
 # Accelerated Worldgen Provider Integration
 
-**Status:** Active.
+**Status:** Completed 2026-10-13.
 
 ## Goal
 
@@ -90,6 +90,7 @@ license-sensitive source details stay in ignored local notes under
    - Capture bug-report diagnostics with the provider present and integration
      enabled, proving renderer authority stays `cpu-chunk-state` until an
      explicit provider-owned worldgen mode exists.
+   - Status: done on `26.4-snapshot-3`; see Runtime Validation Notes.
 
 ## Validation
 
@@ -125,3 +126,29 @@ This plan is complete when:
   later explicit metadata decision is implemented;
 - renderer authority remains CPU chunk state unless a separate provider-owned
   worldgen implementation plan is opened and validated.
+
+## Runtime Validation Notes
+
+Captured on 2026-10-13 on `26.4-snapshot-3` from the
+`acceleratedWorldgenProvider` key of the bug report. No accelerated-worldgen
+provider was installed. Detection only asks the loader whether a configured
+mod ID is present, so the present states were exercised by configuring the ID
+of a mod that was installed for testing; nothing provider-specific ran.
+
+| State | `present` | `integrationEnabled` | `rendererAuthority` | `fallbackReason` |
+|---|---|---|---|---|
+| No provider ID configured | `false` | `false` | `cpu-chunk-state` | `no-provider-id-configured` |
+| Configured ID present, integration off | `true` | `false` | `cpu-chunk-state` | `integration-disabled` |
+| Configured ID present, integration on | `true` | `true` | `cpu-chunk-state` | `provider-owned-worldgen-not-implemented` |
+
+In all three `worldgenAuthority=minecraft` and `metadataRelationship=none`.
+The provider IDs are read from a JVM system property when the game starts; a
+value set later through scripting did not reach it, so the present states
+were captured in a session started with the property.
+
+## Completion
+
+Closed on 2026-10-13. Every exit criterion holds: the diagnostics exist and
+have invariant coverage for absence and presence, the opt-in flag is exposed
+in Video Settings and through the live-debug setters, `fabric.mod.json` names
+no provider, and renderer authority is CPU chunk state in every state above.

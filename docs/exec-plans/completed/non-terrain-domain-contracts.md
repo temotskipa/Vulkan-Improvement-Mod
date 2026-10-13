@@ -1,5 +1,7 @@
 # Non-Terrain Domain Contracts
 
+**Status:** Completed 2026-10-13.
+
 ## Goal
 
 Define explicit compatibility contracts for non-terrain renderer domains before
@@ -64,20 +66,26 @@ effect, or post-processing path is replaced by VIM GPU rendering.
      `net.minecraft.client.renderer.PostChainConfig`,
      and `net.minecraft.client.renderer.LevelRenderer`.
    - Add the owners to the contract map without adding replacement mixins.
-   - Status: partially done. mcdev confirmed the owner class names currently
-     used in `RendererDomainContract`, including `PostPass` and
-     `PostChainConfig` for the 26.2 post-processing surface.
+   - Status: done. The owners were confirmed again with mcdev on
+     `26.4-snapshot-3` and are recorded in
+     [the renderer domain owners reference](../../references/minecraft-26-4-renderer-domain-owners.md).
+     One moved: first-person hands and items are drawn by
+     `net.minecraft.client.renderer.FirstPersonHandsAndItemsRenderer`, where
+     26.2 had `ItemInHandRenderer`.
 
 5. Expose contract diagnostics.
    - Update `RendererDiagnostics.bugReport()` to include domain contracts under
      `rendererServices.domains`.
    - Keep current `DomainState` selected-path fields unchanged.
    - Add source invariants that diagnostics include both state and contract.
+   - Status: done. `RendererDomainInvariantCheck` requires the bug report to
+     carry each domain's state and its contract.
 
 6. Add domain-specific follow-up plans before replacement.
    - Open one plan per domain that changes behavior.
    - Each domain plan must include mcdev target summaries, asset/material
      contract, fallback trigger, counters, and runtime validation steps.
+   - Status: a standing rule. No domain's behaviour changes under this plan.
 
 ## Validation
 
@@ -99,3 +107,14 @@ effect, or post-processing path is replaced by VIM GPU rendering.
 
 - Create domain-specific active plans for entity, block-entity, particle, sky,
   cloud, weather, translucent effect, or post-processing replacement.
+
+## Completion
+
+Closed on 2026-10-13 with the contracts and diagnostics in place and no
+non-terrain behaviour changed.
+
+Runtime, `26.4-snapshot-3`: the bug report listed every non-terrain domain
+with `path=vanilla` and `replacementAllowed=false`, each with the owner named
+in the reference above. The terrain domain used to report the mesh path in
+every mode, because the mesh path is always configured; it now reports
+`vanilla` unless the mesh path draws.

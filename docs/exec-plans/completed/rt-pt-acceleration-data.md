@@ -1,5 +1,7 @@
 # RT PT Acceleration Data
 
+**Status:** Completed 2026-10-13.
+
 ## Goal
 
 Define the renderer-owned acceleration-data contracts needed before RT/PT
@@ -69,12 +71,20 @@ experiments can consume VIM terrain or future non-terrain GPU world data.
      any allocation task can be scheduled.
    - Diagnostics must report the selected path as `disabled` with a reason when
      any requirement is absent.
+   - Status: done. `VulkanRuntimeProfile` reports
+     `selectedPaths.rtPtAccelerationAllocation=disabled` with a reason that
+     either names what the device lacks or says that the device has everything
+     and no allocation plan is active. `RtPtAccelerationDataRegistry` exposes
+     the same gate as `allocationGate` and cannot schedule an allocation while
+     it is closed.
 
 6. Create a runtime validation plan before first Vulkan AS allocation.
    - Include validation layers, resource retirement counters, device-lost
      cleanup, world reload, dimension change, and renderer shutdown.
    - Keep this as a separate active plan if allocation work starts after the
      26.2 renderer extension closes.
+   - Status: done as the section Validation Before The First Allocation below.
+     The plan that introduces allocation starts from it.
 
 ## Validation
 
@@ -97,3 +107,44 @@ experiments can consume VIM terrain or future non-terrain GPU world data.
 
 - Open a separate allocation plan when Vulkan acceleration-structure objects
   are introduced.
+
+## Validation Before The First Allocation
+
+No Vulkan acceleration structure exists in the mod. The change that creates the
+first one has to show all of the following, on a debug-options run with the
+Vulkan validation layers enabled, before it can be merged:
+
+- **Gate.** With the gate closed, no acceleration structure, scratch buffer or
+  build command is created. `allocationGate.canScheduleAllocation` is the only
+  switch, and it stays `false` on a device that lacks any requirement.
+- **Validation layers.** A session that builds and rebuilds acceleration
+  structures finishes with no validation message naming an acceleration
+  structure, a build-input buffer or a device address.
+- **Retirement.** Every structure that is replaced or dropped goes through the
+  retirement service; after a quiet period the registry's live count equals
+  what is referenced, and retired counts stop growing.
+- **Invalidation.** A block change in a section invalidates exactly the pages
+  whose source revision it replaces. The pending-rebuild count returns to zero
+  and no page stays live on a stale revision.
+- **World reload and dimension change.** Leaving a world, loading another and
+  changing dimension each bring the live count to zero before anything of the
+  new world is built.
+- **Device loss.** A lost device clears the registry without destroying
+  through a dead handle, and counts the clear.
+- **Shutdown.** Closing the renderer destroys every structure before the
+  Vulkan device, and the client exits normally.
+- **Independence.** With the gate open and terrain replacement off, and the
+  other way round, each path behaves as it does alone.
+
+## Completion
+
+Closed on 2026-10-13. The contracts, lifecycle diagnostics, revision
+bookkeeping and the capability gate exist; allocation does not, by decision.
+
+Runtime, `26.4-snapshot-3`, RTX 4070 Ti: every RT/PT readiness extension was
+reported present, and
+`allocationGate={deviceSupported=true, allocationEnabled=false,
+canScheduleAllocation=false, selectedPath=disabled}` with the reason
+`device supports it; no acceleration-structure allocation plan is active`.
+RT/PT readiness is not among the hard requirements, so a device without it
+still starts.

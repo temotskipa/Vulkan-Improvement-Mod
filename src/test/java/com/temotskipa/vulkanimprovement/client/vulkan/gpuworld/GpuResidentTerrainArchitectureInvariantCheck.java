@@ -8,9 +8,10 @@ import java.util.stream.Stream;
 
 public final class GpuResidentTerrainArchitectureInvariantCheck {
     private static final Path ARCHITECTURE_PLAN = Path.of("docs/exec-plans/active/gpu-resident-terrain-architecture.md");
-    private static final Path EXTENSION_PLAN = Path.of("docs/exec-plans/active/26-2-vulkan-renderer-extension.md");
-    private static final Path PROVIDER_PLAN = Path.of("docs/exec-plans/active/accelerated-worldgen-provider-integration.md");
+    private static final Path EXTENSION_PLAN = Path.of("docs/exec-plans/completed/26-2-vulkan-renderer-extension.md");
+    private static final Path PROVIDER_PLAN = Path.of("docs/exec-plans/completed/accelerated-worldgen-provider-integration.md");
     private static final Path ACTIVE_README = Path.of("docs/exec-plans/active/README.md");
+    private static final Path COMPLETED_README = Path.of("docs/exec-plans/completed/README.md");
     private static final Path FABRIC_MOD_JSON = Path.of("src/main/resources/fabric.mod.json");
     private static final Path GITIGNORE = Path.of(".gitignore");
     private static final Path DATABASE_SOURCE = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/gpuworld/GpuWorldDatabase.java");
@@ -38,7 +39,7 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
         String pipelineStageSource = read(PIPELINE_STAGE_SOURCE);
         String layerDirectorySource = read(LAYER_DIRECTORY_SOURCE);
 
-        checkPlanWiring(architecturePlan, extensionPlan, providerPlan, activeReadme);
+        checkPlanWiring(architecturePlan, extensionPlan, providerPlan, activeReadme, read(COMPLETED_README));
         checkLocalOnlyExternalReferenceBoundary(gitignore, fabricModJson);
         checkPublicDocsOnlyDescribeInferredArchitecture();
         checkGpuResidentRequirements(architecturePlan);
@@ -48,12 +49,12 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
     }
 
     private static void checkPlanWiring(String architecturePlan, String extensionPlan,
-                                        String providerPlan, String activeReadme) {
+                                        String providerPlan, String activeReadme, String completedReadme) {
         requireContains(activeReadme, "[GPU Resident Terrain Architecture](gpu-resident-terrain-architecture.md)",
                 "active README must list the GPU-resident terrain architecture plan");
-        requireContains(activeReadme, "[Accelerated Worldgen Provider Integration](accelerated-worldgen-provider-integration.md)",
-                "active README must list the optional accelerated-worldgen provider integration plan");
-        requireContains(extensionPlan, "[GPU-resident terrain architecture](gpu-resident-terrain-architecture.md)",
+        requireContains(completedReadme, "[Accelerated Worldgen Provider Integration](accelerated-worldgen-provider-integration.md)",
+                "completed README must list the optional accelerated-worldgen provider integration plan");
+        requireContains(extensionPlan, "[GPU-resident terrain architecture](../active/gpu-resident-terrain-architecture.md)",
                 "26.2 renderer extension plan must link the GPU-resident terrain architecture plan");
         requireContains(extensionPlan, "[accelerated-worldgen provider integration](accelerated-worldgen-provider-integration.md)",
                 "26.2 renderer extension plan must link the dedicated optional-provider integration plan");
