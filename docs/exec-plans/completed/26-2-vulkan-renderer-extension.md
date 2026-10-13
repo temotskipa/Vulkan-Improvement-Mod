@@ -1,7 +1,7 @@
 # Minecraft 26.2 Vulkan Renderer Extension
 
 **Status:** Completed 2026-10-13, when the
-[26.4 snapshot port](../active/minecraft-26-4-snapshot-port.md) replaced 26.2 as the
+[26.4 snapshot port](minecraft-26-4-snapshot-port.md) replaced 26.2 as the
 target. Read the Completion section first: three of the decisions below were
 overtaken by the port.
 

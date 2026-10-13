@@ -233,7 +233,7 @@ the safe default and capture/bootstrap as an explicit diagnostic opt-in.
   shader now samples the way vanilla does, and with culling, lighting and fog
   brought into line the difference is about 1.0, on foliage edges only. The
   figures and the method are in the
-  [26.4 port plan](../active/minecraft-26-4-snapshot-port.md).
+  [26.4 port plan](minecraft-26-4-snapshot-port.md).
 - The same day's matrix passed in all four modes of Validation with 300-frame
   record-first jitter, exceeding the crash window of
   `crash-2026-06-29_08.25.58-client.txt`, without device loss, truncation or

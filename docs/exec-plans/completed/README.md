@@ -12,3 +12,4 @@ Move finished execution plans here when their decision history is worth keeping.
 
 - [GPU Resident Terrain Architecture](gpu-resident-terrain-architecture.md)
 - [Mesh Replacement Device-Loss Bugfix](mesh-replacement-device-loss-bugfix.md)
+- [Minecraft 26.4 Snapshot Port](minecraft-26-4-snapshot-port.md)

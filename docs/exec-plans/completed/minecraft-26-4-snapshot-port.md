@@ -1,9 +1,9 @@
 # Minecraft 26.4 Snapshot Port
 
-**Status:** Active. Started 2026-10-13 on branch `mc-26.4-snapshot`. The mod
-builds, passes its checks and runs on `26.4-snapshot-3`. The runtime matrix
+**Status:** Completed 2026-10-14 on branch `mc-26.4-snapshot`. The mod
+builds, passes its checks and runs on `26.4-snapshot-3`; the runtime matrix
 passed and mesh terrain matches vanilla terrain in same-camera comparisons.
-What is left is listed under Open.
+A later snapshot or the release needs a plan of its own.
 
 ## Goal
 
@@ -172,8 +172,7 @@ Done on 2026-10-13, Windows 11, RTX 4070 Ti, driver 616.92, Vulkan 1.4.351:
   `meshReplacementRefusals=0`, `meshReplacementPreparedGpuCommandRefusals=0`,
   `meshReplacementPreparedDispatchQueueLeaks=0`,
   `meshReplacementTaskTruncations=0`.
-- The Video Settings screen opens with its mixin applied. That the mod's
-  controls are listed in it was not looked at.
+- The Video Settings screen opens with its mixin applied.
 - Record-first jitter, `mc_record_video(frames=300, interval=100)` with 27
   scheduled camera turns, in four modes: capture only, overlay, strict with
   GPU-generated commands, and every diagnostic flag on
@@ -196,12 +195,31 @@ Done on 2026-10-13, Windows 11, RTX 4070 Ti, driver 616.92, Vulkan 1.4.351:
   work the noon figures were 6.45 and 2.69 %. What is left is single pixels on
   foliage edges. Images in `parity/`.
 
-Open:
+Done on 2026-10-14, same machine:
 
-- `vim.validationDescriptorBufferOnly` and `vim.enableMeshletFrustumCulling`.
-- An OpenGL-active session.
-- Section fade-in is carried by the visible page list of the GPU visibility
-  path. The CPU work-queue fallback still draws sections at full visibility.
+- The resident pages and the GPU visibility pass of the
+  [GPU-resident terrain plan](gpu-resident-terrain-architecture.md), whose
+  completion note and the matrix row of that day hold the figures.
+- `vim.validationDescriptorBufferOnly=true`, set when the game starts: the
+  profile reports `descriptorPath=descriptor-buffer-only`, strict replacement
+  draws through the GPU visibility pass, and the picture differs from vanilla
+  by 1.03 of 255 as it does with the descriptor heap.
+- `vim.enableMeshletFrustumCulling=true` on the CPU work-queue path: the same
+  1.03, no holes.
+- An OpenGL session (`preferredGraphicsBackend:"opengl"`): Minecraft reports
+  the OpenGL backend, the mod reports `lifecycle=UNCONFIGURED` and no active
+  renderer, and with every terrain switch on nothing is captured, no page is
+  made and nothing is drawn. The client quit normally.
+- The Video Settings screen lists the mod's header and 22 controls after
+  Minecraft's own under Vulkan, 58 widgets in all, and only Minecraft's 35
+  under OpenGL.
+
+Not done:
+
+- A run with the Vulkan validation layers.
+- Any GPU or driver other than the one above.
+- The CPU work-queue fallback still draws sections at full visibility while
+  they fade in. The GPU visibility path, which is the default, fades them.
 
 ## Decisions
 
@@ -225,7 +243,7 @@ Open:
   inactive, or ask for the Vulkan swapchain while pacing is enabled
   (`RENDERPEARL_DISABLE_DXGI_PRESENT=1` is Minecraft's own switch).
 - The GPU visibility pass of the
-  [GPU-resident terrain plan](../completed/gpu-resident-terrain-architecture.md) takes a
+  [GPU-resident terrain plan](gpu-resident-terrain-architecture.md) takes a
   list the mod uploads, eight bytes per visible section layer. Minecraft's
   indirect command buffer holds one record per visible section layer too and
   could replace that upload on the multi-draw-indirect path.
@@ -233,3 +251,14 @@ Open:
   under the build.
 - Rename what still says 26.2 once the 26.2 line is retired
   (`26-2-vulkan-renderer-extension.md`).
+
+## Completion
+
+Closed on 2026-10-14. Everything the port set out to do is done and checked
+at runtime, and the plans it inherited from the 26.2 line are closed with it:
+the renderer extension, the non-terrain contracts, the RT/PT data contracts,
+the worldgen provider diagnostics, the mesh-replacement bugfix and the
+GPU-resident terrain architecture.
+
+What the port leaves for later is under Not done and Follow-Up above, and in
+the technical debt tracker.

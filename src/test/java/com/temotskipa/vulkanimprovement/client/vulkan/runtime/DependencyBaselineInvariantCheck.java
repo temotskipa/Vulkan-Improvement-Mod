@@ -9,7 +9,7 @@ public final class DependencyBaselineInvariantCheck {
     private static final Path GRADLE_PROPERTIES = Path.of("gradle.properties");
     private static final Path BUILD_GRADLE = Path.of("build.gradle");
     private static final Path WRAPPER_PROPERTIES = Path.of("gradle/wrapper/gradle-wrapper.properties");
-    private static final Path PORT_PLAN = Path.of("docs/exec-plans/active/minecraft-26-4-snapshot-port.md");
+    private static final Path PORT_PLAN = Path.of("docs/exec-plans/completed/minecraft-26-4-snapshot-port.md");
     private static final Path COMPLETED_DEPENDENCY_PLAN = Path.of("docs/exec-plans/completed/minecraft-26-2-dependency-update.md");
     
     private DependencyBaselineInvariantCheck() {
