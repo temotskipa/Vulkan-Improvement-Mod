@@ -30,8 +30,8 @@ final class TerrainMeshTaskCommandLayout {
         map.put("commandPushConstantBytes", TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_PUSH_CONSTANT_BYTES);
         map.put("bytes", bytesForCapacity());
         map.put("commandFields", Map.of("groupCountX", 0, "groupCountY", 4, "groupCountZ", 8));
-        map.put("pushConstantFields", Map.of("workQueue", 0, "meshTaskCommands", 8, "commandIndex", 16, "maxTaskCount", 20, "flags", 24, "reserved", 28));
-        map.put("usePushTaskCountFlag", TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_USE_PUSH_TASK_COUNT_FLAG);
+        map.put("pushConstantFields", Map.of("pageTable", 0, "visiblePages", 8, "meshTaskCommands", 16, "counters", 24, "inputOffset", 32, "outputOffset", 36, "pageCount", 40, "commandIndex", 44, "camera", 64));
+        map.put("visibilityWorkgroupSize", TerrainGpuLayout.VISIBILITY_WORKGROUP_SIZE);
         return map;
     }
 }

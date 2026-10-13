@@ -9,6 +9,7 @@ import com.temotskipa.vulkanimprovement.client.vulkan.runtime.RendererDomainRegi
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.RendererLifecycleState;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayerGroup;
+import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldDatabase;
 import org.jspecify.annotations.Nullable;
 
 import java.util.LinkedHashMap;
@@ -19,6 +20,9 @@ import java.util.concurrent.atomic.LongAdder;
 public final class MeshTerrainRenderer {
     private static final MeshTerrainRenderer INSTANCE = new MeshTerrainRenderer();
     
+    private final LongAdder visibilityCommandsEmitted = new LongAdder();
+    private final LongAdder visibilityFallbackLayers = new LongAdder();
+    private final long[] lastVisibilityCounters = new long[3];
     private final LongAdder terrainGroupCalls = new LongAdder();
     private final LongAdder improvedFogTerrainGroups = new LongAdder();
     private final LongAdder capturedSections = new LongAdder();
@@ -110,6 +114,7 @@ public final class MeshTerrainRenderer {
             return;
         }
         DescriptorHeapTerrainResources.get().uploadDirtyTerrainData();
+        publishVisibilityStats(DescriptorHeapTerrainResources.get());
         int unconsumedPreparedDispatches = TerrainRenderContext.beginPreparedFrame();
         if (unconsumedPreparedDispatches > 0) {
             this.meshReplacementPreparedDispatchQueueLeaks.add(unconsumedPreparedDispatches);
@@ -298,9 +303,10 @@ public final class MeshTerrainRenderer {
     }
     
     /**
-     * Uploads the work queue of every layer the mesh path can stand in for and has the GPU write
-     * its mesh-task commands. The visible set is the one Minecraft collected for its own draws
-     * this frame.
+     * Hands every layer the mesh path can stand in for to the GPU visibility pass. The pages of
+     * the section layers Minecraft collected for the frame are listed, a few bytes each; the GPU
+     * keeps the ones in view and writes the mesh-task command that draws them. A layer with a
+     * section layer that has no page yet is left to Minecraft for the frame.
      */
     private void prepareVisibleTerrainCommands(DescriptorHeapTerrainResources terrainResources) {
         for (ChunkSectionLayer layer : ChunkSectionLayer.values()) {
@@ -308,29 +314,56 @@ public final class MeshTerrainRenderer {
                 continue;
             }
             int layerOrdinal = layer.ordinal();
-            List<SectionMeshletStore.MeshletRange> ranges = SectionMeshletStore.visibleMeshletRanges(layerOrdinal);
-            if (ranges == null) {
+            List<SectionMeshletStore.PageRef> pages = SectionMeshletStore.visiblePages(layerOrdinal);
+            if (pages == null) {
                 this.meshReplacementPreparedGpuCommandRefusals.increment();
+                this.visibilityFallbackLayers.increment();
                 continue;
             }
-            
-            for (List<SectionMeshletStore.MeshletRange> batch : TerrainLayerReplacementPolicy.dispatchBatches(ranges)) {
-                DescriptorHeapTerrainResources.TerrainWorkQueueUpload workQueue = terrainResources.writeVisibleWorkQueue(batch, layerOrdinal);
-                TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.cpuWorkQueue(workQueue, layerOrdinal, workQueue.count());
+
+            for (int first = 0; first < pages.size(); first += TerrainMeshTaskDispatch.MAX_DIRECT_TASKS) {
+                List<SectionMeshletStore.PageRef> batch = pages.subList(first, Math.min(pages.size(), first + TerrainMeshTaskDispatch.MAX_DIRECT_TASKS));
+                DescriptorHeapTerrainResources.VisiblePageUpload upload = terrainResources.writeVisiblePageList(batch);
+                TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.gpuVisiblePages(upload, layerOrdinal);
                 DescriptorHeapTerrainResources.TerrainMeshTaskCommandUpload commandUpload = terrainResources.reserveMeshTaskCommand(dispatch.taskCount());
                 TerrainMeshTaskDispatch preparedDispatch = dispatch.withIndirectCommand(commandUpload);
-                if (preparedDispatch.ready() && preparedDispatch.usesWorkQueue() && preparedDispatch.usesIndirectCommand() && MeshShaderTerrainProgram.get().prepareWorkQueueIndirectCommand(preparedDispatch)) {
+                if (preparedDispatch.ready() && preparedDispatch.usesIndirectCommand() && MeshShaderTerrainProgram.get().prepareVisiblePageCommand(preparedDispatch, upload)) {
                     TerrainRenderContext.enqueuePreparedLayerDispatch(layerOrdinal, preparedDispatch);
                     this.meshReplacementPreparedGpuCommands.increment();
                     this.meshReplacementPreparedVisibleGpuCommands.increment();
+                    this.visibilityCommandsEmitted.increment();
                 }
                 else {
                     this.meshReplacementPreparedGpuCommandRefusals.increment();
+                    this.visibilityFallbackLayers.increment();
                 }
             }
         }
     }
-    
+
+    /**
+     * Tells the GPU world diagnostics what the visibility pass did since this was last called. The
+     * page counts come from counters the GPU keeps, so they describe frames that have been drawn
+     * and run behind the commands, which are counted as they are recorded.
+     */
+    private void publishVisibilityStats(DescriptorHeapTerrainResources terrainResources) {
+        long[] counters = terrainResources.visibilityCounters();
+        long[] sinceLast = new long[counters.length];
+        for (int i = 0; i < counters.length; i++) {
+            // The counters start again from zero when the buffers are replaced.
+            sinceLast[i] = counters[i] >= this.lastVisibilityCounters[i] ? counters[i] - this.lastVisibilityCounters[i] : counters[i];
+            this.lastVisibilityCounters[i] = counters[i];
+        }
+        long emitted = this.visibilityCommandsEmitted.sumThenReset();
+        long fallback = this.visibilityFallbackLayers.sumThenReset();
+        if (sinceLast[0] == 0L && emitted == 0L && fallback == 0L) {
+            return;
+        }
+        long culled = Math.min(sinceLast[1], sinceLast[0]);
+        long visible = Math.min(sinceLast[2], sinceLast[0] - culled);
+        GpuWorldDatabase.get().recordVisibilityCommandPass(sinceLast[0], culled, visible, emitted, 0L, fallback);
+    }
+
     private @Nullable TerrainMeshTaskDispatch buildVisibleMeshDispatch(DescriptorHeapTerrainResources terrainResources, List<SectionMeshletStore.MeshletRange> ranges, int layerOrdinal) {
         DescriptorHeapTerrainResources.TerrainWorkQueueUpload workQueue = terrainResources.writeVisibleWorkQueue(ranges, layerOrdinal);
         TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.cpuWorkQueue(workQueue, layerOrdinal, workQueue.count());

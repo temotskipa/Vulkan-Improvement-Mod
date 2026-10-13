@@ -433,6 +433,7 @@ tasks.register("checkTerrainLayoutManifest") {
                                  "TERRAIN_MESH_TASK_COMMAND_STRIDE",
                                  "TERRAIN_MESH_TASK_COMMAND_CAPACITY",
                                  "TERRAIN_MESH_TASK_COMMAND_PUSH_CONSTANT_BYTES",
+                                 "VISIBILITY_WORKGROUP_SIZE",
                                  "MATERIAL_RECORD_STRIDE",
                                  "MATERIAL_TABLE_CAPACITY",
                                  "TERRAIN_PUSH_CONSTANT_BYTES",
@@ -502,7 +503,7 @@ tasks.register("checkTerrainLayoutManifest") {
                 taskShader,
                 "layout(buffer_reference, scalar, buffer_reference_align = 4) readonly buffer TerrainWorkQueue { uint producedCount; uint consumedCount; uint droppedCount; uint reserved; TerrainWorkQueueRecord records[]; };")
 
-        def pushConstantBlock = "layout(push_constant, scalar) uniform TerrainPushConstants { uint64_t meshletHeaders; uint64_t vertexPayload; uint64_t indexPayload; uint64_t debugCounters; uint64_t visibleMeshlets; uint64_t workQueue; uint64_t materialTable; uint meshletCount; uint enableMeshletFrustumCulling; uint meshletOffset; int layerOrdinal; ivec4 cameraBlock; vec4 cameraOffset; vec4 cameraRight; vec4 cameraUp; vec4 cameraForward; vec4 projection; } pc;"
+        def pushConstantBlock = "layout(push_constant, scalar) uniform TerrainPushConstants { uint64_t meshletHeaders; uint64_t vertexPayload; uint64_t indexPayload; uint64_t debugCounters; uint64_t visibleMeshlets; uint64_t workQueue; uint64_t materialTable; uint64_t pageTable; uint meshletCount; uint enableMeshletFrustumCulling; uint meshletOffset; int layerOrdinal; ivec4 cameraBlock; vec4 cameraOffset; vec4 cameraRight; vec4 cameraUp; vec4 cameraForward; vec4 projection; } pc;"
         requireNormalizedText("task terrain shader", taskShader, pushConstantBlock)
         requireNormalizedText("mesh terrain shader", meshShader, pushConstantBlock)
         requireText("task terrain shader", taskShader, "TerrainWorkQueue queue = TerrainWorkQueue(pc.workQueue);")
@@ -511,9 +512,19 @@ tasks.register("checkTerrainLayoutManifest") {
                 "struct MeshTaskCommand { uint groupCountX; uint groupCountY; uint groupCountZ; };")
         requireNormalizedText("mesh-task command shader",
                 commandShader,
-                "layout(push_constant, scalar) uniform CommandPushConstants { uint64_t workQueue; uint64_t meshTaskCommands; uint commandIndex; uint maxTaskCount; uint flags; uint reserved; } pc;")
-        requireText("mesh-task command shader", commandShader, "COMMAND_FLAG_USE_PUSH_TASK_COUNT")
-        requireText("mesh-task command shader", commandShader, "commands.commands[pc.commandIndex].groupCountX = produced;")
+                "layout(push_constant, scalar) uniform CommandPushConstants { uint64_t pageTable; uint64_t visiblePages; uint64_t meshTaskCommands; uint64_t counters; uint inputOffset; uint outputOffset; uint pageCount; uint commandIndex; uint reserved0; uint reserved1; uint reserved2; uint reserved3; ivec4 cameraBlock; vec4 cameraOffset; vec4 cameraRight; vec4 cameraUp; vec4 cameraForward; vec4 projection; } pc;")
+        requireText("mesh-task command shader", commandShader, "layout(local_size_x = ${constants.VISIBILITY_WORKGROUP_SIZE}) in;")
+        requireText("mesh-task command shader", commandShader, "uint drawn = atomicAdd(commands.commands[pc.commandIndex].groupCountX, 1u);")
+        requireText("mesh-task command shader", commandShader, "list.records[pc.outputOffset + drawn] = visible;")
+        requireText("task terrain shader", taskShader, "ResidentPage page = PageTable(pc.pageTable).pages[record.meshletIndex];")
+        requireText("task terrain shader", taskShader, "EmitMeshTasksEXT(uint(page.meshletCount), 1, 1);")
+        requireText("mesh terrain shader", meshShader, "meshlets.headers[taskPayload.visibleMeshlet + gl_WorkGroupID.x]")
+        def residentPageStruct = "struct ResidentPage { uint64_t sectionNode; int sectionX; int sectionY; int sectionZ; int layer; int firstMeshlet; int meshletCount; int estimatedVertices; int estimatedMeshlets; int vertexBytes; int indexBytes; int vertexByteOffset; int indexByteOffset; int reserved0; int customIndexBuffer; int reserved1; int reserved2; uint64_t reserved3; };"
+        requireNormalizedText("task terrain shader", taskShader, residentPageStruct)
+        requireNormalizedText("mesh-task command shader", commandShader, residentPageStruct)
+        if (constants.SECTION_METADATA_STRIDE != Long.BYTES * 2 + Integer.BYTES * 16) {
+            throw new GradleException("TerrainGpuLayout.SECTION_METADATA_STRIDE must match the ResidentPage record the shaders read.")
+        }
         requireText("mesh terrain shader", meshShader, "materialFlags = uint(materials.records[materialIndex].flags);")
         requireText("mesh terrain shader", meshShader, "layout(location = 3) out flat uint meshMaterialFlags[];")
         requireText("fragment terrain shader", fragmentShader, "layout(location = 3) flat in uint meshMaterialFlags;")
@@ -547,11 +558,8 @@ tasks.register("checkTerrainLayoutManifest") {
         if (constants.TERRAIN_MESH_TASK_COMMAND_CAPACITY <= 0) {
             throw new GradleException("TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_CAPACITY must be positive.")
         }
-        if (constants.TERRAIN_MESH_TASK_COMMAND_PUSH_CONSTANT_BYTES != Long.BYTES * 2 + Integer.BYTES * 4) {
-            throw new GradleException("TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_PUSH_CONSTANT_BYTES must cover command-generation compute push constants.")
-        }
-        if (constants.TERRAIN_MESH_TASK_COMMAND_USE_PUSH_TASK_COUNT_FLAG != 1) {
-            throw new GradleException("TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_USE_PUSH_TASK_COUNT_FLAG must match mesh_task_command.comp.glsl.")
+        if (constants.TERRAIN_MESH_TASK_COMMAND_PUSH_CONSTANT_BYTES != Long.BYTES * 4 + Integer.BYTES * 8 + Float.BYTES * 4 * 6) {
+            throw new GradleException("TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_PUSH_CONSTANT_BYTES must cover the visibility pass's push constants.")
         }
         if (constants.MATERIAL_RECORD_STRIDE != Integer.BYTES * 16) {
             throw new GradleException("TerrainGpuLayout.MATERIAL_RECORD_STRIDE must match the 16-int default material record.")
@@ -560,7 +568,7 @@ tasks.register("checkTerrainLayoutManifest") {
             throw new GradleException("TerrainGpuLayout.MATERIAL_TABLE_CAPACITY must be positive.")
         }
 
-        def minimumPushConstantBytes = Long.BYTES * 7 + Integer.BYTES * 4 + Float.BYTES * 4 * 6
+        def minimumPushConstantBytes = Long.BYTES * 8 + Integer.BYTES * 4 + Float.BYTES * 4 * 6
         if (constants.TERRAIN_PUSH_CONSTANT_BYTES < minimumPushConstantBytes || constants.TERRAIN_PUSH_CONSTANT_BYTES % Long.BYTES != 0) {
             throw new GradleException("TerrainGpuLayout.TERRAIN_PUSH_CONSTANT_BYTES must cover the terrain push constant block and stay ${Long.BYTES}-byte aligned.")
         }
@@ -739,6 +747,15 @@ tasks.register("checkTerrainMeshTaskCommandLayoutInvariants", JavaExec) {
     mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainMeshTaskCommandLayoutInvariantCheck"
 }
 
+tasks.register("checkResidentTerrainPagesInvariants", JavaExec) {
+    group = "verification"
+    description = "Runs pure Java resident terrain page and range allocator invariant checks."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.terrain.ResidentTerrainPagesInvariantCheck"
+}
+
 tasks.register("checkTerrainShadersCompile", JavaExec) {
     group = "verification"
     description = "Compiles the terrain shaders with the compiler the game uses at startup."
@@ -836,6 +853,7 @@ tasks.named("check") {
     dependsOn tasks.named("checkVisibleMeshletRingInvariants")
     dependsOn tasks.named("checkTerrainWorkQueueLayoutInvariants")
     dependsOn tasks.named("checkTerrainMeshTaskCommandLayoutInvariants")
+    dependsOn tasks.named("checkResidentTerrainPagesInvariants")
     dependsOn tasks.named("checkTerrainShadersCompile")
     dependsOn tasks.named("checkTerrainRenderPassStateInvariants")
     dependsOn tasks.named("checkTerrainRuntimeValidationPlanInvariants")

@@ -160,6 +160,26 @@ public final class SectionMeshletStore {
     }
     
     /**
+     * The pages of the section layers Minecraft draws this frame for a layer, or {@code null} when
+     * one of them has no page on the GPU yet.
+     */
+    public static @Nullable List<PageRef> visiblePages(int layerOrdinal) {
+        List<SectionLayerKey> sectionLayers = VISIBLE_FRAME.covered(layerOrdinal);
+        if (sectionLayers == null) {
+            return null;
+        }
+        List<PageRef> visible = new ArrayList<>(sectionLayers.size());
+        for (SectionLayerKey sectionLayer : sectionLayers) {
+            ResidentTerrainPages.Page page = PAGES.page(sectionLayer);
+            if (page == null || page.meshletCount() <= 0) {
+                return null;
+            }
+            visible.add(new PageRef(page.slot(), visibilityForSection(page.sectionNode())));
+        }
+        return visible;
+    }
+
+    /**
      * Every page a layer has on the GPU as a range of meshlets, whether or not Minecraft draws
      * its section this frame.
      */
@@ -543,10 +563,10 @@ public final class SectionMeshletStore {
     }
     
     /**
-     * A page as a frame refers to it: its slot in the GPU page table, how many meshlets it draws,
-     * and how far its section has faded in.
+     * A page as a frame refers to it: its slot in the GPU page table and how far its section has
+     * faded in.
      */
-    public record PageRef(int slot, int meshletCount, float visibility) {
+    public record PageRef(int slot, float visibility) {
     }
     
     /**

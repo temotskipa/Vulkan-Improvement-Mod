@@ -1,6 +1,7 @@
 # GPU Resident Terrain Architecture
 
-**Status:** Active.
+**Status:** Completed 2026-10-14. Read the Completion section for what was
+built and what was left out on purpose.
 
 ## Goal
 
@@ -71,7 +72,7 @@ dedicated integration plan decides what belongs in committed docs.
 - translucent terrain, underwater overlays, and environment screen effects stay vanilla until their compatibility contracts exist.
 - OpenGL-active sessions must not initialize VIM renderer services.
 - Dependency pins remain stable Minecraft 26.2 unless a separate version-port
-  plan is opened.
+  plan is opened. (It was: the plan was carried out on `26.4-snapshot-3`.)
 
 ## Resident Page Ownership
 
@@ -219,5 +220,64 @@ This plan is complete when:
 - Add GPU compaction counters for input sections, culled sections, visible
   sections, emitted commands, overflowed commands, and fallback commands.
 - Use the dedicated
-  [accelerated-worldgen provider integration](../completed/accelerated-worldgen-provider-integration.md)
+  [accelerated-worldgen provider integration](accelerated-worldgen-provider-integration.md)
   plan before changing loader metadata or runtime dependency behavior.
+
+## Completion
+
+Closed on 2026-10-14, implemented on `26.4-snapshot-3`. By then the maintainer
+had decided that the mod extends Minecraft's renderer and takes the frame's
+visible sections from Minecraft; the plan was carried out within that.
+
+What was built, against the exit criteria:
+
+- **Persistent pages fed by dirty events.** A captured section layer gets a
+  page (`ResidentTerrainPages`, `TerrainRangeAllocator`): a slot in the page
+  table and a range of the vertex payload, the index payload and the meshlet
+  headers. Capturing a section layer again replaces its page; releasing it
+  gives the page back; nothing else is uploaded. Before, any change rewrote
+  all terrain after waiting for the GPU.
+- **Synchronization.** Pages reach device-local buffers through a staging
+  buffer and copies recorded in the command stream. Nothing waits on a fence,
+  and a freed range can be reused at once, because the copies run after every
+  draw recorded before them. Uploads are budgeted per frame.
+- **Visibility compaction and command generation from GPU-resident inputs.**
+  A frame uploads, per layer, the page slot and fade-in of each section layer
+  Minecraft collected: eight bytes each. A compute pass reads that list and
+  the page table, culls against the view frustum, appends the surviving pages
+  to the layer's draw list and counts up the mesh-task command. The task stage
+  draws a page per task and emits a mesh task per meshlet. The per-meshlet CPU
+  work queue is no longer on this path; it remains behind
+  `vim.enableGpuGeneratedMeshTaskCommands=false` and as the fallback for a
+  frame whose command could not be prepared.
+- **Diagnostics.** `gpuWorldDatabase.residentTerrain` reports live pages, used
+  and capacity bytes and allocation refusals from the allocators;
+  `sectionStore.residentPages` adds pages handed out and given back and the
+  fragmentation of each buffer; `visibilityCommandStats` is fed from counters
+  the GPU keeps and is read without making a frame wait for it.
+- **Overflow.** The draw list of a layer has room for every page that was
+  listed, so the pass cannot overflow it. A layer larger than the mesh-task
+  limit of one draw is split. When a ring has no room or a page does not fit,
+  the layer is left to Minecraft for the frame and the fallback is counted.
+- **Strict replacement** stays a validation mode with vanilla as the default.
+  Coverage is decided on the CPU before the frame is drawn: a layer replaces
+  Minecraft's draws only when every section layer listed for it has a page.
+- **Invalidation.** Block updates and neighbour changes arrive as a new
+  capture of the section layer; unloads as a release; render-distance changes,
+  resource reloads, level changes and device loss clear the pages; growth of a
+  buffer re-uploads them.
+
+Left out on purpose, each a possible follow-up:
+
+- **GPU traversal and occlusion.** There is no hierarchical depth test on the
+  GPU. Which sections a frame may draw is Minecraft's decision; the GPU pass
+  only removes what is outside the view from that list.
+- **Level-of-detail and predictive pages.** Only canonical mirrors of
+  Minecraft's section meshes are resident.
+- **Eviction by budget.** A page leaves when Minecraft releases its section,
+  not because a budget is exceeded. A buffer that is too small grows.
+- **Growth without the CPU copies.** Growing a buffer re-uploads from copies
+  kept on the CPU. Copying on the GPU instead would let those copies go.
+
+Runtime evidence is the 2026-10-14 row of the GPU validation matrix in
+`docs/RELIABILITY.md`.

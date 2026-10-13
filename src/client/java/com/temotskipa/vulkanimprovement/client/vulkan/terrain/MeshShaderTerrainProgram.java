@@ -229,8 +229,11 @@ public final class MeshShaderTerrainProgram {
             pushConstants.putLong(dispatch.visibleMeshletListAddress());
             pushConstants.putLong(dispatch.workQueueAddress());
             pushConstants.putLong(DescriptorHeapTerrainResources.get().materialTableAddress());
+            // With a page table the tasks are pages the visibility pass kept; it has culled them already.
+            boolean drawsPages = dispatch.source() == TerrainMeshTaskDispatch.Source.GPU_VISIBLE_PAGES;
+            pushConstants.putLong(drawsPages ? DescriptorHeapTerrainResources.get().sectionMetadataAddress() : 0L);
             pushConstants.putInt(dispatch.taskCount());
-            pushConstants.putInt(meshletFrustumCullingPushConstant());
+            pushConstants.putInt(drawsPages ? 0 : meshletFrustumCullingPushConstant());
             pushConstants.putInt(dispatch.meshletOffset());
             pushConstants.putInt(dispatch.layerOrdinal());
             writeCameraPushConstants(pushConstants);
@@ -276,12 +279,19 @@ public final class MeshShaderTerrainProgram {
         }
     }
     
-    public synchronized boolean prepareWorkQueueIndirectCommand(TerrainMeshTaskDispatch dispatch) {
+    /**
+     * Has the GPU decide which of a layer's listed pages are drawn this frame and write the
+     * mesh-task command that draws them. Recorded while no render pass is open; the draw follows
+     * inside one.
+     *
+     * @param pages the layer's visible pages as the frame uploaded them
+     */
+    public synchronized boolean prepareVisiblePageCommand(TerrainMeshTaskDispatch dispatch, DescriptorHeapTerrainResources.VisiblePageUpload pages) {
         VulkanDevice activeDevice = this.device;
-        if (activeDevice == null || this.commandPipeline == null || dispatch == null || !dispatch.ready() || !dispatch.usesIndirectCommand() || !dispatch.usesWorkQueue()) {
+        if (activeDevice == null || this.commandPipeline == null || dispatch == null || !dispatch.ready() || !dispatch.usesIndirectCommand() || pages == null || !pages.ready()) {
             return false;
         }
-        
+
         VulkanCommandEncoder encoder = activeDevice.createCommandEncoder();
         if (TerrainRenderPassAccess.insideRenderPass(encoder)) {
             // Minecraft refuses to execute a command buffer while a render pass is open, and fails the frame.
@@ -289,43 +299,46 @@ public final class MeshShaderTerrainProgram {
             return false;
         }
         VkCommandBuffer commandBuffer = encoder.allocateAndBeginTransientCommandBuffer();
-        if (!recordWorkQueueIndirectCommand(commandBuffer, dispatch)) {
-            return false;
-        }
-        VulkanUtils.crashIfFailure(activeDevice, VK12.vkEndCommandBuffer(commandBuffer), "Failed to end VIM terrain mesh-task command generation buffer");
+        recordVisiblePageCommand(commandBuffer, this.commandPipeline, dispatch, pages);
+        VulkanUtils.crashIfFailure(activeDevice, VK12.vkEndCommandBuffer(commandBuffer), "Failed to end VIM terrain visibility command buffer");
         encoder.execute(commandBuffer);
         return true;
     }
-    
-    private boolean recordWorkQueueIndirectCommand(VkCommandBuffer commandBuffer, TerrainMeshTaskDispatch dispatch) {
-        CommandPipeline pipeline = this.commandPipeline;
-        if (pipeline == null || dispatch.workQueueAddress() == 0L || dispatch.indirectCommandAddress() == 0L || dispatch.indirectCommandStride() <= 0) {
-            return false;
-        }
-        
+
+    private void recordVisiblePageCommand(VkCommandBuffer commandBuffer, CommandPipeline pipeline, TerrainMeshTaskDispatch dispatch, DescriptorHeapTerrainResources.VisiblePageUpload pages) {
+        DescriptorHeapTerrainResources resources = DescriptorHeapTerrainResources.get();
         long commandBaseAddress = dispatch.indirectCommandAddress() - dispatch.indirectCommandOffset();
         int commandIndex = (int) (dispatch.indirectCommandOffset() / dispatch.indirectCommandStride());
         try (MemoryStack stack = MemoryStack.stackPush()) {
+            // The command starts as no tasks in one row of one layer; the pass counts the tasks up.
+            ByteBuffer emptyCommand = stack.malloc(TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_STRIDE);
+            emptyCommand.putInt(0).putInt(1).putInt(1).flip();
+            VulkanCommandEncoder.memoryBarrier(commandBuffer, stack);
+            VK10.vkCmdUpdateBuffer(commandBuffer, dispatch.indirectCommandBuffer(), dispatch.indirectCommandOffset(), emptyCommand);
+            VulkanCommandEncoder.memoryBarrier(commandBuffer, stack);
+
             ByteBuffer pushConstants = stack.malloc(TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_PUSH_CONSTANT_BYTES);
-            pushConstants.putLong(dispatch.workQueueAddress());
+            pushConstants.putLong(resources.sectionMetadataAddress());
+            pushConstants.putLong(pages.address());
             pushConstants.putLong(commandBaseAddress);
+            pushConstants.putLong(resources.terrainVisibilityCounterAddress());
+            pushConstants.putInt(pages.inputOffset());
+            pushConstants.putInt(pages.outputOffset());
+            pushConstants.putInt(pages.count());
             pushConstants.putInt(commandIndex);
-            pushConstants.putInt(dispatch.taskCount());
-            pushConstants.putInt(TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_USE_PUSH_TASK_COUNT_FLAG);
-            pushConstants.putInt(0);
+            pushConstants.putInt(0).putInt(0).putInt(0).putInt(0);
+            writeCameraPushConstants(pushConstants);
             pushConstants.flip();
-            
+
             VK12.vkCmdBindPipeline(commandBuffer, VK10.VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.handle());
             VK12.vkCmdPushConstants(commandBuffer, pipeline.layout(), VK10.VK_SHADER_STAGE_COMPUTE_BIT, 0, pushConstants);
-            VK12.vkCmdDispatch(commandBuffer, 1, 1, 1);
-            
-            VkMemoryBarrier.Buffer memoryBarrier = VkMemoryBarrier.calloc(1, stack).sType$Default().srcAccessMask(VK10.VK_ACCESS_SHADER_WRITE_BIT).dstAccessMask(VK10.VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
-            VK10.vkCmdPipelineBarrier(commandBuffer, VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK10.VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, 0, memoryBarrier, null, null);
+            VK12.vkCmdDispatch(commandBuffer, (pages.count() + TerrainGpuLayout.VISIBILITY_WORKGROUP_SIZE - 1) / TerrainGpuLayout.VISIBILITY_WORKGROUP_SIZE, 1, 1);
+            // The draw reads what the pass wrote: the indirect draw the command, the task stage the list.
+            VulkanCommandEncoder.memoryBarrier(commandBuffer, stack);
         }
         this.meshTaskGpuCommandPreparations.increment();
-        return true;
     }
-    
+
     public Map<String, Object> asMap() {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("ready", ready());

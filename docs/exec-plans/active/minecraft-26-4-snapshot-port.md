@@ -200,8 +200,8 @@ Open:
 
 - `vim.validationDescriptorBufferOnly` and `vim.enableMeshletFrustumCulling`.
 - An OpenGL-active session.
-- Section fade-in on the work-queue paths, which is where the GPU-resident
-  terrain plan replaces the per-meshlet work queue.
+- Section fade-in is carried by the visible page list of the GPU visibility
+  path. The CPU work-queue fallback still draws sections at full visibility.
 
 ## Decisions
 
@@ -224,10 +224,11 @@ Open:
 - Decide what present pacing does under DXGI presentation: report itself
   inactive, or ask for the Vulkan swapchain while pacing is enabled
   (`RENDERPEARL_DISABLE_DXGI_PRESENT=1` is Minecraft's own switch).
-- Use Minecraft's indirect command buffer as the input of GPU visibility
-  compaction for the
-  [GPU-resident terrain plan](gpu-resident-terrain-architecture.md): it
-  already holds one record per visible section layer.
+- The GPU visibility pass of the
+  [GPU-resident terrain plan](../completed/gpu-resident-terrain-architecture.md) takes a
+  list the mod uploads, eight bytes per visible section layer. Minecraft's
+  indirect command buffer holds one record per visible section layer too and
+  could replace that upload on the multi-draw-indirect path.
 - Pin Loom to a release once `1.18` has one; a snapshot version can change
   under the build.
 - Rename what still says 26.2 once the 26.2 line is retired

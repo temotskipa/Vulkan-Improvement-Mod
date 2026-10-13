@@ -1,5 +1,8 @@
 # Mesh Replacement Device-Loss Bugfix
 
+**Status:** Completed 2026-10-14. The failures this plan tracked no longer
+reproduce; see Completion.
+
 ## Goal
 
 Fix or conclusively contain the visible mesh-terrain replacement device-loss
@@ -230,7 +233,7 @@ the safe default and capture/bootstrap as an explicit diagnostic opt-in.
   shader now samples the way vanilla does, and with culling, lighting and fog
   brought into line the difference is about 1.0, on foliage edges only. The
   figures and the method are in the
-  [26.4 port plan](minecraft-26-4-snapshot-port.md).
+  [26.4 port plan](../active/minecraft-26-4-snapshot-port.md).
 - The same day's matrix passed in all four modes of Validation with 300-frame
   record-first jitter, exceeding the crash window of
   `crash-2026-06-29_08.25.58-client.txt`, without device loss, truncation or
@@ -244,3 +247,30 @@ the safe default and capture/bootstrap as an explicit diagnostic opt-in.
 
 - Promote mesh replacement from validation-gated to default only in a later
   change with a clean runtime matrix.
+
+## Completion
+
+Closed on 2026-10-14, on `26.4-snapshot-3`.
+
+- **Device loss.** Not reproduced. Record-first jitter of 300 frames passed in
+  all four modes of Validation on 2026-10-13, and again on 2026-10-14 through
+  the GPU visibility path, in a session that also changed the render
+  distance, edited blocks, teleported three million blocks out and back,
+  switched wireframe on and off and reloaded resources. No truncation and no
+  leaked dispatch in any of it.
+- **Holes under strict cancellation (`req_63`).** Not reproduced. A layer now
+  replaces Minecraft's draws only when every section layer Minecraft collected
+  for the frame has its data on the GPU, and the set is taken from the one
+  place Minecraft collects it instead of being rebuilt from backend draws.
+- **Texture quality (`req_43`, `req_4`).** Explained and fixed. The soft
+  terrain and the over-full vegetation had three causes: the atlas was fetched
+  at one mip level, the lightmap had a floor under it, and the mesh pipeline
+  did not cull back faces, so both mirrored faces of a plant's crossed planes
+  showed. Same-camera captures now differ from vanilla by about 1.0 of 255.
+- **Work-queue churn (`terrainWorkQueueRingWraps=1625`).** The mesh path no
+  longer writes a work-queue record per meshlet each frame; it lists pages.
+
+The defaults this plan protects are unchanged: `vim.replaceVanillaTerrain`,
+`vim.enableTerrainCaptureBootstrap` and `vim.strictMeshTerrainReplacement`
+are `false`. Making mesh replacement the default needs a plan of its own, a
+run with the Vulkan validation layers, and other GPUs and drivers.

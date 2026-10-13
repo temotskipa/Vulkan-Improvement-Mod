@@ -46,6 +46,8 @@ public final class DescriptorHeapTerrainResources {
      */
     private static final long PAGE_UPLOAD_BYTES_PER_FRAME = 32L << 20;
     private static final int PAGE_UPLOADS_PER_FRAME = 4096;
+    private final LongAdder visiblePageListUploads = new LongAdder();
+    private final LongAdder visiblePageRecordsUploaded = new LongAdder();
     private final LongAdder pageUploads = new LongAdder();
     private final LongAdder pageUploadBytes = new LongAdder();
     private final LongAdder terrainCapacityGrowths = new LongAdder();
@@ -505,7 +507,7 @@ public final class DescriptorHeapTerrainResources {
         return this.uploadStats.meshletsUploaded();
     }
     
-public int meshletCountForLayer(int layerOrdinal) {
+    public int meshletCountForLayer(int layerOrdinal) {
         return this.uploadStats.meshletCountForLayer(layerOrdinal);
     }
     
@@ -611,6 +613,65 @@ public int meshletCountForLayer(int layerOrdinal) {
         this.materialTableWrites.increment();
     }
     
+    public long terrainVisibilityCounterAddress() {
+        TerrainGpuBuffer buffer = this.resources.debugCounters();
+        return buffer == null ? 0L : buffer.deviceAddress() + TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET;
+    }
+
+    /**
+     * How many pages the GPU visibility pass has looked at, dropped as out of view, and kept,
+     * since the buffers were created. The GPU may still be counting the last frames.
+     */
+    public synchronized long[] visibilityCounters() {
+        TerrainGpuBuffer buffer = this.resources.debugCounters();
+        if (buffer == null) {
+            return new long[3];
+        }
+        buffer.invalidate();
+        ByteBuffer counters = buffer.mappedByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
+        int base = TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET;
+        return new long[]{Integer.toUnsignedLong(counters.getInt(base)), Integer.toUnsignedLong(counters.getInt(base + Integer.BYTES)), Integer.toUnsignedLong(counters.getInt(base + 2 * Integer.BYTES))};
+    }
+
+    /**
+     * Uploads the pages a layer may draw this frame, and reserves as much room again behind them
+     * for the list of those the GPU keeps. This short list is all a frame uploads for a layer.
+     */
+    public synchronized VisiblePageUpload writeVisiblePageList(List<SectionMeshletStore.PageRef> pages) {
+        TerrainGpuBuffer ring = this.resources.visibleMeshlets();
+        int count = pages.size();
+        if (count <= 0 || ring == null || ring.deviceAddress() == 0L || !ring.hostVisible()) {
+            return VisiblePageUpload.unavailable();
+        }
+        TerrainVisibleMeshletRing visibleRing = new TerrainVisibleMeshletRing(visibleMeshletRecordCapacity(ring), this.visibleMeshletCursor);
+        TerrainVisibleMeshletRing.Allocation allocation = visibleRing.allocate(count * 2, false);
+        if (allocation.wrapBlocked()) {
+            if (!waitForTerrainReadFence()) {
+                this.visibleMeshletListDeferrals.increment();
+                return VisiblePageUpload.unavailable();
+            }
+            allocation = visibleRing.allocate(count * 2, true);
+        }
+        if (!allocation.ready()) {
+            this.visibleMeshletRecordsDropped.add(count);
+            return VisiblePageUpload.unavailable();
+        }
+        this.visibleMeshletCursor = allocation.nextOffset();
+        if (allocation.wrapped()) {
+            this.visibleMeshletRingWraps.increment();
+        }
+        ByteBuffer records = ring.mappedByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
+        records.position(allocation.offset() * TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE);
+        for (SectionMeshletStore.PageRef page : pages) {
+            records.putInt(page.slot());
+            records.putFloat(Math.clamp(page.visibility(), 0.0F, 1.0F));
+        }
+        ring.flush();
+        this.visiblePageListUploads.increment();
+        this.visiblePageRecordsUploaded.add(count);
+        return new VisiblePageUpload(allocation.offset(), allocation.offset() + count, count, ring.deviceAddress(), true);
+    }
+
     public synchronized VisibleMeshletUpload writeVisibleMeshletList(List<SectionMeshletStore.MeshletRange> ranges) {
         int requiredRecords = visibleMeshletRecordCount(ranges);
         if (requiredRecords <= 0) {
@@ -917,6 +978,10 @@ public int meshletCountForLayer(int layerOrdinal) {
         map.put("terrainMeshTaskCommandLayout", TerrainMeshTaskCommandLayout.asMap());
         map.put("lastCapacityGrowthReason", this.lastCapacityGrowthReason);
         map.put("debugCounters", this.resources.debugCounterMap());
+        map.put("pageUploads", this.pageUploads.sum());
+        map.put("pageUploadBytes", this.pageUploadBytes.sum());
+        map.put("visiblePageListUploads", this.visiblePageListUploads.sum());
+        map.put("visiblePageRecordsUploaded", this.visiblePageRecordsUploaded.sum());
         map.put("textureBindings", textureBindingMap());
         return map;
     }
@@ -939,6 +1004,17 @@ public int meshletCountForLayer(int layerOrdinal) {
         }
     }
     
+    /**
+     * @param inputOffset  where the frame's visible pages of a layer start in the visible list
+     * @param outputOffset where the GPU writes the pages it keeps
+     * @param count        how many pages were listed; no more can be kept
+     */
+    public record VisiblePageUpload(int inputOffset, int outputOffset, int count, long address, boolean ready) {
+        static VisiblePageUpload unavailable() {
+            return new VisiblePageUpload(0, 0, 0, 0L, false);
+        }
+    }
+
     public record VisibleMeshletUpload(int offset, int count, long address, int dropped, boolean ready) {
         static VisibleMeshletUpload unavailable(int dropped) {
             return new VisibleMeshletUpload(0, 0, 0L, dropped, false);
@@ -1402,6 +1478,9 @@ public int meshletCountForLayer(int layerOrdinal) {
                 map.put("culledMeshlets", Integer.toUnsignedLong(counters.getInt(4)));
                 map.put("emittedMeshlets", Integer.toUnsignedLong(counters.getInt(8)));
                 map.put("reserved", Integer.toUnsignedLong(counters.getInt(12)));
+                map.put("visibilityInputPages", Integer.toUnsignedLong(counters.getInt(TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET)));
+                map.put("visibilityCulledPages", Integer.toUnsignedLong(counters.getInt(TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET + Integer.BYTES)));
+                map.put("visibilityVisiblePages", Integer.toUnsignedLong(counters.getInt(TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET + 2 * Integer.BYTES)));
             }
             return map;
         }

@@ -98,27 +98,43 @@ renderer code does not drift back into a catch-all root package.
 - `TerrainDrawContext` snapshots one terrain layer about to be drawn inside
   Minecraft's render pass: command buffer, vanilla pipeline state, layer
   ordinal, and debug draw-all mode.
-- `TerrainMeshTaskDispatch` records the terrain mesh-task dispatch source,
-  direct task cap, meshlet offset, visible-list address, work-queue address,
-  indirect command buffer/offset, and truncation state. The current path can
-  submit a CPU-written `VkDrawMeshTasksIndirectCommandEXT` record when prepared
-  GPU command generation is unavailable. Frame preparation writes the work
-  queues before Minecraft opens the terrain render pass: visible replacement
-  queues one prepared dispatch per layer, more only when a layer exceeds the
-  mesh-task limit of one dispatch. The command
-  generation compute pipeline fills each indirect mesh-task command from the
-  work-queue counters. The older visible meshlet ring remains a fallback when a
-  visible work queue cannot be uploaded.
+- Terrain lives on the GPU in pages. `ResidentTerrainPages` gives every
+  captured section layer a page: a slot in the page table and a range of the
+  vertex payload, the index payload and the meshlet headers, handed out by
+  `TerrainRangeAllocator`. A page stays where it is until its section layer is
+  captured again or released, so a change to one section uploads one page.
+  `DescriptorHeapTerrainResources.uploadDirtyTerrainData` writes changed pages
+  to a staging buffer and records copies into the device-local terrain buffers.
+  The copies run in command order, after every draw recorded before them, so
+  nothing waits for the GPU and a freed range can be handed out again at once.
+  When a page does not fit, the buffer that was short is grown and the pages
+  are uploaded again from the copies `SectionMeshletStore` keeps.
+- A frame uploads one short list per layer: the page slot and fade-in of every
+  section layer Minecraft collected for it. The visibility pass
+  (`mesh_task_command.comp.glsl`) reads that list and the page table on the
+  GPU, drops pages whose section is outside the view, appends the rest to the
+  layer's draw list, and counts up the mesh-task command that draws them. The
+  task stage then draws one page per task and emits a mesh task per meshlet.
+  The CPU never learns the count and does not need it: whether a layer may
+  replace Minecraft's draws is decided beforehand, by whether every listed
+  section layer has a page.
+- `TerrainMeshTaskDispatch` records where a dispatch's tasks come from. The
+  path above is `gpu-visible-pages`. The older sources remain as fallback and
+  diagnostics: a CPU-written work queue with one record per visible meshlet
+  (`cpu-work-queue`, used when `vim.enableGpuGeneratedMeshTaskCommands=false`
+  or a frame's command could not be prepared), the visible meshlet ring, and
+  direct per-page draws for `vim.drawAllCapturedTerrainLayers`.
 - `TerrainVisibleMeshletRing` owns the pure allocation rules for the CPU-written
   visible meshlet ring, including wrap decisions and fence-blocked reuse
   diagnostics.
 - `TerrainMeshTaskCommandLayout` owns the CPU/GPU layout for terrain
-  mesh-task indirect command records and the compute push constants used to
-  generate them from work queues.
-- `GpuWorldResidencyBudget` and `GpuWorldPipelineStage` describe the next
+  mesh-task indirect command records and the push constants of the visibility
+  pass that writes them.
+- `GpuWorldResidencyBudget` and `GpuWorldPipelineStage` describe the
   GPU-resident terrain contract: persistent section pages, visibility
-  compaction, and indirect command generation should replace per-draw CPU
-  terrain work-queue uploads before strict terrain replacement is promoted.
+  compaction and indirect command generation. `GpuWorldDatabase` reports what
+  the resident pages occupy (`residentTerrain`) and what the visibility pass
+  did (`visibilityCommandStats`).
 - `GpuWorldTerrainLayerDirectory` is the current resident terrain index. It is
   keyed by section node and chunk layer, not by vanilla draw objects, so later
   GPU visibility work can consume resident section-layer records without

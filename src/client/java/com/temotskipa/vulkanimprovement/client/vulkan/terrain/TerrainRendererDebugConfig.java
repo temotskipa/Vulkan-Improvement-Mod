@@ -18,7 +18,7 @@ public final class TerrainRendererDebugConfig {
     private static volatile boolean validationDescriptorBufferOnly = booleanProperty("vim.validationDescriptorBufferOnly", false);
     private static volatile boolean waitIdleBeforeTerrainUpload = booleanProperty("vim.waitIdleBeforeTerrainUpload", false);
     private static volatile boolean allowCpuVisibleMeshletFallback = booleanProperty("vim.allowCpuVisibleMeshletFallback", false);
-    private static volatile boolean enableGpuGeneratedMeshTaskCommands = booleanProperty("vim.enableGpuGeneratedMeshTaskCommands", false);
+    private static volatile boolean enableGpuGeneratedMeshTaskCommands = booleanProperty("vim.enableGpuGeneratedMeshTaskCommands", true);
     private static volatile int terrainFragmentShadingRate = intProperty("vim.terrainFragmentShadingRate", 1, 1, 4);
     private static volatile int initialSectionCapacity = intProperty("vim.initialSectionCapacity", 32768, MIN_SECTION_CAPACITY, MAX_SECTION_CAPACITY);
     private static volatile int initialMeshletCapacity = intProperty("vim.initialMeshletCapacity", 524288, MIN_MESHLET_CAPACITY, MAX_MESHLET_CAPACITY);

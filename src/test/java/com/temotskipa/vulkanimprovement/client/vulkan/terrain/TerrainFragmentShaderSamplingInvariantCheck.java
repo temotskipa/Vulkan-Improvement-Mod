@@ -79,7 +79,7 @@ public final class TerrainFragmentShaderSamplingInvariantCheck {
         String meshBlock = pushConstantBlock(meshShader);
         require(meshBlock.equals(pushConstantBlock(taskShader)), "the task and mesh stages must declare the same push constants");
         require(meshBlock.contains("ivec4 cameraBlock;") && meshBlock.contains("vec4 cameraOffset;"), "the camera position must be split into a block and an offset");
-        int addresses = 7 * Long.BYTES;
+        int addresses = 8 * Long.BYTES;
         int counters = 4 * Integer.BYTES;
         int vectors = 6 * 4 * Float.BYTES;
         require(TerrainGpuLayout.TERRAIN_PUSH_CONSTANT_BYTES == addresses + counters + vectors, "the task and mesh push-constant size must match the shader block");

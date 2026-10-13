@@ -157,7 +157,7 @@ LOD, and RT/PT work can share.
   a GPU-resident visibility/residency architecture rather than tuned further as
   the final design.
 - 2026-07-03: The next architecture step is now split into
-  [GPU-resident terrain architecture](../active/gpu-resident-terrain-architecture.md).
+  [GPU-resident terrain architecture](gpu-resident-terrain-architecture.md).
   It keeps named external source references in ignored local notes, preserves
   `vim.strictMeshTerrainReplacement=false`, and points future terrain work
   toward `GpuWorldTerrainLayerDirectory`, persistent section pages, dirty-event
@@ -199,7 +199,7 @@ LOD, and RT/PT work can share.
 - 2026-06-29: `RendererDomain` now includes an explicit `postProcessing`
   diagnostic key so the domain registry covers every non-terrain category named
   by this plan. Follow-up work is split into active plans for
-  [mesh replacement device-loss](../active/mesh-replacement-device-loss-bugfix.md),
+  [mesh replacement device-loss](mesh-replacement-device-loss-bugfix.md),
   [non-terrain domain contracts](non-terrain-domain-contracts.md), and
   [RT/PT acceleration data](rt-pt-acceleration-data.md).
 - 2026-06-29: `RendererDomainContract` now exposes per-domain compatibility
@@ -486,7 +486,7 @@ The dedicated public plan is
   GPU-driven direction should replace per-draw cancellation with GPU-resident
   scene data, visibility/compaction, explicit residency, and indirect command
   production before vanilla terrain is canceled by default.
-  The active [GPU-resident terrain architecture](../active/gpu-resident-terrain-architecture.md)
+  The active [GPU-resident terrain architecture](gpu-resident-terrain-architecture.md)
   plan records this direction and the local-only external-reference boundary.
 - VIM mesh replacement must sample the block atlas with texel fetch and strict
   cutout alpha until runtime evidence proves parity with vanilla texture
@@ -506,7 +506,7 @@ This plan is complete when:
 - the first GPU world database contracts exist with pure checks;
 - terrain capture/bootstrap remains an explicit runtime-validated opt-in on the
   stable `26.2` baseline, and mesh replacement either has a fixed runtime pass or
-  [a dedicated active bugfix plan with crash evidence](../active/mesh-replacement-device-loss-bugfix.md);
+  [a dedicated active bugfix plan with crash evidence](mesh-replacement-device-loss-bugfix.md);
 - follow-up non-terrain and RT/PT work has explicit domain contracts or new
   active plans:
   [non-terrain domain contracts](non-terrain-domain-contracts.md) and

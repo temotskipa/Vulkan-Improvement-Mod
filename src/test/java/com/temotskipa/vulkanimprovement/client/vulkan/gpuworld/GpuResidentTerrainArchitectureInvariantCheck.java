@@ -7,10 +7,9 @@ import java.util.List;
 import java.util.stream.Stream;
 
 public final class GpuResidentTerrainArchitectureInvariantCheck {
-    private static final Path ARCHITECTURE_PLAN = Path.of("docs/exec-plans/active/gpu-resident-terrain-architecture.md");
+    private static final Path ARCHITECTURE_PLAN = Path.of("docs/exec-plans/completed/gpu-resident-terrain-architecture.md");
     private static final Path EXTENSION_PLAN = Path.of("docs/exec-plans/completed/26-2-vulkan-renderer-extension.md");
     private static final Path PROVIDER_PLAN = Path.of("docs/exec-plans/completed/accelerated-worldgen-provider-integration.md");
-    private static final Path ACTIVE_README = Path.of("docs/exec-plans/active/README.md");
     private static final Path COMPLETED_README = Path.of("docs/exec-plans/completed/README.md");
     private static final Path FABRIC_MOD_JSON = Path.of("src/main/resources/fabric.mod.json");
     private static final Path GITIGNORE = Path.of(".gitignore");
@@ -29,7 +28,6 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
         String architecturePlan = read(ARCHITECTURE_PLAN);
         String extensionPlan = read(EXTENSION_PLAN);
         String providerPlan = read(PROVIDER_PLAN);
-        String activeReadme = read(ACTIVE_README);
         String fabricModJson = read(FABRIC_MOD_JSON);
         String gitignore = read(GITIGNORE);
         String databaseSource = read(DATABASE_SOURCE);
@@ -39,7 +37,8 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
         String pipelineStageSource = read(PIPELINE_STAGE_SOURCE);
         String layerDirectorySource = read(LAYER_DIRECTORY_SOURCE);
         
-        checkPlanWiring(architecturePlan, extensionPlan, providerPlan, activeReadme, read(COMPLETED_README));
+        checkPlanWiring(architecturePlan, extensionPlan, providerPlan, read(COMPLETED_README));
+        checkResidentPagesAndVisibilityPass();
         checkLocalOnlyExternalReferenceBoundary(gitignore, fabricModJson);
         checkPublicDocsOnlyDescribeInferredArchitecture();
         checkGpuResidentRequirements(architecturePlan);
@@ -47,10 +46,38 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
         checkCodeContracts(databaseSource, residencyBudgetSource, residencyStatsSource, visibilityCommandStatsSource, pipelineStageSource, layerDirectorySource);
     }
     
-    private static void checkPlanWiring(String architecturePlan, String extensionPlan, String providerPlan, String activeReadme, String completedReadme) {
-        requireContains(activeReadme, "[GPU Resident Terrain Architecture](gpu-resident-terrain-architecture.md)", "active README must list the GPU-resident terrain architecture plan");
+    /**
+     * The plan is carried out. These hold the implementation to what it decided: pages that are
+     * copied only when they change, into device memory, in command order; a frame that lists
+     * pages and leaves culling and the command to the GPU; and strict replacement still opt-in.
+     */
+    private static void checkResidentPagesAndVisibilityPass() throws IOException {
+        String terrain = "src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/";
+        String resources = read(Path.of(terrain + "DescriptorHeapTerrainResources.java"));
+        String renderer = read(Path.of(terrain + "MeshTerrainRenderer.java"));
+        String store = read(Path.of(terrain + "SectionMeshletStore.java"));
+        String config = read(Path.of(terrain + "TerrainRendererDebugConfig.java"));
+        String visibilityPass = read(Path.of("src/client/resources/assets/vulkanimprovement/shaders/terrain/mesh_task_command.comp.glsl"));
+
+        requireContains(store, "PAGES.markPending(new SectionLayerKey(mesh, sectionNode, layer.ordinal()));", "a captured section layer must wait for a page of its own");
+        require(!store.contains("writeMetadataSnapshot"), "terrain must not be rewritten as a whole when one section changes");
+        requireContains(resources, "SectionMeshletStore.collectPageUploads(PAGE_UPLOAD_BYTES_PER_FRAME, PAGE_UPLOADS_PER_FRAME)", "a frame must upload changed pages only, within a budget");
+        requireContains(resources, "VK10.vkCmdCopyBuffer(commandBuffer, staging.vkBuffer(), target.vkBuffer(), regions);", "pages must reach the GPU through copies in the command stream");
+        requireContains(resources, "\"VIM Terrain Meshlet Vertex Payload\", layout.vertexPayloadBytes, storageUsage, false)", "the terrain payload must live in device memory");
+        requireContains(resources, "growTerrainResourcesIfNeeded(SectionMeshletStore.takePageShortage());", "a page that does not fit must grow the buffer that was short");
+        requireContains(renderer, "SectionMeshletStore.visiblePages(layerOrdinal)", "a frame must list a layer's visible pages, not its meshlets");
+        requireContains(renderer, "MeshShaderTerrainProgram.get().prepareVisiblePageCommand(preparedDispatch, upload)", "a layer's mesh-task command must be written by the GPU visibility pass");
+        requireContains(renderer, "GpuWorldDatabase.get().recordVisibilityCommandPass(", "the visibility pass must be reported in the GPU world diagnostics");
+        requireContains(visibilityPass, "if (outsideFrustum(ivec3(page.sectionX, page.sectionY, page.sectionZ))) {", "the visibility pass must cull pages against the view");
+        requireContains(visibilityPass, "uint drawn = atomicAdd(commands.commands[pc.commandIndex].groupCountX, 1u);", "the visibility pass must count up the mesh-task command itself");
+        requireContains(config, "booleanProperty(\"vim.enableGpuGeneratedMeshTaskCommands\", true)", "mesh replacement must use the GPU visibility pass unless it is switched off");
+        requireContains(config, "booleanProperty(\"vim.strictMeshTerrainReplacement\", false)", "strict replacement must stay opt-in");
+    }
+
+    private static void checkPlanWiring(String architecturePlan, String extensionPlan, String providerPlan, String completedReadme) {
+        requireContains(completedReadme, "[GPU Resident Terrain Architecture](gpu-resident-terrain-architecture.md)", "completed README must list the GPU-resident terrain architecture plan");
         requireContains(completedReadme, "[Accelerated Worldgen Provider Integration](accelerated-worldgen-provider-integration.md)", "completed README must list the optional accelerated-worldgen provider integration plan");
-        requireContains(extensionPlan, "[GPU-resident terrain architecture](../active/gpu-resident-terrain-architecture.md)", "26.2 renderer extension plan must link the GPU-resident terrain architecture plan");
+        requireContains(extensionPlan, "[GPU-resident terrain architecture](gpu-resident-terrain-architecture.md)", "26.2 renderer extension plan must link the GPU-resident terrain architecture plan");
         requireContains(extensionPlan, "[accelerated-worldgen provider integration](accelerated-worldgen-provider-integration.md)", "26.2 renderer extension plan must link the dedicated optional-provider integration plan");
         requireContains(architecturePlan, "# GPU Resident Terrain Architecture", "architecture plan must use the expected title");
         requireContains(architecturePlan, "## Exit Criteria", "architecture plan must define exit criteria");

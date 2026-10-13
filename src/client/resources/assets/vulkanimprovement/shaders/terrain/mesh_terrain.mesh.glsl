@@ -85,6 +85,7 @@ layout(push_constant, scalar) uniform TerrainPushConstants {
     uint64_t visibleMeshlets;
     uint64_t workQueue;
     uint64_t materialTable;
+    uint64_t pageTable;
     uint meshletCount;
     uint enableMeshletFrustumCulling;
     uint meshletOffset;
@@ -142,7 +143,8 @@ void main() {
     uint lane = gl_LocalInvocationID.x;
     MeshletHeaders meshlets = MeshletHeaders(pc.meshletHeaders);
     TerrainDebugCounters counters = TerrainDebugCounters(pc.debugCounters);
-    MeshletHeader header = meshlets.headers[taskPayload.visibleMeshlet];
+    // A task that draws a page emits one mesh task per meshlet, counted from the page's first.
+    MeshletHeader header = meshlets.headers[taskPayload.visibleMeshlet + gl_WorkGroupID.x];
     bool indexedTriangles = (header.flags0 & INDEXED_TRIANGLES_FLAG) != 0 && header.indexBytes > 0;
     if (lane == 0u) {
         atomicAdd(counters.candidateMeshlets, 1u);

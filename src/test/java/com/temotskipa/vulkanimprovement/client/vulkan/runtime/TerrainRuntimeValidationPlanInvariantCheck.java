@@ -5,7 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 public final class TerrainRuntimeValidationPlanInvariantCheck {
-    private static final Path MESH_BUGFIX_PLAN = Path.of("docs/exec-plans/active/mesh-replacement-device-loss-bugfix.md");
+    private static final Path MESH_BUGFIX_PLAN = Path.of("docs/exec-plans/completed/mesh-replacement-device-loss-bugfix.md");
     private static final Path RENDERER_EXTENSION_PLAN = Path.of("docs/exec-plans/completed/26-2-vulkan-renderer-extension.md");
     private static final Path RELIABILITY = Path.of("docs/RELIABILITY.md");
     

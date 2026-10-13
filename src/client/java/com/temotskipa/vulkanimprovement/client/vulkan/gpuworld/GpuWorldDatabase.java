@@ -143,7 +143,7 @@ public final class GpuWorldDatabase {
         map.put("residencyBudget", DEFAULT_RESIDENCY_BUDGET.asMap());
         map.put("residencyStats", this.residencyStats.asMap());
         map.put("residentTerrain", this.residentTerrain.asMap());
-map.put("visibilityCommandStats", this.visibilityCommandStats.asMap());
+        map.put("visibilityCommandStats", this.visibilityCommandStats.asMap());
         map.put("pipelineStages", GpuWorldPipelineStage.asDiagnostics());
         map.put("terrainLayerDirectory", GpuWorldTerrainLayerDirectory.get().asMap());
         map.put("pageKinds", pageKindsMap());

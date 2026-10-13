@@ -79,6 +79,18 @@ public record TerrainMeshTaskDispatch(int meshletOffset, int layerOrdinal, int r
         return new TerrainMeshTaskDispatch(upload.offset(), layerOrdinal, requested, Math.min(upload.count(), MAX_DIRECT_TASKS), 0L, upload.address(), 0L, 0L, 0, 0L, false, Source.CPU_WORK_QUEUE, "");
     }
     
+    /**
+     * A dispatch whose tasks are pages: one task for every page the GPU visibility pass kept,
+     * which is at most as many as were listed for it. The pass writes the command that says how
+     * many, so this dispatch is only drawn with that command.
+     */
+    static TerrainMeshTaskDispatch gpuVisiblePages(DescriptorHeapTerrainResources.VisiblePageUpload upload, int layerOrdinal) {
+        if (upload == null || !upload.ready()) {
+            return unavailable("visible page upload unavailable");
+        }
+        return new TerrainMeshTaskDispatch(upload.outputOffset(), layerOrdinal, upload.count(), Math.min(upload.count(), MAX_DIRECT_TASKS), upload.address(), 0L, 0L, 0L, 0, 0L, false, Source.GPU_VISIBLE_PAGES, "");
+    }
+
     TerrainMeshTaskDispatch withIndirectCommand(DescriptorHeapTerrainResources.TerrainMeshTaskCommandUpload upload) {
         if (upload == null || !upload.ready()) {
             return this;
@@ -135,7 +147,7 @@ public record TerrainMeshTaskDispatch(int meshletOffset, int layerOrdinal, int r
     }
     
     public enum Source {
-        UNAVAILABLE("unavailable", false, false), DIRECT_LAYER("direct-layer", false, false), CPU_VISIBLE_LIST("cpu-visible-list", true, false), CPU_WORK_QUEUE("cpu-work-queue", false, true);
+        UNAVAILABLE("unavailable", false, false), DIRECT_LAYER("direct-layer", false, false), CPU_VISIBLE_LIST("cpu-visible-list", true, false), CPU_WORK_QUEUE("cpu-work-queue", false, true), GPU_VISIBLE_PAGES("gpu-visible-pages", true, false);
         
         private final String id;
         private final boolean requiresVisibleMeshletList;

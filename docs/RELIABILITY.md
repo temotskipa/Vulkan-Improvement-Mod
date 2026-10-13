@@ -142,9 +142,10 @@ validation on real Vulkan hardware.
   solid/cutout terrain. Translucent terrain, water-like transparency, and
   environment screen effects remain vanilla-rendered until their
   blending/fog/effect-ordering contract exists; the older visible meshlet ring
-  is retained as an unavailable/capacity fallback. GPU-generated mesh-task
-  command preparation is disabled by default behind
-  `vim.enableGpuGeneratedMeshTaskCommands=false`.
+  is retained as an unavailable/capacity fallback. With mesh replacement
+  enabled, a layer's mesh-task command is written by the GPU visibility pass
+  from the frame's visible page list; `vim.enableGpuGeneratedMeshTaskCommands=false`
+  selects the older CPU-written work queue instead.
   Mesh replacement restores the native vanilla Vulkan graphics pipeline and
   marks descriptors dirty after each cancelled vanilla draw, so later fallback
   draws in the same terrain render pass cannot continue under VIM's mesh
@@ -182,7 +183,7 @@ validation on real Vulkan hardware.
 | `vim.enableTerrainCaptureBootstrap`   | `false`     | Mirror vanilla terrain into VIM GPU data without visible replacement. Heavy diagnostic opt-in. |
 | `vim.enableMeshTranslucentTerrain`     | `false`     | Capture/upload experimental translucent terrain metadata; visible translucent replacement is safety-gated to vanilla. |
 | `vim.enableMeshletFrustumCulling`      | `false`     | Enable meshlet frustum culling.                       |
-| `vim.enableGpuGeneratedMeshTaskCommands` | `false`   | Enable experimental GPU-generated mesh-task indirect commands. |
+| `vim.enableGpuGeneratedMeshTaskCommands` | `true`    | Let the GPU visibility pass cull a layer's visible pages and write its mesh-task command. Off selects the CPU-written per-meshlet work queue. Only matters with `vim.replaceVanillaTerrain`. |
 | `vim.strictMeshTerrainReplacement`     | `false`     | Let mesh terrain cancel vanilla solid/cutout draws; strict validation mode only until visible coverage is proven. |
 | `vim.enableVanillaChunkVisibilityFade` | `true`      | Keep vanilla chunk visibility fade behavior.          |
 | `vim.drawAllCapturedTerrainLayers`     | `false`     | Draw all captured solid/cutout terrain layers; heavy diagnostic mode split above the mesh-task limit. |
@@ -198,7 +199,7 @@ Press the **Dump Vulkan Improvement Diagnostics** key (default: `K` in the Debug
 
 Update this table when adding or removing flags.
 
-`vim.waitIdleBeforeTerrainUpload` is a validation escape hatch only. Normal uploads wait on the terrain read fence created when mesh terrain draws are recorded.
+`vim.waitIdleBeforeTerrainUpload` is a validation escape hatch only. Normal uploads do not wait for the GPU: changed pages are copied in command order, after every draw recorded before them.
 
 ## GPU Validation Matrix
 
@@ -221,13 +222,20 @@ Record manual validation results here before treating the mesh terrain path as g
 | 2026-10-13 | Windows 11   | RTX 4070 Ti | 616.92 / 1.4.351 | 1.4.351 | 26.4-snapshot-3 | 0.162.2+26.4 | port: default, capture, overlay and strict pass in short runs | First runs of the 26.4 port. Default mode reaches a world on Minecraft's multi-draw-indirect path. Capture covered every visible section layer. Strict replacement with `vim.enableGpuGeneratedMeshTaskCommands=true` through record-first camera jitter: `run/debugbridge-recordings/26.4-snapshot-3/strict-gpu-commands-jitter-100.jpg` (100 frames at 100 ms, nine camera turns) shows coherent terrain; `meshReplacementTaskTruncations=0`, `meshReplacementPreparedDispatchQueueLeaks=0`, `meshReplacementRefusals=0`, `meshReplacementDrawCallsByLayer={solid=4082, cutout=4082, translucent=0}`. Also passes without multi-draw-indirect (`strict-draw-separate.jpg`). Present pacing on the Vulkan swapchain: `presentIdsSubmitted=888`, `presentWaitFailures=0`. This is ten seconds, not the long pass the mesh bugfix plan asks for, and texture quality was not compared at full resolution. |
 | 2026-10-13 | Windows 11   | RTX 4070 Ti | 616.92 / 1.4.351 | 1.4.351 | 26.4-snapshot-3 | 0.162.2+26.4 | runtime matrix pass | Record-first jitter, 300 frames at 100 ms with 27 camera turns, in four modes: capture only, overlay, strict with GPU-generated commands, and every diagnostic flag on. Recordings: `run/debugbridge-recordings/26.4-snapshot-3/jitter-300-*.jpg`. `meshReplacementTaskTruncations=0`, `meshReplacementPreparedDispatchQueueLeaks=0`, no translucent-layer draws and no device loss in any mode. Strict mode also survived wireframe on and off, a render-distance change, a resource reload and a trip to the Nether, and the client quit normally. |
 | 2026-10-13 | Windows 11   | RTX 4070 Ti | 616.92 / 1.4.351 | 1.4.351 | 26.4-snapshot-3 | 0.162.2+26.4 | vanilla parity pass | Same-camera vanilla and strict screenshots with ticking frozen, chat and hotbar excluded; two vanilla screenshots differ by a mean of 0.03 of 255. Strict against vanilla: noon 1.03, render distance 4 (fog band in view) 0.86, midnight 0.83, blindness 0.17, at x = z = 3,000,000 0.42, and with improved transparency off 1.06 and 0.87; at most 0.06 % of pixels differ by more than 60 of 765, all on foliage edges. Before the mesh path culled back faces, sampled the mip chain and lightmap as vanilla does and applied fog, noon was 6.45 with 2.69 %. Images: `run/debugbridge-recordings/26.4-snapshot-3/parity/`. |
+| 2026-10-14 | Windows 11   | RTX 4070 Ti | 616.92 / 1.4.351 | 1.4.351 | 26.4-snapshot-3 | 0.162.2+26.4 | resident pages and GPU visibility pass | Strict replacement drawn from GPU-written commands (`source=gpu-visible-pages`). One session: render distance 6 and back, block edits, a teleport to x = z = 3,000,000 and back, record-first jitter of 300 frames, `vim.drawAllCapturedTerrainLayers`, wireframe on and off, a resource reload; the client quit normally. 15,201 commands prepared, `meshReplacementPreparedDispatchQueueLeaks=0`, `meshReplacementTaskTruncations=0`, `terrainCapacityGrowths=0`, `allocationRefusals=0`; 14,398 pages handed out and 5,486 given back, with freed ranges reused. A page upload cost 46 to 134 microseconds of CPU. Same-camera vanilla against strict, chat and hotbar excluded: 1.03 of 255 at noon, after the render-distance change and after the reload; 1.44 at three million blocks; 0.10 looking away. With Minecraft's culling frustum frozen and the camera turned, the GPU dropped 1,136 of 1,156 listed pages and the picture still matched vanilla (0.39); in an ordinary view it drops about 7 %. Over the session it looked at 7,850,551 listed pages and dropped 3,499,361. Images: `run/debugbridge-recordings/26.4-snapshot-3/gpu-resident/`. |
 
 Required JVM flags to record per run: `vim.replaceVanillaTerrain`, `vim.enableTerrainCaptureBootstrap`, `vim.enableMeshTranslucentTerrain`, `vim.strictMeshTerrainReplacement`, `vim.drawAllCapturedTerrainLayers`, `vim.disableFragmentShadingRate`, `vim.validationDescriptorBufferOnly`, `vim.allowCpuVisibleMeshletFallback`, `vim.enableGpuGeneratedMeshTaskCommands`.
 
 Required runtime counters to inspect: `meshReplacementDrawCalls`, `meshReplacementWorkQueueDrawCalls`, `meshReplacementTasks`, `meshReplacementTaskTruncations`, `meshReplacementDrawCallsByLayer`, `meshReplacementPreparedGpuCommands`, `meshReplacementPreparedGpuCommandDisabled`, `meshReplacementPreparedDispatchQueueLeaks`, `meshReplacementVisibleMeshletFallbackRefusals`, `meshReplacementPreparedGpuCommandRefusals`.
 
 Required GPU-world counters to inspect when validating the resident terrain
-path: `gpuWorldDatabase.residencyStats.livePageCount`,
+path: `gpuWorldDatabase.residentTerrain.livePages`,
+`gpuWorldDatabase.residentTerrain.usedBytes`,
+`gpuWorldDatabase.residentTerrain.allocationRefusals`,
+`terrainRenderer.sectionStore.residentPages`,
+`terrainRenderer.descriptorHeap.terrainCapacityGrowths`,
+`gpuWorldDatabase.visibilityCommandStats.culledSectionCount`,
+`gpuWorldDatabase.residencyStats.livePageCount`,
 `gpuWorldDatabase.residencyStats.overBudgetRefusals`,
 `gpuWorldDatabase.visibilityCommandStats.inputSectionCount`,
 `gpuWorldDatabase.visibilityCommandStats.visibleSectionCount`,
