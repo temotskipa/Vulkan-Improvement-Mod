@@ -67,6 +67,9 @@ public final class RendererCoreServices {
         map.put("lifecycleState", this.lifecycleState.name());
         map.put("lifecycleReason", this.lifecycleReason);
         map.put("mode", TerrainRendererDebugConfig.rendererMode());
+        if (this.lifecycleState.drawable()) {
+            RendererDomainObserver.observeTerrainMode();
+        }
         map.put("domains", RendererDomainRegistry.get().asMap());
         map.put("presentPacing", PresentPacingController.get().asMap());
         map.put("fragmentShadingRate", FragmentShadingRateController.get().asMap());

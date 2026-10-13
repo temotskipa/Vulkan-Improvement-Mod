@@ -22,6 +22,26 @@ public final class RtPtAccelerationDataInvariantCheck {
         checkAccelerationPageDiagnostics();
         checkRegistryLifecycleDiagnostics();
         checkRendererDiagnosticsIncludesAccelerationData();
+        checkAllocationCannotBeScheduled();
+    }
+
+    /**
+     * The registry's gate combines the device's support with whether allocation is switched on.
+     * It is not, so no allocation task can be scheduled, and diagnostics say why.
+     */
+    private static void checkAllocationCannotBeScheduled() {
+        VulkanRuntimeProfile unconfigured = VulkanRuntimeProfile.from(VulkanImprovementCapabilities.Snapshot.empty());
+        RtPtAccelerationDataRegistry.AllocationGate gate = RtPtAccelerationDataRegistry.allocationGate(unconfigured);
+        require(!gate.canScheduleAllocation(), "no allocation task may be scheduled without device support");
+        require(!gate.deviceSupported(), "the gate must take device support from the runtime profile");
+        require(gate.disabledReason().startsWith("requires acceleration structures"), "the gate must carry the runtime profile's reason");
+
+        RtPtAccelerationDataRegistry registry = RtPtAccelerationDataRegistry.get();
+        registry.reset();
+        Map<?, ?> diagnostics = child(registry.asMap(), "allocationGate");
+        require(Boolean.FALSE.equals(diagnostics.get("canScheduleAllocation")), "diagnostics must report that allocation cannot be scheduled");
+        require("disabled".equals(diagnostics.get("selectedPath")), "diagnostics must report the allocation path as disabled");
+        require(diagnostics.get("disabledReason") instanceof String reason && !reason.isBlank(), "diagnostics must give the reason allocation is disabled");
     }
 
     private static void checkRuntimeProfileKeepsRtPtOptional() {

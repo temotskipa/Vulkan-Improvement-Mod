@@ -14,7 +14,7 @@ record RendererDomainContract(RendererDomain domain, String vanillaOwner, String
             case BLOCK_ENTITIES ->
                     uncontracted(domain, "net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher", "vanilla block-entity renderer assets not mapped to GPU domain records", "vanilla block-entity submit and ordering rules not mapped", "block-entity dynamic model and material behavior not mapped", "vanilla block entity renderer not contracted");
             case ITEMS ->
-                    uncontracted(domain, "net.minecraft.client.renderer.ItemInHandRenderer", "vanilla item model and atlas assets not mapped to GPU domain records", "vanilla item render ordering and transform rules not mapped", "item material overrides and glint/emissive behavior not mapped", "vanilla item renderer not contracted");
+                    uncontracted(domain, "net.minecraft.client.renderer.FirstPersonHandsAndItemsRenderer", "vanilla item model and atlas assets not mapped to GPU domain records", "vanilla item render ordering and transform rules not mapped", "item material overrides and glint/emissive behavior not mapped", "vanilla item renderer not contracted");
             case PARTICLES ->
                     uncontracted(domain, "net.minecraft.client.particle.ParticleEngine", "vanilla particle sprites and dynamic state not mapped to GPU domain records", "vanilla particle sorting and layer ordering rules not mapped", "particle material, transparency, and lighting behavior not mapped", "vanilla particle engine not contracted");
             case SKY ->

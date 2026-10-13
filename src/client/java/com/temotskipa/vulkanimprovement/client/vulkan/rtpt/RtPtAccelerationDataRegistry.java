@@ -1,5 +1,7 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.rtpt;
 
+import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanImprovementCapabilities;
+import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanRuntimeProfile;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldDirtyReason;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldPageKind;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldRevision;
@@ -12,6 +14,10 @@ import java.util.Map;
 
 public final class RtPtAccelerationDataRegistry {
     private static final RtPtAccelerationDataRegistry INSTANCE = new RtPtAccelerationDataRegistry();
+    /**
+     * Stays off until an allocation plan with runtime validation is active.
+     */
+    private static final boolean ALLOCATION_ENABLED = false;
 
     private final Map<String, RtPtAccelerationPage> livePages = new LinkedHashMap<>();
     private final Map<String, Long> fallbackReasonCounts = new LinkedHashMap<>();
@@ -94,9 +100,19 @@ public final class RtPtAccelerationDataRegistry {
         countReason(fallbackReason);
     }
 
+    /**
+     * Whether an allocation task may be scheduled on a device with this profile. The device has to
+     * support allocation and allocation has to be switched on; it is not, because no allocation
+     * plan exists yet, so the answer is no on every device and the gate records why.
+     */
+    public static AllocationGate allocationGate(VulkanRuntimeProfile profile) {
+        return new AllocationGate(profile.rtPtAccelerationAllocationSupported(), ALLOCATION_ENABLED, profile.rtPtAccelerationAllocationDisabledReason());
+    }
+
     public synchronized Map<String, Object> asMap() {
         Map<String, Object> map = new LinkedHashMap<>();
-        map.put("allocationEnabled", false);
+        map.put("allocationEnabled", ALLOCATION_ENABLED);
+        map.put("allocationGate", allocationGate(VulkanRuntimeProfile.from(VulkanImprovementCapabilities.snapshot())).asMap());
         map.put("registeredPageCount", this.registeredPageCount);
         map.put("livePageCount", (long) this.livePages.size());
         map.put("retiredPageCount", this.retiredPageCount);
@@ -135,6 +151,22 @@ public final class RtPtAccelerationDataRegistry {
                 + page.sourceRevision().value()
                 + ":"
                 + page.sourcePageKind().diagnosticName();
+    }
+
+    public record AllocationGate(boolean deviceSupported, boolean allocationEnabled, String disabledReason) {
+        public boolean canScheduleAllocation() {
+            return this.deviceSupported && this.allocationEnabled;
+        }
+
+        Map<String, Object> asMap() {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("deviceSupported", this.deviceSupported);
+            map.put("allocationEnabled", this.allocationEnabled);
+            map.put("canScheduleAllocation", canScheduleAllocation());
+            map.put("selectedPath", "disabled");
+            map.put("disabledReason", this.disabledReason);
+            return map;
+        }
     }
 
     private record SourceInvalidation(long updateSequence, GpuWorldSectionId sectionId,

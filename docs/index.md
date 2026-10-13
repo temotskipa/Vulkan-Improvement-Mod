@@ -24,6 +24,10 @@ Start with the smallest relevant document and follow links only as needed.
   scope.
 - [references/harness-engineering.md](references/harness-engineering.md):
   source notes from the OpenAI harness-engineering article.
+- [references/minecraft-26-4-mixin-targets.md](references/minecraft-26-4-mixin-targets.md):
+  the Mojang classes and members the client mixins touch, as verified with mcdev.
+- [references/minecraft-26-4-renderer-domain-owners.md](references/minecraft-26-4-renderer-domain-owners.md):
+  the Mojang class that owns the vanilla path of each renderer domain.
 
 ## Maintenance Rules
 

@@ -1,9 +1,17 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.runtime;
 
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.Set;
 
 public final class RendererDomainInvariantCheck {
+    private static final Path DOMAIN_OWNERS = Path.of("docs/references/minecraft-26-4-renderer-domain-owners.md");
+    private static final Path RENDERER_DIAGNOSTICS = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/runtime/RendererDiagnostics.java");
+    private static final Path RENDERER_CORE_SERVICES = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/runtime/RendererCoreServices.java");
     private static final Map<RendererDomain, String> NON_TERRAIN_FALLBACK_REASONS = Map.of(
             RendererDomain.ENTITIES, "vanilla entity renderer not contracted",
             RendererDomain.BLOCK_ENTITIES, "vanilla block entity renderer not contracted",
@@ -24,9 +32,42 @@ public final class RendererDomainInvariantCheck {
         checkPlanRequiredDomainNames();
         checkEveryDomainExposesContractDiagnostics();
         checkPostProcessingContractUsesMinecraft26Owner();
+        checkContractOwnersAreMcdevConfirmed();
+        checkBugReportExposesDomainStateAndContract();
         checkNonTerrainDomainsRequireContractsBeforeReplacement();
         checkResetDefaultsAllDomainsToVanilla();
         checkTerrainMeshPathKeepsOtherDomainsVanilla();
+        checkTerrainDomainFollowsTheRendererMode();
+    }
+
+    /**
+     * Diagnostics distinguish the path that draws from the path that is merely configured.
+     */
+    private static void checkTerrainDomainFollowsTheRendererMode() {
+        boolean replace = TerrainRendererDebugConfig.replaceVanillaTerrain();
+        boolean strict = TerrainRendererDebugConfig.strictMeshTerrainReplacement();
+        try {
+            RendererDomainRegistry registry = RendererDomainRegistry.get();
+            registry.reset();
+            TerrainRendererDebugConfig.setReplaceVanillaTerrain(false);
+            RendererDomainObserver.observeTerrainMode();
+            require("vanilla".equals(state(registry.asMap(), RendererDomain.TERRAIN).get("path")), "terrain must be reported as vanilla while vanilla terrain is all that draws");
+
+            TerrainRendererDebugConfig.setReplaceVanillaTerrain(true);
+            TerrainRendererDebugConfig.setStrictMeshTerrainReplacement(false);
+            RendererDomainObserver.observeTerrainMode();
+            Map<?, ?> overlay = state(registry.asMap(), RendererDomain.TERRAIN);
+            require("mesh-shader-terrain".equals(overlay.get("path")), "terrain must be reported as mesh terrain while the mesh path draws");
+            require(String.valueOf(overlay.get("reason")).contains("stays visible"), "the overlay mode must say that vanilla terrain is still drawn");
+
+            TerrainRendererDebugConfig.setStrictMeshTerrainReplacement(true);
+            RendererDomainObserver.observeTerrainMode();
+            require(String.valueOf(state(registry.asMap(), RendererDomain.TERRAIN).get("reason")).contains("replaces"), "the strict mode must say that the mesh path replaces vanilla terrain");
+            registry.reset();
+        } finally {
+            TerrainRendererDebugConfig.setReplaceVanillaTerrain(replace);
+            TerrainRendererDebugConfig.setStrictMeshTerrainReplacement(strict);
+        }
     }
 
     private static void checkPlanRequiredDomainNames() {
@@ -71,7 +112,51 @@ public final class RendererDomainInvariantCheck {
         Map<?, ?> contract = contract(domains, RendererDomain.POST_PROCESSING);
 
         require("net.minecraft.client.renderer.PostPass".equals(contract.get("vanillaOwner")),
-                "post-processing contract must use the mcdev-confirmed Minecraft 26.2 PostPass owner");
+                "post-processing contract must use the mcdev-confirmed PostPass owner");
+    }
+
+    /**
+     * An owner is a Mojang class name, and class names move between versions. Every one has to be
+     * in the record of what mcdev showed for the version the mod targets.
+     */
+    private static void checkContractOwnersAreMcdevConfirmed() {
+        String owners = read(DOMAIN_OWNERS);
+        RendererDomainRegistry registry = RendererDomainRegistry.get();
+        registry.reset();
+        Map<String, Object> domains = registry.asMap();
+        for (RendererDomain domain : RendererDomain.values()) {
+            Object owner = contract(domains, domain).get("vanillaOwner");
+            if (owner instanceof String name && name.startsWith("net.minecraft.")) {
+                require(owners.contains("| " + domain.diagnosticName() + " | `" + name + "` |"),
+                        domain.diagnosticName() + " owner must be recorded as mcdev-confirmed in " + DOMAIN_OWNERS + ": " + name);
+            }
+        }
+        require("net.minecraft.client.renderer.FirstPersonHandsAndItemsRenderer".equals(contract(domains, RendererDomain.ITEMS).get("vanillaOwner")),
+                "the item contract must name the class that replaced ItemInHandRenderer");
+    }
+
+    /**
+     * A bug report carries each domain's selected path and its contract side by side.
+     */
+    private static void checkBugReportExposesDomainStateAndContract() {
+        require(read(RENDERER_DIAGNOSTICS).contains("report.put(\"rendererServices\", RendererCoreServices.get().asMap());"),
+                "bug reports must include renderer services");
+        require(read(RENDERER_CORE_SERVICES).contains("map.put(\"domains\", RendererDomainRegistry.get().asMap());"),
+                "renderer services must expose the domain registry");
+        RendererDomainRegistry registry = RendererDomainRegistry.get();
+        registry.reset();
+        for (Object value : registry.asMap().values()) {
+            require(value instanceof Map<?, ?> diagnostics && diagnostics.containsKey("path") && diagnostics.get("contract") instanceof Map<?, ?>,
+                    "every domain must expose its selected path together with its contract");
+        }
+    }
+
+    private static String read(Path path) {
+        try {
+            return Files.readString(path);
+        } catch (IOException ex) {
+            throw new AssertionError("failed to read " + path, ex);
+        }
     }
 
     private static void checkNonTerrainDomainsRequireContractsBeforeReplacement() {

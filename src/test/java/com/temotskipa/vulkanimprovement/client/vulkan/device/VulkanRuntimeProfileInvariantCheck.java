@@ -14,6 +14,29 @@ public final class VulkanRuntimeProfileInvariantCheck {
         checkEmptySnapshotRuntimeProfile();
         checkSupportedSnapshotRuntimeProfile();
         checkSnapshotMapIncludesRuntimeProfile();
+        checkRtPtAccelerationAllocationGate();
+    }
+
+    /**
+     * Allocation of acceleration structures is disabled on every device until an allocation plan
+     * exists. The profile says whether the device is the obstacle and names what it lacks.
+     */
+    private static void checkRtPtAccelerationAllocationGate() {
+        VulkanRuntimeProfile unsupported = VulkanRuntimeProfile.from(VulkanImprovementCapabilities.Snapshot.empty());
+        Map<String, Object> unsupportedProfile = unsupported.asMap();
+        require("disabled".equals(child(unsupportedProfile, "selectedPaths").get(VulkanRuntimeProfile.RT_PT_ACCELERATION_ALLOCATION)), "acceleration allocation must be disabled without device support");
+        require("requires acceleration structures, ray-tracing pipelines, buffer device addresses, descriptor buffers".equals(child(unsupportedProfile, "disabledReasons").get(VulkanRuntimeProfile.RT_PT_ACCELERATION_ALLOCATION)),
+                "a device without support must be told every capability allocation requires");
+        require(!unsupported.rtPtAccelerationAllocationSupported(), "an unconfigured device must not count as supporting allocation");
+        require(Boolean.FALSE.equals(child(unsupportedProfile, "hardRequirements").get("bufferDeviceAddress")), "the profile must report buffer device addresses with the hard requirements");
+
+        VulkanRuntimeProfile supported = VulkanRuntimeProfile.from(supportedSnapshot());
+        Map<String, Object> supportedProfile = supported.asMap();
+        require(supported.rtPtAccelerationAllocationSupported(), "a device with every capability must count as supporting allocation");
+        require("disabled".equals(child(supportedProfile, "selectedPaths").get(VulkanRuntimeProfile.RT_PT_ACCELERATION_ALLOCATION)), "acceleration allocation must stay disabled until an allocation plan is active");
+        require(VulkanRuntimeProfile.RT_PT_ALLOCATION_NOT_PLANNED.equals(child(supportedProfile, "disabledReasons").get(VulkanRuntimeProfile.RT_PT_ACCELERATION_ALLOCATION)),
+                "a capable device must be told that allocation is not planned, not that it lacks something");
+        require(!child(supportedProfile, "hardRequirements").containsKey("accelerationStructureExtension"), "the allocation gate must not make ray tracing a startup requirement");
     }
 
     private static void checkEmptySnapshotRuntimeProfile() {
@@ -99,6 +122,7 @@ public final class VulkanRuntimeProfileInvariantCheck {
                 "test driver",
                 "1.4.0",
                 "mesh-overlay-vanilla-fallback",
+                true,
                 true,
                 true,
                 true,
