@@ -127,9 +127,14 @@ renderer code does not drift back into a catch-all root package.
   GPU, drops pages whose section is outside the view, appends the rest to the
   layer's draw list, and counts up the mesh-task command that draws them. The
   task stage then draws one page per task and emits a mesh task per meshlet.
-  The CPU never learns the count and does not need it: whether a layer may
-  replace Minecraft's draws is decided beforehand, by whether every listed
-  section layer has a page.
+  The CPU never learns the count and does not need it.
+- A captured section layer's quads are grouped by the way they face
+  (`TerrainQuadMeshlets`): the six axis directions, and one group for faces
+  that do not lie across an axis. Each meshlet holds quads of one group and
+  the box around them. The task stage tests a page's meshlets 32 at a time and
+  hands the mesh stage, in their order, those that may be seen: a group whose
+  faces all point away from the camera is dropped when the pipeline culls back
+  faces, and a meshlet out of view always (`vim.cullMeshlets`).
 - `TerrainMeshTaskDispatch` records where a dispatch's tasks come from. The
   path above is `gpu-visible-pages`. The older sources remain as fallback and
   diagnostics: a CPU-written work queue with one record per visible meshlet

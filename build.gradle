@@ -478,7 +478,19 @@ tasks.register("checkTerrainLayoutManifest") {
                 "uint(clamp(header.vertexCount, 0, ${constants.MAX_MESH_OUTPUT_VERTICES}))")
         requireNormalizedText("mesh terrain shader",
                 meshShader,
-                "struct MeshletHeader { uint64_t sectionNode; int sectionX; int sectionY; int sectionZ; int layer; int firstVertex; int vertexCount; int firstIndex; int indexCount; uint vertexByteOffset; uint indexByteOffset; int vertexBytes; int indexBytes; int flags0; int materialId; };")
+                "struct MeshletHeader { uint64_t sectionNode; int sectionX; int sectionY; int sectionZ; int layer; int firstVertex; int vertexCount; int firstIndex; int indexCount; uint vertexByteOffset; uint indexByteOffset; int vertexBytes; int indexBytes; int flags0; int materialId; vec3 boundsMin; vec3 boundsMax; int facing; int reserved0; };")
+        requireNormalizedText("task terrain shader",
+                taskShader,
+                "struct MeshletHeader { uint64_t sectionNode; int sectionX; int sectionY; int sectionZ; int layer; int firstVertex; int vertexCount; int firstIndex; int indexCount; uint vertexByteOffset; uint indexByteOffset; int vertexBytes; int indexBytes; int flags0; int materialId; vec3 boundsMin; vec3 boundsMax; int facing; int reserved0; };")
+        def taskPayloadStruct = "struct TaskPayload { float meshletVisibility; uint meshletCount; uint meshlets[MAX_TASK_MESHLETS]; };"
+        requireNormalizedText("task terrain shader", taskShader, taskPayloadStruct)
+        requireNormalizedText("mesh terrain shader", meshShader, taskPayloadStruct)
+        requireText("task terrain shader", taskShader, "const uint MAX_TASK_MESHLETS = ${constants.MAX_TASK_MESHLETS}u;")
+        requireText("mesh terrain shader", meshShader, "const uint MAX_TASK_MESHLETS = ${constants.MAX_TASK_MESHLETS}u;")
+        requireText("task terrain shader", taskShader, "layout(local_size_x = ${constants.TASK_WORKGROUP_SIZE}) in;")
+        requireText("task terrain shader", taskShader, "const uint CULL_BACK_FACING_MESHLETS = ${constants.CULL_BACK_FACING_MESHLETS}u;")
+        requireText("task terrain shader", taskShader, "const uint CULL_MESHLETS_OUTSIDE_VIEW = ${constants.CULL_MESHLETS_OUTSIDE_VIEW}u;")
+        requireText("mesh terrain shader", meshShader, "const uint CULL_MESHLET_FRUSTUM_IN_MESH_STAGE = ${constants.CULL_MESHLET_FRUSTUM_IN_MESH_STAGE}u;")
         requireNormalizedText("mesh terrain shader",
                 meshShader,
                 "struct BlockVertex { vec3 position; uint color; vec2 uv0; uint uv2; };")
@@ -498,7 +510,7 @@ tasks.register("checkTerrainLayoutManifest") {
                 taskShader,
                 "layout(buffer_reference, scalar, buffer_reference_align = 4) readonly buffer TerrainWorkQueue { uint producedCount; uint consumedCount; uint droppedCount; uint reserved; TerrainWorkQueueRecord records[]; };")
 
-        def pushConstantBlock = "layout(push_constant, scalar) uniform TerrainPushConstants { uint64_t meshletHeaders; uint64_t vertexPayload; uint64_t indexPayload; uint64_t debugCounters; uint64_t visibleMeshlets; uint64_t workQueue; uint64_t materialTable; uint64_t pageTable; uint meshletCount; uint enableMeshletFrustumCulling; uint meshletOffset; int layerOrdinal; ivec4 cameraBlock; vec4 cameraOffset; vec4 cameraRight; vec4 cameraUp; vec4 cameraForward; vec4 projection; } pc;"
+        def pushConstantBlock = "layout(push_constant, scalar) uniform TerrainPushConstants { uint64_t meshletHeaders; uint64_t vertexPayload; uint64_t indexPayload; uint64_t debugCounters; uint64_t visibleMeshlets; uint64_t workQueue; uint64_t materialTable; uint64_t pageTable; uint meshletCount; uint cullFlags; uint meshletOffset; int layerOrdinal; ivec4 cameraBlock; vec4 cameraOffset; vec4 cameraRight; vec4 cameraUp; vec4 cameraForward; vec4 projection; } pc;"
         requireNormalizedText("task terrain shader", taskShader, pushConstantBlock)
         requireNormalizedText("mesh terrain shader", meshShader, pushConstantBlock)
         requireText("task terrain shader", taskShader, "TerrainWorkQueue queue = TerrainWorkQueue(pc.workQueue);")
@@ -512,8 +524,8 @@ tasks.register("checkTerrainLayoutManifest") {
         requireText("mesh-task command shader", commandShader, "uint drawn = atomicAdd(commands.commands[pc.commandIndex].groupCountX, 1u);")
         requireText("mesh-task command shader", commandShader, "list.records[pc.outputOffset + drawn] = visible;")
         requireText("task terrain shader", taskShader, "ResidentPage page = PageTable(pc.pageTable).pages[record.meshletIndex];")
-        requireText("task terrain shader", taskShader, "EmitMeshTasksEXT(uint(page.meshletCount), 1, 1);")
-        requireText("mesh terrain shader", meshShader, "meshlets.headers[taskPayload.visibleMeshlet + gl_WorkGroupID.x]")
+        requireText("task terrain shader", taskShader, "EmitMeshTasksEXT(kept, 1, 1);")
+        requireText("mesh terrain shader", meshShader, "meshlets.headers[taskPayload.meshlets[gl_WorkGroupID.x]]")
         def residentPageStruct = "struct ResidentPage { uint64_t sectionNode; int sectionX; int sectionY; int sectionZ; int layer; int firstMeshlet; int meshletCount; int estimatedVertices; int estimatedMeshlets; int vertexBytes; int indexBytes; int vertexByteOffset; int indexByteOffset; int reserved0; int customIndexBuffer; int reserved1; int reserved2; uint64_t reserved3; };"
         requireNormalizedText("task terrain shader", taskShader, residentPageStruct)
         requireNormalizedText("mesh-task command shader", commandShader, residentPageStruct)
@@ -535,7 +547,7 @@ tasks.register("checkTerrainLayoutManifest") {
         if (constants.NORMALIZED_INDEX_STRIDE != Integer.BYTES) {
             throw new GradleException("TerrainGpuLayout.NORMALIZED_INDEX_STRIDE must remain ${Integer.BYTES} for shader uint index payloads.")
         }
-        if (constants.MESHLET_HEADER_STRIDE != Long.BYTES + Integer.BYTES * 14) {
+        if (constants.MESHLET_HEADER_STRIDE != Long.BYTES + Integer.BYTES * 14 + Float.BYTES * 6 + Integer.BYTES * 2) {
             throw new GradleException("TerrainGpuLayout.MESHLET_HEADER_STRIDE does not match MeshletHeader layout.")
         }
         if (constants.VISIBLE_MESHLET_RECORD_STRIDE != Integer.BYTES + Float.BYTES) {

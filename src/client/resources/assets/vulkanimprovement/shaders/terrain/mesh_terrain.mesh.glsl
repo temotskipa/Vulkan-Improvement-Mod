@@ -23,6 +23,10 @@ struct MeshletHeader {
     int indexBytes;
     int flags0;
     int materialId;
+    vec3 boundsMin;
+    vec3 boundsMax;
+    int facing;
+    int reserved0;
 };
 
 struct BlockVertex {
@@ -93,7 +97,7 @@ layout(push_constant, scalar) uniform TerrainPushConstants {
     uint64_t materialTable;
     uint64_t pageTable;
     uint meshletCount;
-    uint enableMeshletFrustumCulling;
+    uint cullFlags;
     uint meshletOffset;
     int layerOrdinal;
     ivec4 cameraBlock;
@@ -104,9 +108,14 @@ layout(push_constant, scalar) uniform TerrainPushConstants {
     vec4 projection;
 } pc;
 
+const uint MAX_TASK_MESHLETS = 1024u;
+const uint CULL_MESHLET_FRUSTUM_IN_MESH_STAGE = 1u;
+
+// The meshlets the task stage handed on, in the order they are to be drawn.
 struct TaskPayload {
-    uint visibleMeshlet;
     float meshletVisibility;
+    uint meshletCount;
+    uint meshlets[MAX_TASK_MESHLETS];
 };
 
 taskPayloadSharedEXT TaskPayload taskPayload;
@@ -148,12 +157,11 @@ void main() {
     uint lane = gl_LocalInvocationID.x;
     MeshletHeaders meshlets = MeshletHeaders(pc.meshletHeaders);
     TerrainDebugCounters counters = TerrainDebugCounters(pc.debugCounters);
-    // A task that draws a page emits one mesh task per meshlet, counted from the page's first.
-    MeshletHeader header = meshlets.headers[taskPayload.visibleMeshlet + gl_WorkGroupID.x];
+    MeshletHeader header = meshlets.headers[taskPayload.meshlets[gl_WorkGroupID.x]];
     bool indexedTriangles = (header.flags0 & INDEXED_TRIANGLES_FLAG) != 0 && header.indexBytes > 0;
     // Nothing is counted for every meshlet: an atomic per workgroup on one address made the
     // opaque layers several times slower than vanilla's.
-    if (pc.enableMeshletFrustumCulling != 0u && cullMeshlet(header)) {
+    if ((pc.cullFlags & CULL_MESHLET_FRUSTUM_IN_MESH_STAGE) != 0u && cullMeshlet(header)) {
         if (lane == 0u) {
             atomicAdd(counters.culledMeshlets, 1u);
             SetMeshOutputsEXT(0u, 0u);

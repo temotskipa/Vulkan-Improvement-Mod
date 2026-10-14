@@ -37,16 +37,29 @@ public final class SectionMeshletStore {
         boolean customIndexBuffer = draw != null && draw.hasCustomIndexBuffer();
         int indexElementBytes = draw == null ? 0 : draw.indexType().bytes;
         int estimatedVertices = customIndexBuffer ? estimateIndexedVertices(indexCount) : estimateVertices(indexCount);
-        int estimatedMeshlets = customIndexBuffer ? estimateIndexedMeshlets(indexCount) : estimateMeshlets(estimatedVertices);
-        List<TerrainMeshlet> meshlets = customIndexBuffer ? buildIndexedMeshlets(sectionNode, layer, indexCount, estimatedMeshlets) : buildMeshlets(sectionNode, layer, estimatedVertices, indexCount, estimatedMeshlets);
         ByteBuffer copiedVertices = copy(vertexBuffer);
+        // Quads are grouped by the way they face, so the task stage can drop a group seen from behind.
+        TerrainQuadMeshlets.Built quads = customIndexBuffer || copiedVertices.remaining() == 0 ? null : TerrainQuadMeshlets.build(sectionNode, layer, copiedVertices);
+        List<TerrainMeshlet> meshlets;
+        if (quads != null) {
+            meshlets = quads.meshlets();
+            copiedVertices = quads.vertices();
+        }
+        else {
+            int countedMeshlets = customIndexBuffer ? estimateIndexedMeshlets(indexCount) : estimateMeshlets(estimatedVertices);
+            meshlets = customIndexBuffer ? buildIndexedMeshlets(sectionNode, layer, indexCount, countedMeshlets) : buildMeshlets(sectionNode, layer, estimatedVertices, indexCount, countedMeshlets);
+        }
+        int estimatedMeshlets = meshlets.size();
+        ByteBuffer capturedVertices = copiedVertices;
         ByteBuffer copiedIndices = customIndexBuffer ? copyIndexBuffer(indexBuffer, indexElementBytes) : copy(indexBuffer);
         int gpuIndexElementBytes = customIndexBuffer && copiedIndices.remaining() > 0 ? TerrainGpuLayout.NORMALIZED_INDEX_STRIDE : indexElementBytes;
         CaptureResult result = new CaptureResult();
         SECTIONS.compute(mesh, (ignored, existing) -> {
             CapturedSection section = existing == null ? new CapturedSection(sectionNode) : existing;
             LayerCapture previous = section.layers.get(layer);
-            ByteBuffer vertices = vertexBuffer == null && previous != null ? previous.buffers.vertices() : copiedVertices;
+            ByteBuffer vertices = vertexBuffer == null && previous != null ? previous.buffers.vertices() : capturedVertices;
+            // The meshlets describe the vertices they were cut from.
+            List<TerrainMeshlet> layerMeshlets = vertexBuffer == null && previous != null ? previous.meshlets : meshlets;
             ByteBuffer indices = indexBuffer == null && previous != null ? previous.buffers.indices() : copiedIndices;
             int capturedVertexBytes = vertexBuffer == null && previous != null ? previous.vertexBytes : vertexBytes;
             int capturedIndexBytes = indexBuffer == null && previous != null ? previous.indexBytes : indexBytes;
@@ -61,7 +74,7 @@ public final class SectionMeshletStore {
                 return kept;
             }
             MeshLayerBuffers buffers = new MeshLayerBuffers(vertices, indices);
-            section.layers.put(layer, new LayerCapture(capturedVertexBytes, capturedIndexBytes, estimatedVertices, estimatedMeshlets, customIndexBuffer, capturedIndexElementBytes, meshlets, buffers));
+            section.layers.put(layer, new LayerCapture(capturedVertexBytes, capturedIndexBytes, estimatedVertices, layerMeshlets.size(), customIndexBuffer, capturedIndexElementBytes, layerMeshlets, buffers));
             result.accepted = true;
             holdCapture(mesh, section);
             return section;
@@ -140,7 +153,7 @@ public final class SectionMeshletStore {
         }
         PageBinding binding = capturedSection.binding(layer.ordinal());
         ResidentTerrainPages.Page page = binding.page;
-        if (page == null || page.meshletCount() <= 0) {
+        if (page == null || page.meshletCount() <= 0 || page.meshletCount() > TerrainGpuLayout.MAX_TASK_MESHLETS) {
             return false;
         }
         float visibility = TerrainRendererDebugConfig.vanillaChunkVisibilityFadeEnabled() ? Math.clamp(section.getVisibility(now, fadeDuration), 0.0F, 1.0F) : 1.0F;
@@ -542,6 +555,14 @@ public final class SectionMeshletStore {
         target.putInt(indexBytes);
         target.putInt(meshlet.indexCount() > 0 && indexBytes > 0 ? TerrainGpuLayout.INDEXED_TRIANGLES_FLAG : 0);
         target.putInt(meshlet.materialId());
+        target.putFloat(meshlet.minX());
+        target.putFloat(meshlet.minY());
+        target.putFloat(meshlet.minZ());
+        target.putFloat(meshlet.maxX());
+        target.putFloat(meshlet.maxY());
+        target.putFloat(meshlet.maxZ());
+        target.putInt(meshlet.facing());
+        target.putInt(0);
     }
     
     /**

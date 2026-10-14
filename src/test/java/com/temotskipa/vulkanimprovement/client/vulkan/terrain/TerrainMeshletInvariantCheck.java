@@ -18,6 +18,96 @@ public final class TerrainMeshletInvariantCheck {
         checkLayerMaterialId();
         checkCaptureValidationAcceptsValidQuadPayload();
         checkCaptureValidationRejectsBadPayloads();
+        checkQuadsAreGroupedByFacing();
+        checkFacingFollowsWinding();
+        checkLargeGroupsSplitIntoMeshlets();
+    }
+
+    /**
+     * Quads are sorted into one group per facing, keeping their order inside a group, and every
+     * meshlet holds quads of one group and the box around them.
+     */
+    private static void checkQuadsAreGroupedByFacing() {
+        long sectionNode = SectionPos.asLong(1, 2, 3);
+        ChunkSectionLayer layer = ChunkSectionLayer.values()[0];
+        ByteBuffer vertices = ByteBuffer.allocateDirect(5 * 4 * TerrainGpuLayout.BLOCK_VERTEX_STRIDE).order(ByteOrder.LITTLE_ENDIAN);
+        putQuad(vertices, UP_FACE, 1);
+        putQuad(vertices, EAST_FACE, 2);
+        putQuad(vertices, PLANT_FACE, 3);
+        putQuad(vertices, UP_FACE, 4);
+        putQuad(vertices, EAST_FACE, 5);
+        vertices.flip();
+
+        TerrainQuadMeshlets.Built built = TerrainQuadMeshlets.build(sectionNode, layer, vertices);
+        require(built != null, "whole quads must be grouped");
+        require(built.vertices().remaining() == vertices.remaining(), "grouping must keep every vertex");
+        require(built.meshlets().size() == 3, "three facings must give three meshlets");
+        require(built.meshlets().get(0).facing() == TerrainQuadMeshlets.FACING_EAST && built.meshlets().get(1).facing() == TerrainQuadMeshlets.FACING_UP && built.meshlets().get(2).facing() == TerrainQuadMeshlets.FACING_ANY, "groups must come in facing order");
+        int[] expectedTags = {2, 5, 1, 4, 3};
+        for (int quad = 0; quad < expectedTags.length; quad++) {
+            require(built.vertices().getInt(quad * 4 * TerrainGpuLayout.BLOCK_VERTEX_STRIDE + 12) == expectedTags[quad], "quads must keep their order inside a facing group");
+        }
+        int covered = 0;
+        for (TerrainMeshlet meshlet : built.meshlets()) {
+            require(meshlet.firstVertex() == covered, "meshlets must cover the grouped vertices in order");
+            covered += meshlet.vertexCount();
+        }
+        require(covered == 20, "meshlets must cover every vertex once");
+        TerrainMeshlet east = built.meshlets().get(0);
+        require(east.minX() == 1.0F && east.maxX() == 1.0F && east.minY() == 0.0F && east.maxY() == 1.0F, "a meshlet's box must hold its quads and no more");
+        require(TerrainQuadMeshlets.build(sectionNode, layer, blockVertices(3)) == null, "vertices that are not whole quads must not be grouped");
+    }
+
+    /**
+     * A face points to the side its corners go round anticlockwise when seen from, as Minecraft's
+     * do; a face that does not lie across an axis is never dropped for facing.
+     */
+    private static void checkFacingFollowsWinding() {
+        ByteBuffer vertices = ByteBuffer.allocateDirect(4 * 4 * TerrainGpuLayout.BLOCK_VERTEX_STRIDE).order(ByteOrder.LITTLE_ENDIAN);
+        putQuad(vertices, UP_FACE, 0);
+        putQuad(vertices, EAST_FACE, 0);
+        putQuad(vertices, new float[][]{EAST_FACE[3], EAST_FACE[2], EAST_FACE[1], EAST_FACE[0]}, 0);
+        putQuad(vertices, new float[][]{{0, 1, 0}, {0, 1, 0}, {0, 1, 1}, {1, 1, 1}}, 0);
+        int quadBytes = 4 * TerrainGpuLayout.BLOCK_VERTEX_STRIDE;
+        require(TerrainQuadMeshlets.facingOf(vertices, 0) == TerrainQuadMeshlets.FACING_UP, "a top face must face up");
+        require(TerrainQuadMeshlets.facingOf(vertices, quadBytes) == TerrainQuadMeshlets.FACING_EAST, "an east face must face east");
+        require(TerrainQuadMeshlets.facingOf(vertices, 2 * quadBytes) == TerrainQuadMeshlets.FACING_WEST, "reversed corners must face the other way");
+        require(TerrainQuadMeshlets.facingOf(vertices, 3 * quadBytes) == TerrainQuadMeshlets.FACING_UP, "a quad whose first triangle has no area must face the way its second does");
+        ByteBuffer plant = ByteBuffer.allocateDirect(quadBytes).order(ByteOrder.LITTLE_ENDIAN);
+        putQuad(plant, PLANT_FACE, 0);
+        require(TerrainQuadMeshlets.facingOf(plant, 0) == TerrainQuadMeshlets.FACING_ANY, "a diagonal face must not be dropped for facing");
+    }
+
+    private static void checkLargeGroupsSplitIntoMeshlets() {
+        int quads = TerrainGpuLayout.TARGET_VERTICES_PER_MESHLET / 4 + 1;
+        ByteBuffer vertices = ByteBuffer.allocateDirect(quads * 4 * TerrainGpuLayout.BLOCK_VERTEX_STRIDE).order(ByteOrder.LITTLE_ENDIAN);
+        for (int quad = 0; quad < quads; quad++) {
+            putQuad(vertices, UP_FACE, quad);
+        }
+        vertices.flip();
+        TerrainQuadMeshlets.Built built = TerrainQuadMeshlets.build(SectionPos.asLong(0, 0, 0), ChunkSectionLayer.values()[0], vertices);
+        require(built != null && built.meshlets().size() == 2, "a facing group larger than a meshlet must be split");
+        require(built.meshlets().get(0).vertexCount() == TerrainGpuLayout.TARGET_VERTICES_PER_MESHLET && built.meshlets().get(1).vertexCount() == 4, "a meshlet must hold at most its vertex budget");
+    }
+
+    // Corners of faces of the block at the origin, anticlockwise seen from outside.
+    private static final float[][] UP_FACE = {{0, 1, 0}, {0, 1, 1}, {1, 1, 1}, {1, 1, 0}};
+    private static final float[][] EAST_FACE = {{1, 0, 0}, {1, 1, 0}, {1, 1, 1}, {1, 0, 1}};
+    private static final float[][] PLANT_FACE = {{0, 0, 0}, {0, 1, 0}, {1, 1, 1}, {1, 0, 1}};
+
+    /**
+     * Writes a quad; its colour holds a tag, so its place after grouping can be told.
+     */
+    private static void putQuad(ByteBuffer buffer, float[][] corners, int tag) {
+        for (float[] corner : corners) {
+            buffer.putFloat(corner[0]);
+            buffer.putFloat(corner[1]);
+            buffer.putFloat(corner[2]);
+            buffer.putInt(tag);
+            buffer.putFloat(0.0F);
+            buffer.putFloat(0.0F);
+            buffer.putInt(0x00F000F0);
+        }
     }
     
     private static void checkNonIndexedMeshletsPartitionVertices() {

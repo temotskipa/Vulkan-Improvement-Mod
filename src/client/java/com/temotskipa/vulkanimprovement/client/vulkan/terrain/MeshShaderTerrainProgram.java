@@ -125,6 +125,17 @@ public final class MeshShaderTerrainProgram {
         putVec4(target, row3X, row3Y, row3Z, row3W);
     }
     
+    /**
+     * What the task stage drops of a page's meshlets: those out of view, and those seen from behind
+     * when the pipeline it stands in for culls back faces.
+     */
+    private static int pageCullFlags(TerrainPipelineState vanillaPipeline) {
+        if (!TerrainRendererDebugConfig.cullMeshletsEnabled()) {
+            return 0;
+        }
+        return TerrainGpuLayout.CULL_MESHLETS_OUTSIDE_VIEW | (vanillaPipeline.cull() ? TerrainGpuLayout.CULL_BACK_FACING_MESHLETS : 0);
+    }
+
     private static int meshletFrustumCullingPushConstant() {
         return TerrainRendererDebugConfig.meshletFrustumCullingEnabled() ? 1 : 0;
     }
@@ -234,7 +245,7 @@ public final class MeshShaderTerrainProgram {
             boolean drawsPages = dispatch.source() == TerrainMeshTaskDispatch.Source.GPU_VISIBLE_PAGES;
             pushConstants.putLong(drawsPages ? DescriptorHeapTerrainResources.get().sectionMetadataAddress() : 0L);
             pushConstants.putInt(dispatch.taskCount());
-            pushConstants.putInt(drawsPages ? 0 : meshletFrustumCullingPushConstant());
+            pushConstants.putInt(drawsPages ? pageCullFlags(vanillaPipeline) : meshletFrustumCullingPushConstant());
             pushConstants.putInt(dispatch.meshletOffset());
             pushConstants.putInt(dispatch.layerOrdinal());
             writeCameraPushConstants(pushConstants);

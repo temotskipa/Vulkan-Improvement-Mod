@@ -115,6 +115,20 @@ With these the render thread does no more in the mesh path than in vanilla;
 where the mesh path is still slower the GPU sets its pace, and its opaque
 layers still cost more than vanilla's.
 
+Then step 3. A section layer's quads are grouped by facing at capture and
+the task stage drops meshlets that face away or are out of view. Medians,
+same session; opaque GPU time from `vim.terrainGpuTimer`:
+
+| Scene    | Vanilla opaque | Mesh opaque | Mesh opaque, no culling |
+|----------|----------------|-------------|-------------------------|
+| ground   | 0.28 ms        | 0.30 ms     | 0.52 ms                 |
+| overlook | 0.33 ms        | 0.33 ms     | 0.64 ms                 |
+| horizon  | 0.24 ms        | 0.25 ms     | 0.32 ms                 |
+
+Without the timer: ground 832 -> 855 FPS, overlook 761 -> 758, horizon
+785 -> 769. The mesh path is level with vanilla here: its render thread does
+a little less, and its opaque layers cost the GPU what vanilla's do.
+
 ## Decisions
 
 - Solid terrain's mesh pipeline is specialized without the alpha test, as
