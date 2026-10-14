@@ -202,6 +202,17 @@ At the horizon the render thread spends a tenth of its time in
 latency object: there the presentation of frames sets the pace, in both
 modes.
 
+A frame's list of a layer's pages is now built from reused arrays: a taken
+section layer keeps its page's slot and meshlet count, read while the page
+is at hand, and the task records are written from them directly. At render
+distance 16, where the mesh path trailed vanilla before these steps:
+
+| Scene    | Vanilla FPS | Mesh FPS | Change | Render thread, vanilla / mesh | GPU per frame, vanilla / mesh |
+|----------|-------------|----------|--------|-------------------------------|-------------------------------|
+| ground   | 1058        | 1153     | +9 %   | 0.73 / 0.68 ms                | 0.59 / 0.55 ms                |
+| overlook | 815         | 902      | +11 %  | 0.82 / 0.78 ms                | 0.65 / 0.59 ms                |
+| horizon  | 810         | 844      | +4 %   | 0.63 / 0.60 ms                | 0.56 / 0.52 ms                |
+
 ## Decisions
 
 - Solid terrain's mesh pipeline is specialized without the alpha test, as
@@ -225,8 +236,11 @@ modes.
 ## Follow-Up
 
 - At the horizon the render thread waits on the D3D12 swapchain's frame
-  latency object for a tenth of its time, in both modes. Whether the
-  presentation path can be made to let more frames run ahead is open.
+  latency object for a tenth of its time, in both modes. Minecraft presents
+  through D3D12: every frame is blitted by Vulkan into one shared image, which
+  the D3D12 queue copies to the swapchain after waiting on a Vulkan semaphore,
+  with a frame latency of two. Whether that hand-off can let more of the GPU's
+  work overlap is open; it is Minecraft's presentation, not the terrain path.
 - Meshlets of 64 vertices instead of 128 have not been measured since tasks
   became small.
 - Occlusion culling on the GPU (step 5).
