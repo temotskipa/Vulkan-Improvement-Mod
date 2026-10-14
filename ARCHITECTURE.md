@@ -157,8 +157,8 @@ renderer code does not drift back into a catch-all root package.
   stage samples the atlas and the lightmap as vanilla terrain does, applies the
   frame's fog from `TerrainFogState`, and with improved transparency fades into
   the sky and cloud images Minecraft binds for the group. A change to any of
-  these is checked against same-camera vanilla screenshots; the method is in the
-  26.4 port plan.
+  these is checked against same-camera vanilla screenshots, as described under
+  Vanilla Parity Check in `docs/RELIABILITY.md`.
 - `checkTerrainShadersCompile` compiles the terrain shaders with the compiler
   the game uses at startup, so a development build without the Vulkan SDK still
   fails on a shader that does not compile.

@@ -21,7 +21,6 @@ manual.
 - [ARCHITECTURE.md](ARCHITECTURE.md) maps packages, runtime flow, and boundaries.
 - [docs/index.md](docs/index.md) is the documentation table of contents.
 - [docs/PLANS.md](docs/PLANS.md) explains when to create execution plans.
-- [docs/QUALITY_SCORE.md](docs/QUALITY_SCORE.md) tracks maintainability gaps.
 - [docs/RELIABILITY.md](docs/RELIABILITY.md) covers validation and runtime checks.
 - [docs/SECURITY.md](docs/SECURITY.md) records security assumptions.
 - [docs/exec-plans/tech-debt-tracker.md](docs/exec-plans/tech-debt-tracker.md)

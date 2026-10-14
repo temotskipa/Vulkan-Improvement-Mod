@@ -18,8 +18,10 @@ Create a file in `docs/exec-plans/active/` when work includes any of these:
 - Build, packaging, or source-set changes.
 - Runtime validation that must be repeated later.
 
-Move completed plans to `docs/exec-plans/completed/` and keep decisions or
-follow-up debt linked from `docs/exec-plans/tech-debt-tracker.md`.
+When a plan is finished, move what stays true into `ARCHITECTURE.md`,
+`docs/RELIABILITY.md` or `docs/exec-plans/tech-debt-tracker.md`, list it in
+`docs/exec-plans/active/README.md` no longer, and delete it. Git keeps its
+history.
 
 ## Plan Template
 

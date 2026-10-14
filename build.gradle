@@ -78,18 +78,13 @@ def requiredRepoDocs = ["AGENTS.md",
                         "ARCHITECTURE.md",
                         "docs/index.md",
                         "docs/PLANS.md",
-                        "docs/QUALITY_SCORE.md",
                         "docs/RELIABILITY.md",
                         "docs/SECURITY.md",
                         "docs/design-docs/index.md",
                         "docs/design-docs/core-beliefs.md",
-                        "docs/exec-plans/index.md",
                         "docs/exec-plans/active/README.md",
-                        "docs/exec-plans/completed/README.md",
                         "docs/exec-plans/tech-debt-tracker.md",
-                        "docs/generated/README.md",
-                        "docs/product-specs/index.md",
-                        "docs/references/harness-engineering.md"]
+                        "docs/product-specs/index.md"]
 
 tasks.register("checkRepoDocs") {
     group = "verification"
@@ -775,15 +770,6 @@ tasks.register("checkTerrainRenderPassStateInvariants", JavaExec) {
     mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRenderPassStateInvariantCheck"
 }
 
-tasks.register("checkTerrainRuntimeValidationPlanInvariants", JavaExec) {
-    group = "verification"
-    description = "Runs pure Java terrain runtime-validation plan evidence invariant checks."
-
-    dependsOn tasks.named("testClasses")
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.runtime.TerrainRuntimeValidationPlanInvariantCheck"
-}
-
 tasks.register("checkVulkanVideoOptionsInvariants", JavaExec) {
     group = "verification"
     description = "Runs pure Java Vulkan Video Settings visibility invariant checks."
@@ -856,7 +842,6 @@ tasks.named("check") {
     dependsOn tasks.named("checkResidentTerrainPagesInvariants")
     dependsOn tasks.named("checkTerrainShadersCompile")
     dependsOn tasks.named("checkTerrainRenderPassStateInvariants")
-    dependsOn tasks.named("checkTerrainRuntimeValidationPlanInvariants")
     dependsOn tasks.named("checkVulkanVideoOptionsInvariants")
     dependsOn tasks.named("checkAcceleratedWorldgenProviderIntegrationInvariants")
     dependsOn tasks.named("checkDependencyBaselineInvariants")

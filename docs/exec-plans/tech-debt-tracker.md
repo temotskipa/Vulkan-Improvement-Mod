@@ -1,17 +1,16 @@
 # Technical Debt Tracker
 
-Track cleanup work that should be handled in small follow-up changes.
+Open follow-up work. Remove a row when it is done.
 
-| Item                              | Area         | Status   | Notes                                                                                                                             |
-|-----------------------------------|--------------|----------|-----------------------------------------------------------------------------------------------------------------------------------|
-| Document GPU validation matrix    | Reliability  | Partial  | Template and build entries in RELIABILITY.md; 26.2 stable row added 2026-06-23; fill GPU/driver rows after runtime smoke.         |
-| Active plan maintenance           | Documentation| Done     | Finished plans are in `completed/`; the active README lists what is open and the recent completions. |
-| Runtime matrix coverage           | Validation   | Partial  | The 26.4 runtime matrix passed on one GPU; see the [26.4 snapshot port](completed/minecraft-26-4-snapshot-port.md) and the [mesh replacement device-loss bugfix](completed/mesh-replacement-device-loss-bugfix.md), both rows of 2026-10-13 and 2026-10-14 in `docs/RELIABILITY.md`. Still to do before mesh terrain is called generally usable: a run with the Vulkan validation layers, and other GPUs and drivers. |
-| Non-terrain domain replacement    | Renderer     | Planned  | The contracts are done: [non-terrain domain contracts](completed/non-terrain-domain-contracts.md). Replacing a domain needs a plan of its own first. |
-| RT/PT acceleration structures     | Renderer     | Planned  | The data contracts and the capability gate are done: [RT PT acceleration data](completed/rt-pt-acceleration-data.md). Allocation needs a plan of its own that starts from that plan's validation section. |
-| Optional accelerated-worldgen provider integration | Worldgen | Planned | Diagnostics-only detection is done: [Accelerated Worldgen Provider Integration](completed/accelerated-worldgen-provider-integration.md). Provider-owned world generation needs a plan of its own. |
-| Build-time SPIR-V pipeline        | Build        | Done     | `compileTerrainSpirv` remains best-effort for development builds, but `"-Pvim.releaseBuild=true"` now requires `glslangValidator` for SPIR-V generation and shader validation. |
-| Mesh replacement as the default   | Renderer     | Planned  | Replacement and strict cancellation are opt-in. Making them the default needs a plan of its own, a run with the Vulkan validation layers, and other GPUs and drivers. |
-| Present pacing under DXGI         | Presentation | Planned  | Minecraft presents through `D3D12GpuSurface` on Windows by default, where present-id and present-wait have no swapchain to act on. Decide whether pacing reports itself inactive or asks for the Vulkan swapchain. |
-| GPU occlusion and level of detail | Renderer     | Planned  | The GPU visibility pass culls Minecraft's visible list against the view only. A depth-hierarchy test, level-of-detail pages and eviction by budget were left out of the GPU-resident terrain plan on purpose. |
-| Loom release pin                  | Build        | Planned  | The build uses Loom `1.18-SNAPSHOT`, which can change under it. Pin a release when `1.18` has one. |
+| Item | Area | Notes |
+|------|------|-------|
+| Runtime coverage | Validation | The 26.4 runtime matrix passed on one GPU and driver; see the GPU Validation Matrix in `docs/RELIABILITY.md`. Before mesh terrain is called generally usable it needs a run with the Vulkan validation layers, and other GPUs and drivers. |
+| Mesh replacement as the default | Renderer | Replacement and strict cancellation are opt-in. Making them the default needs its own plan and the runtime coverage above. |
+| GPU occlusion and level of detail | Renderer | The GPU visibility pass culls Minecraft's visible list against the view only. There is no depth-hierarchy test, no level-of-detail page and no eviction by budget. Growing a terrain buffer re-uploads from copies kept on the CPU. |
+| Visibility input from Minecraft | Renderer | On the multi-draw-indirect path Minecraft's indirect command buffer already holds one record per visible section layer and could replace the page list the mod uploads. |
+| Present pacing under DXGI | Presentation | Minecraft presents through `D3D12GpuSurface` on Windows by default, where present-id and present-wait have no swapchain to act on. Decide whether pacing reports itself inactive or asks for the Vulkan swapchain. |
+| Section fade-in on the fallback path | Renderer | The CPU work-queue fallback draws sections at full visibility while they fade in; the default GPU path fades them. |
+| Non-terrain domain replacement | Renderer | Every non-terrain domain has a contract and stays vanilla. Replacing one needs its own plan. |
+| RT/PT acceleration structures | Renderer | The data contracts and the capability gate exist. Allocation needs its own plan, starting from Before The First RT/PT Allocation in `docs/RELIABILITY.md`. |
+| Accelerated worldgen provider | Worldgen | Provider detection is diagnostics only. Provider-owned world generation needs its own plan. |
+| Loom release pin | Build | The build uses Loom `1.18-SNAPSHOT`, which can change under it. Pin a release when `1.18` has one. |

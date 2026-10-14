@@ -7,10 +7,6 @@ import java.util.List;
 import java.util.stream.Stream;
 
 public final class GpuResidentTerrainArchitectureInvariantCheck {
-    private static final Path ARCHITECTURE_PLAN = Path.of("docs/exec-plans/completed/gpu-resident-terrain-architecture.md");
-    private static final Path EXTENSION_PLAN = Path.of("docs/exec-plans/completed/26-2-vulkan-renderer-extension.md");
-    private static final Path PROVIDER_PLAN = Path.of("docs/exec-plans/completed/accelerated-worldgen-provider-integration.md");
-    private static final Path COMPLETED_README = Path.of("docs/exec-plans/completed/README.md");
     private static final Path FABRIC_MOD_JSON = Path.of("src/main/resources/fabric.mod.json");
     private static final Path GITIGNORE = Path.of(".gitignore");
     private static final Path DATABASE_SOURCE = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/gpuworld/GpuWorldDatabase.java");
@@ -25,9 +21,6 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
     
     
     static void main(String[] args) throws IOException {
-        String architecturePlan = read(ARCHITECTURE_PLAN);
-        String extensionPlan = read(EXTENSION_PLAN);
-        String providerPlan = read(PROVIDER_PLAN);
         String fabricModJson = read(FABRIC_MOD_JSON);
         String gitignore = read(GITIGNORE);
         String databaseSource = read(DATABASE_SOURCE);
@@ -37,17 +30,14 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
         String pipelineStageSource = read(PIPELINE_STAGE_SOURCE);
         String layerDirectorySource = read(LAYER_DIRECTORY_SOURCE);
         
-        checkPlanWiring(architecturePlan, extensionPlan, providerPlan, read(COMPLETED_README));
         checkResidentPagesAndVisibilityPass();
         checkLocalOnlyExternalReferenceBoundary(gitignore, fabricModJson);
         checkPublicDocsOnlyDescribeInferredArchitecture();
-        checkGpuResidentRequirements(architecturePlan);
-        checkRuntimeSafetyBoundaries(architecturePlan);
         checkCodeContracts(databaseSource, residencyBudgetSource, residencyStatsSource, visibilityCommandStatsSource, pipelineStageSource, layerDirectorySource);
     }
     
     /**
-     * The plan is carried out. These hold the implementation to what it decided: pages that are
+     * Holds the resident terrain path to its design: pages that are
      * copied only when they change, into device memory, in command order; a frame that lists
      * pages and leaves culling and the command to the GPU; and strict replacement still opt-in.
      */
@@ -74,19 +64,6 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
         requireContains(config, "booleanProperty(\"vim.strictMeshTerrainReplacement\", false)", "strict replacement must stay opt-in");
     }
 
-    private static void checkPlanWiring(String architecturePlan, String extensionPlan, String providerPlan, String completedReadme) {
-        requireContains(completedReadme, "[GPU Resident Terrain Architecture](gpu-resident-terrain-architecture.md)", "completed README must list the GPU-resident terrain architecture plan");
-        requireContains(completedReadme, "[Accelerated Worldgen Provider Integration](accelerated-worldgen-provider-integration.md)", "completed README must list the optional accelerated-worldgen provider integration plan");
-        requireContains(extensionPlan, "[GPU-resident terrain architecture](gpu-resident-terrain-architecture.md)", "26.2 renderer extension plan must link the GPU-resident terrain architecture plan");
-        requireContains(extensionPlan, "[accelerated-worldgen provider integration](accelerated-worldgen-provider-integration.md)", "26.2 renderer extension plan must link the dedicated optional-provider integration plan");
-        requireContains(architecturePlan, "# GPU Resident Terrain Architecture", "architecture plan must use the expected title");
-        requireContains(architecturePlan, "## Exit Criteria", "architecture plan must define exit criteria");
-        requireContains(providerPlan, "# Accelerated Worldgen Provider Integration", "provider integration plan must use the expected title");
-        requireContains(providerPlan, "diagnostics-only detection", "provider integration plan must keep initial integration diagnostic-only");
-        requireContains(providerPlan, "must not add `suggests` or `recommends`", "provider integration plan must not change Fabric metadata before explicit approval");
-        requireContains(providerPlan, "CPU-authoritative Minecraft chunk state remains the renderer default", "provider integration plan must preserve renderer authority boundaries");
-    }
-    
     private static void checkLocalOnlyExternalReferenceBoundary(String gitignore, String fabricModJson) {
         requireContains(gitignore, "docs/local/", "external mod source references must stay in ignored local notes");
         require(!fabricModJson.contains("\"suggests\"") && !fabricModJson.contains("\"recommends\""), "fabric metadata must not add optional external worldgen provider relationships before a dedicated integration plan");
@@ -103,57 +80,6 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
                 }
             }
         }
-    }
-    
-    private static void checkGpuResidentRequirements(String architecturePlan) {
-        requireContains(architecturePlan, "GpuWorldResidencyBudget", "architecture plan must name the residency-budget contract");
-        requireContains(architecturePlan, "GpuWorldResidencyStats", "architecture plan must name the residency-stats contract");
-        requireContains(architecturePlan, "GpuWorldVisibilityCommandStats", "architecture plan must name the visibility/command-stats contract");
-        requireContains(architecturePlan, "GpuWorldPipelineStage", "architecture plan must name the pipeline-stage contract");
-        requireContains(architecturePlan, "GpuWorldTerrainLayerDirectory", "architecture plan must name the resident terrain layer directory contract");
-        requireContains(architecturePlan, "persistent section pages", "architecture plan must require persistent section pages");
-        requireContains(architecturePlan, "dirty-event updates", "architecture plan must move updates to dirty-event ingestion");
-        requireContains(architecturePlan, "visibility compaction", "architecture plan must require visibility compaction");
-        requireContains(architecturePlan, "indirect command generation", "architecture plan must require indirect command generation");
-        requireContains(architecturePlan, "explicit residency budget", "architecture plan must require explicit memory budgeting");
-        requireContains(architecturePlan, "not one CPU work-queue upload per vanilla terrain draw", "architecture plan must reject the current per-draw upload shape");
-        requireContains(architecturePlan, "External source links and named reference projects stay in ignored local notes under `docs/local/`", "architecture plan must route named external references to ignored local notes");
-        requireContains(architecturePlan, "## Resident Page Ownership", "architecture plan must define resident page ownership");
-        requireContains(architecturePlan, "page ID lifecycle", "architecture plan must define page ID lifecycle");
-        requireContains(architecturePlan, "canonical-vs-LOD authority labels", "architecture plan must preserve authority labels across page classes");
-        requireContains(architecturePlan, "## Queue Overflow Policy", "architecture plan must define queue overflow policy");
-        requireContains(architecturePlan, "soft", "architecture plan must require a soft overflow limit");
-        requireContains(architecturePlan, "hard limit", "architecture plan must require a hard overflow limit");
-        requireContains(architecturePlan, "frame behavior", "architecture plan must require overflow frame behavior");
-        requireContains(architecturePlan, "fallback path", "architecture plan must require overflow fallback path");
-        requireContains(architecturePlan, "diagnostics", "architecture plan must require overflow diagnostics");
-        requireContains(architecturePlan, "## Synchronization Model", "architecture plan must define frame-safe synchronization");
-        requireContains(architecturePlan, "readback must not be frame-critical", "architecture plan must keep diagnostics off the frame-critical path");
-        requireContains(architecturePlan, "## Invalidation Matrix", "architecture plan must include invalidation matrix");
-        requireContains(architecturePlan, "block updates", "architecture plan must cover block update invalidation");
-        requireContains(architecturePlan, "neighbor exposure changes", "architecture plan must cover neighbor exposure invalidation");
-        requireContains(architecturePlan, "section unloads", "architecture plan must cover section unload invalidation");
-        requireContains(architecturePlan, "render-distance changes", "architecture plan must cover render-distance invalidation");
-        requireContains(architecturePlan, "resource reloads", "architecture plan must cover resource reload invalidation");
-        requireContains(architecturePlan, "material-table revision changes", "architecture plan must cover material-table invalidation");
-        requireContains(architecturePlan, "world clear/device loss", "architecture plan must cover world clear and device loss invalidation");
-        requireContains(architecturePlan, "LOD parent/child propagation", "architecture plan must cover LOD propagation invalidation");
-        requireContains(architecturePlan, "## Material And Texture Compatibility", "architecture plan must define material and texture compatibility");
-        requireContains(architecturePlan, "block atlas/lightmap source of truth", "architecture plan must preserve vanilla texture authority");
-        requireContains(architecturePlan, "resource-pack revision invalidation", "architecture plan must handle resource-pack changes");
-        requireContains(architecturePlan, "## Traversal Diagnostics", "architecture plan must define traversal diagnostics");
-        requireContains(architecturePlan, "HIZ built/invalid dimensions", "architecture plan must require HIZ diagnostics");
-        requireContains(architecturePlan, "vanilla cancellation requires complete visible coverage", "architecture plan must separate command readiness from strict cancellation");
-        requireContains(architecturePlan, "no queue overflow", "architecture plan must require no queue overflow before strict cancellation");
-        requireContains(architecturePlan, "no stale page revisions", "architecture plan must require fresh page revisions before strict cancellation");
-        requireContains(architecturePlan, "material compatibility", "architecture plan must require material compatibility before strict cancellation");
-    }
-    
-    private static void checkRuntimeSafetyBoundaries(String architecturePlan) {
-        requireContains(architecturePlan, "`vim.strictMeshTerrainReplacement=false`", "architecture plan must preserve strict terrain replacement as default-off");
-        requireContains(architecturePlan, "strict cancellation remains validation-only", "architecture plan must keep strict cancellation validation-gated");
-        requireContains(architecturePlan, "vanilla terrain remains visible", "architecture plan must preserve vanilla fallback while the GPU path is incomplete");
-        requireContains(architecturePlan, "translucent terrain, underwater overlays, and environment screen effects stay vanilla", "architecture plan must keep uncontracted translucent/effect rendering on vanilla");
     }
     
     private static void checkCodeContracts(String databaseSource, String residencyBudgetSource, String residencyStatsSource, String visibilityCommandStatsSource, String pipelineStageSource, String layerDirectorySource) {
