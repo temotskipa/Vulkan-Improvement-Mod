@@ -139,6 +139,17 @@ renderer code does not drift back into a catch-all root package.
   keyed by section node and chunk layer, not by vanilla draw objects, so later
   GPU visibility work can consume resident section-layer records without
   depending on transient render-pass draw slices.
+- `TerrainGpuBuffer.Placement` says where a terrain buffer lives. What the
+  pages hold is in device memory and written by copies; what the CPU writes
+  each frame and the GPU reads or counts up in the same frame (visible page
+  lists, mesh-task commands, the material table, counters, descriptors) is in
+  device memory the CPU maps for sequential writes; host memory is for staging
+  only. The mesh stage counts nothing per meshlet.
+- `TerrainPerformanceMonitor` times frames and, with `vim.terrainGpuTimer`,
+  the GPU time of the mod's prepared work and of each group of terrain layers,
+  through Minecraft's own timestamp queries. It measures vanilla terrain and
+  the mesh path alike; the Performance Check in `docs/RELIABILITY.md` says how
+  to use it.
 - `TerrainGpuLayout` is the CPU-side source of truth for terrain buffer,
   meshlet, visible-list, and push-constant layout constants that shaders depend
   on.

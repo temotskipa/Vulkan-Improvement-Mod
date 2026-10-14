@@ -94,7 +94,8 @@ public final class TerrainRenderPassStateInvariantCheck {
         require(createPipeline.contains("device.renderpassCache().getRenderPass("), "the mesh pipeline must be created for the render pass Minecraft's pipeline uses");
         require(createPipeline.contains(".renderPass(renderPass).subpass(0)"), "the mesh pipeline must name its render pass and subpass");
         require(!createPipeline.contains("VkPipelineRenderingCreateInfo"), "the mesh pipeline must not be created for dynamic rendering");
-        require(meshProgram.contains("Map<TerrainPipelineState, MeshPipeline> pipelineCache"), "mesh pipelines must be cached by the vanilla pipeline state they stand in for");
+        require(meshProgram.contains("Map<PipelineKey, MeshPipeline> pipelineCache") && meshProgram.contains("record PipelineKey(TerrainPipelineState state, boolean alphaTest)"), "mesh pipelines must be cached by the vanilla pipeline state they stand in for and whether the layer tests alpha");
+        require(meshProgram.contains("alphaTestValue.putInt(0, alphaTest ? VK10.VK_TRUE : VK10.VK_FALSE);"), "a solid layer's mesh pipeline must be specialized without the alpha test, so depth is tested before its fragments run");
         // Minecraft culls the back faces of terrain. Drawn unculled, both faces of a plant's crossed
         // planes show and their mirrored textures add up to foliage denser than Minecraft's.
         require(createPipeline.contains(".cullMode(pipelineInfo.cull() ? VK10.VK_CULL_MODE_BACK_BIT : VK10.VK_CULL_MODE_NONE).frontFace(VK10.VK_FRONT_FACE_CLOCKWISE)"), "the mesh pipeline must cull the faces the vanilla pipeline it stands in for culls");

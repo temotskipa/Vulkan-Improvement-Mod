@@ -146,9 +146,8 @@ void main() {
     // A task that draws a page emits one mesh task per meshlet, counted from the page's first.
     MeshletHeader header = meshlets.headers[taskPayload.visibleMeshlet + gl_WorkGroupID.x];
     bool indexedTriangles = (header.flags0 & INDEXED_TRIANGLES_FLAG) != 0 && header.indexBytes > 0;
-    if (lane == 0u) {
-        atomicAdd(counters.candidateMeshlets, 1u);
-    }
+    // Nothing is counted for every meshlet: an atomic per workgroup on one address made the
+    // opaque layers several times slower than vanilla's.
     if (pc.enableMeshletFrustumCulling != 0u && cullMeshlet(header)) {
         if (lane == 0u) {
             atomicAdd(counters.culledMeshlets, 1u);
@@ -175,7 +174,6 @@ void main() {
     }
 
     if (lane == 0u) {
-        atomicAdd(counters.emittedMeshlets, 1u);
         SetMeshOutputsEXT(vertexCount, primitiveCount);
     }
     for (uint vertex = lane; vertex < vertexCount; vertex += gl_WorkGroupSize.x) {

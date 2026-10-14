@@ -3,6 +3,7 @@ package com.temotskipa.vulkanimprovement.mixin.client;
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.VulkanImprovementRuntime;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.MeshTerrainRenderer;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.SectionMeshletStore;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainPerformanceMonitor;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Options;
@@ -44,7 +45,9 @@ public final class LevelRendererMixin {
     private void vim$endVisibleFrame(boolean respectTranslucentOrder, List<?> sectionInfos, Map<?, ?> drawGroups, CallbackInfoReturnable<Integer> cir) {
         SectionMeshletStore.endVisibleFrame();
         if (VulkanImprovementRuntime.isVulkanBackendActive()) {
+            TerrainPerformanceMonitor.get().beginFrame();
             MeshTerrainRenderer.get().prepareVisibleFrame(this.levelRenderState.renderWireframeTerrain);
+            TerrainPerformanceMonitor.get().endPrepare();
         }
     }
     

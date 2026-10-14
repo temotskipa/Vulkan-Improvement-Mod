@@ -8,6 +8,7 @@ import com.mojang.renderpearl.api.textures.GpuTextureView;
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.VulkanImprovementRuntime;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.DescriptorHeapTerrainResources;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.MeshTerrainRenderer;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainPerformanceMonitor;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRenderContext;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
 import net.minecraft.client.Minecraft;
@@ -28,7 +29,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class ChunkSectionsToRenderMixin {
     @Inject(method = "renderGroup", at = @At("HEAD"))
     private void vim$observeTerrainGroup(ChunkSectionLayerGroup group, RenderPass renderPass, GpuSampler sampler, GpuTextureView atlas, ChunkSectionsToRender.@Nullable ImprovedFogTextures improvedFogTextures, boolean renderWireframeTerrain, CallbackInfo ci) {
-        if (!VulkanImprovementRuntime.isVulkanBackendActive() || !TerrainRendererDebugConfig.terrainCaptureEnabled()) {
+        if (!VulkanImprovementRuntime.isVulkanBackendActive()) {
+            return;
+        }
+        TerrainPerformanceMonitor.get().markGroup(group, false);
+        if (!TerrainRendererDebugConfig.terrainCaptureEnabled()) {
             return;
         }
         TerrainRenderContext.enter();
@@ -45,6 +50,9 @@ public abstract class ChunkSectionsToRenderMixin {
     
     @Inject(method = "renderGroup", at = @At("RETURN"))
     private void vim$leaveTerrainGroup(ChunkSectionLayerGroup group, RenderPass renderPass, GpuSampler sampler, GpuTextureView atlas, ChunkSectionsToRender.@Nullable ImprovedFogTextures improvedFogTextures, boolean renderWireframeTerrain, CallbackInfo ci) {
+        if (VulkanImprovementRuntime.isVulkanBackendActive()) {
+            TerrainPerformanceMonitor.get().markGroup(group, true);
+        }
         if (!TerrainRenderContext.isTerrainPass()) {
             return;
         }

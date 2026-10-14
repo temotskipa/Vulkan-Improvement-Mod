@@ -377,7 +377,7 @@ public final class DescriptorHeapTerrainResources {
         for (SectionMeshletStore.PageUpload upload : uploads) {
             stagingBytes += upload.bytes();
         }
-        TerrainGpuBuffer staging = new TerrainGpuBuffer(activeDevice, "VIM Terrain Page Staging", stagingBytes, VK10.VK_BUFFER_USAGE_TRANSFER_SRC_BIT, true);
+        TerrainGpuBuffer staging = new TerrainGpuBuffer(activeDevice, "VIM Terrain Page Staging", stagingBytes, VK10.VK_BUFFER_USAGE_TRANSFER_SRC_BIT, TerrainGpuBuffer.Placement.HOST);
         VkBufferCopy.Buffer vertexRegions = VkBufferCopy.calloc(uploads.size());
         VkBufferCopy.Buffer indexRegions = VkBufferCopy.calloc(uploads.size());
         VkBufferCopy.Buffer headerRegions = VkBufferCopy.calloc(uploads.size());
@@ -1368,20 +1368,23 @@ public final class DescriptorHeapTerrainResources {
             int resourceDescriptorBufferUsage = VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | EXTDescriptorBuffer.VK_BUFFER_USAGE_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT | EXTDescriptorBuffer.VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT;
             int storageUsage = VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK10.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
             int indirectStorageUsage = storageUsage | VK10.VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
-            TerrainGpuBuffer samplerHeap = layout.descriptorHeapEnabled ? new TerrainGpuBuffer(device, "VIM Terrain Sampler Descriptor Heap", layout.samplerHeapBytes, descriptorHeapUsage, true) : null;
-            TerrainGpuBuffer resourceHeap = layout.descriptorHeapEnabled ? new TerrainGpuBuffer(device, "VIM Terrain Resource Descriptor Heap", layout.resourceHeapBytes, descriptorHeapUsage, true) : null;
-            TerrainGpuBuffer samplerDescriptorBuffer = layout.descriptorBufferEnabled ? new TerrainGpuBuffer(device, "VIM Terrain Sampler Descriptor Buffer", layout.samplerDescriptorBufferBytes, samplerDescriptorBufferUsage, true) : null;
-            TerrainGpuBuffer resourceDescriptorBuffer = layout.descriptorBufferEnabled ? new TerrainGpuBuffer(device, "VIM Terrain Resource Descriptor Buffer", layout.resourceDescriptorBufferBytes, resourceDescriptorBufferUsage, true) : null;
+            TerrainGpuBuffer samplerHeap = layout.descriptorHeapEnabled ? new TerrainGpuBuffer(device, "VIM Terrain Sampler Descriptor Heap", layout.samplerHeapBytes, descriptorHeapUsage, TerrainGpuBuffer.Placement.DEVICE_MAPPED) : null;
+            TerrainGpuBuffer resourceHeap = layout.descriptorHeapEnabled ? new TerrainGpuBuffer(device, "VIM Terrain Resource Descriptor Heap", layout.resourceHeapBytes, descriptorHeapUsage, TerrainGpuBuffer.Placement.DEVICE_MAPPED) : null;
+            TerrainGpuBuffer samplerDescriptorBuffer = layout.descriptorBufferEnabled ? new TerrainGpuBuffer(device, "VIM Terrain Sampler Descriptor Buffer", layout.samplerDescriptorBufferBytes, samplerDescriptorBufferUsage, TerrainGpuBuffer.Placement.DEVICE_MAPPED) : null;
+            TerrainGpuBuffer resourceDescriptorBuffer = layout.descriptorBufferEnabled ? new TerrainGpuBuffer(device, "VIM Terrain Resource Descriptor Buffer", layout.resourceDescriptorBufferBytes, resourceDescriptorBufferUsage, TerrainGpuBuffer.Placement.DEVICE_MAPPED) : null;
             // The page table and what the pages hold live in device memory and are written by copies only.
-            TerrainGpuBuffer sectionMetadata = new TerrainGpuBuffer(device, "VIM Terrain Page Table", layout.sectionMetadataBytes, storageUsage, false);
-            TerrainGpuBuffer meshletHeaders = new TerrainGpuBuffer(device, "VIM Terrain Meshlet Headers", layout.meshletHeaderBytes, storageUsage, false);
-            TerrainGpuBuffer meshletVertices = new TerrainGpuBuffer(device, "VIM Terrain Meshlet Vertex Payload", layout.vertexPayloadBytes, storageUsage, false);
-            TerrainGpuBuffer meshletIndices = new TerrainGpuBuffer(device, "VIM Terrain Meshlet Index Payload", layout.indexPayloadBytes, storageUsage, false);
-            TerrainGpuBuffer visibleMeshlets = new TerrainGpuBuffer(device, "VIM Terrain Visible Meshlet List", layout.visibleMeshletBytes, storageUsage, true);
-            TerrainGpuBuffer workQueue = new TerrainGpuBuffer(device, "VIM Terrain Work Queue", layout.workQueueBytes, storageUsage, true);
-            TerrainGpuBuffer meshTaskCommands = new TerrainGpuBuffer(device, "VIM Terrain Mesh Task Commands", layout.meshTaskCommandBytes, indirectStorageUsage, true);
-            TerrainGpuBuffer materialTable = new TerrainGpuBuffer(device, "VIM Terrain Material Table", layout.materialTableBytes, storageUsage, true);
-            TerrainGpuBuffer debugCounters = new TerrainGpuBuffer(device, "VIM Terrain Debug Counters", TerrainGpuLayout.DEBUG_COUNTER_BYTES, storageUsage, true);
+            TerrainGpuBuffer sectionMetadata = new TerrainGpuBuffer(device, "VIM Terrain Page Table", layout.sectionMetadataBytes, storageUsage, TerrainGpuBuffer.Placement.DEVICE);
+            TerrainGpuBuffer meshletHeaders = new TerrainGpuBuffer(device, "VIM Terrain Meshlet Headers", layout.meshletHeaderBytes, storageUsage, TerrainGpuBuffer.Placement.DEVICE);
+            TerrainGpuBuffer meshletVertices = new TerrainGpuBuffer(device, "VIM Terrain Meshlet Vertex Payload", layout.vertexPayloadBytes, storageUsage, TerrainGpuBuffer.Placement.DEVICE);
+            TerrainGpuBuffer meshletIndices = new TerrainGpuBuffer(device, "VIM Terrain Meshlet Index Payload", layout.indexPayloadBytes, storageUsage, TerrainGpuBuffer.Placement.DEVICE);
+            // What the CPU writes each frame and the GPU reads or counts up in the same frame. In host
+            // memory every read and every atomic of the GPU crosses the bus: one atomic a meshlet
+            // in host memory cost the opaque layers two milliseconds a frame.
+            TerrainGpuBuffer visibleMeshlets = new TerrainGpuBuffer(device, "VIM Terrain Visible Meshlet List", layout.visibleMeshletBytes, storageUsage, TerrainGpuBuffer.Placement.DEVICE_MAPPED);
+            TerrainGpuBuffer workQueue = new TerrainGpuBuffer(device, "VIM Terrain Work Queue", layout.workQueueBytes, storageUsage, TerrainGpuBuffer.Placement.DEVICE_MAPPED);
+            TerrainGpuBuffer meshTaskCommands = new TerrainGpuBuffer(device, "VIM Terrain Mesh Task Commands", layout.meshTaskCommandBytes, indirectStorageUsage, TerrainGpuBuffer.Placement.DEVICE_MAPPED);
+            TerrainGpuBuffer materialTable = new TerrainGpuBuffer(device, "VIM Terrain Material Table", layout.materialTableBytes, storageUsage, TerrainGpuBuffer.Placement.DEVICE_MAPPED);
+            TerrainGpuBuffer debugCounters = new TerrainGpuBuffer(device, "VIM Terrain Debug Counters", TerrainGpuLayout.DEBUG_COUNTER_BYTES, storageUsage, TerrainGpuBuffer.Placement.DEVICE_MAPPED);
             return new GpuResources(samplerHeap, resourceHeap, samplerDescriptorBuffer, resourceDescriptorBuffer, sectionMetadata, meshletHeaders, meshletVertices, meshletIndices, visibleMeshlets, workQueue, meshTaskCommands, materialTable, debugCounters);
         }
         
@@ -1474,10 +1477,8 @@ public final class DescriptorHeapTerrainResources {
             if (this.debugCounters != null) {
                 this.debugCounters.invalidate();
                 ByteBuffer counters = this.debugCounters.mappedByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
-                map.put("candidateMeshlets", Integer.toUnsignedLong(counters.getInt(0)));
+                // Counted only where the mesh stage culls meshlets itself, on the CPU work-queue path.
                 map.put("culledMeshlets", Integer.toUnsignedLong(counters.getInt(4)));
-                map.put("emittedMeshlets", Integer.toUnsignedLong(counters.getInt(8)));
-                map.put("reserved", Integer.toUnsignedLong(counters.getInt(12)));
                 map.put("visibilityInputPages", Integer.toUnsignedLong(counters.getInt(TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET)));
                 map.put("visibilityCulledPages", Integer.toUnsignedLong(counters.getInt(TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET + Integer.BYTES)));
                 map.put("visibilityVisiblePages", Integer.toUnsignedLong(counters.getInt(TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET + 2 * Integer.BYTES)));

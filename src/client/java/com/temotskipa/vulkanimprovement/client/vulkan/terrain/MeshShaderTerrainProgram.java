@@ -10,6 +10,7 @@ import com.mojang.renderpearl.backend.vulkan.VulkanUtils;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import org.lwjgl.system.MemoryStack;
@@ -24,7 +25,7 @@ import java.util.concurrent.atomic.LongAdder;
 
 public final class MeshShaderTerrainProgram {
     private static final MeshShaderTerrainProgram INSTANCE = new MeshShaderTerrainProgram();
-    private final Map<TerrainPipelineState, MeshPipeline> pipelineCache = new HashMap<>();
+    private final Map<PipelineKey, MeshPipeline> pipelineCache = new HashMap<>();
     private final LongAdder pipelineCompiles = new LongAdder();
     private final LongAdder meshTaskDispatches = new LongAdder();
     private final LongAdder improvedFogDispatches = new LongAdder();
@@ -214,7 +215,7 @@ public final class MeshShaderTerrainProgram {
         if (activeDevice == null || !ready() || dispatch == null || !dispatch.ready() || meshletHeaderAddress == 0L || vertexPayloadAddress == 0L) {
             return false;
         }
-        MeshPipeline meshPipeline = this.pipelineCache.computeIfAbsent(vanillaPipeline, state -> createPipeline(activeDevice, state));
+        MeshPipeline meshPipeline = this.pipelineCache.computeIfAbsent(new PipelineKey(vanillaPipeline, alphaTest(dispatch.layerOrdinal())), key -> createPipeline(activeDevice, key.state(), key.alphaTest()));
         boolean improvedFog = TerrainRenderContext.improvedFog();
         if (!bindTerrainTextureDescriptorBuffer(commandBuffer, meshPipeline, improvedFog)) {
             return false;
@@ -261,6 +262,15 @@ public final class MeshShaderTerrainProgram {
         return true;
     }
     
+    /**
+     * Whether a layer's fragments may be dropped for their alpha. A draw that is not for one layer
+     * keeps the test.
+     */
+    private static boolean alphaTest(int layerOrdinal) {
+        ChunkSectionLayer[] layers = ChunkSectionLayer.values();
+        return layerOrdinal < 0 || layerOrdinal >= layers.length || TerrainMaterialClassifier.alphaModeForLayer(layers[layerOrdinal]) != GpuMaterialAlphaMode.OPAQUE;
+    }
+
     private boolean bindTerrainTextureDescriptorBuffer(VkCommandBuffer commandBuffer, MeshPipeline meshPipeline, boolean improvedFog) {
         DescriptorHeapTerrainResources resources = DescriptorHeapTerrainResources.get();
         long descriptorBufferAddress = resources.terrainDescriptorBufferAddress();
@@ -384,8 +394,11 @@ public final class MeshShaderTerrainProgram {
      * Builds the mesh pipeline that stands in for one vanilla terrain pipeline: the same
      * rasterization, depth and blend state, for the same render pass, with the terrain task, mesh
      * and fragment stages.
+     *
+     * @param alphaTest whether the fragment stage keeps its alpha test; without it the GPU tests
+     *                  depth before the fragment stage runs
      */
-    private MeshPipeline createPipeline(VulkanDevice device, TerrainPipelineState pipelineInfo) {
+    private MeshPipeline createPipeline(VulkanDevice device, TerrainPipelineState pipelineInfo, boolean alphaTest) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             VkDescriptorSetLayoutBinding.Buffer textureBindings = VkDescriptorSetLayoutBinding.calloc(7, stack);
             textureBindings.get(0).binding(0).descriptorType(VK10.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE).descriptorCount(1).stageFlags(VK10.VK_SHADER_STAGE_FRAGMENT_BIT);
@@ -414,7 +427,12 @@ public final class MeshShaderTerrainProgram {
             ByteBuffer entryPoint = stack.UTF8("main");
             shaderStages.get(0).sType$Default().stage(EXTMeshShader.VK_SHADER_STAGE_TASK_BIT_EXT).module(this.taskModule).pName(entryPoint);
             shaderStages.get(1).sType$Default().stage(EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT).module(this.meshModule).pName(entryPoint);
-            shaderStages.get(2).sType$Default().stage(VK10.VK_SHADER_STAGE_FRAGMENT_BIT).module(this.fragmentModule).pName(entryPoint);
+            VkSpecializationMapEntry.Buffer alphaTestEntry = VkSpecializationMapEntry.calloc(1, stack);
+            alphaTestEntry.get(0).constantID(0).offset(0).size(Integer.BYTES);
+            ByteBuffer alphaTestValue = stack.malloc(Integer.BYTES);
+            alphaTestValue.putInt(0, alphaTest ? VK10.VK_TRUE : VK10.VK_FALSE);
+            VkSpecializationInfo fragmentSpecialization = VkSpecializationInfo.calloc(stack).pMapEntries(alphaTestEntry).pData(alphaTestValue);
+            shaderStages.get(2).sType$Default().stage(VK10.VK_SHADER_STAGE_FRAGMENT_BIT).module(this.fragmentModule).pName(entryPoint).pSpecializationInfo(fragmentSpecialization);
             
             VkPipelineRasterizationStateCreateInfo rasterizationState = VkPipelineRasterizationStateCreateInfo.calloc(stack).sType$Default().polygonMode(VulkanConst.toVk(pipelineInfo.polygonMode())).cullMode(pipelineInfo.cull() ? VK10.VK_CULL_MODE_BACK_BIT : VK10.VK_CULL_MODE_NONE).frontFace(VK10.VK_FRONT_FACE_CLOCKWISE).lineWidth(1.0F);
             
@@ -485,6 +503,9 @@ public final class MeshShaderTerrainProgram {
         }
     }
     
+    private record PipelineKey(TerrainPipelineState state, boolean alphaTest) {
+    }
+
     private record MeshPipeline(long handle, long layout, long textureDescriptorSetLayout, DescriptorHeapTerrainResources.TextureDescriptorLayout textureDescriptorLayout) {
         private void destroy(VulkanDevice device) {
             if (this.handle != 0L) {

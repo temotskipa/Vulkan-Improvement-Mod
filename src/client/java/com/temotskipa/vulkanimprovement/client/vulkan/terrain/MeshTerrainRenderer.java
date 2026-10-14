@@ -437,6 +437,7 @@ public final class MeshTerrainRenderer {
         try {
             DescriptorHeapTerrainResources.get().configure(device, capabilities);
             MeshShaderTerrainProgram.get().configure(device);
+            TerrainPerformanceMonitor.get().configure(device);
             RendererCoreServices.get().configure(capabilities);
             RendererDomainObserver.observeRendererReady();
             RendererCoreServices.get().markReady("renderer services configured");
@@ -454,6 +455,7 @@ public final class MeshTerrainRenderer {
     
     public void shutdown() {
         RendererCoreServices.get().beginShutdown("deferred renderer shutdown requested");
+        TerrainPerformanceMonitor.get().shutdown();
         MeshShaderTerrainProgram.get().shutdown();
         DescriptorHeapTerrainResources.get().shutdown();
         RendererCoreServices.get().completeShutdown("renderer shutdown complete");
@@ -461,6 +463,7 @@ public final class MeshTerrainRenderer {
     
     public void shutdownNow() {
         RendererCoreServices.get().beginShutdown("immediate renderer shutdown requested");
+        TerrainPerformanceMonitor.get().shutdown();
         MeshShaderTerrainProgram.get().shutdown();
         DescriptorHeapTerrainResources.get().shutdownNow();
         RendererCoreServices.get().completeShutdown("renderer immediate shutdown complete");
@@ -473,6 +476,7 @@ public final class MeshTerrainRenderer {
         map.put("lifecycleState", coreServices.currentLifecycleState().name());
         map.put("lifecycleReason", coreServices.lifecycleReason());
         map.put("mode", TerrainRendererDebugConfig.rendererMode());
+        map.put("performance", TerrainPerformanceMonitor.get().asMap());
         map.put("terrainGroupCalls", this.terrainGroupCalls.sum());
         map.put("improvedFogTerrainGroups", this.improvedFogTerrainGroups.sum());
         map.put("fog", TerrainFogState.asMap());

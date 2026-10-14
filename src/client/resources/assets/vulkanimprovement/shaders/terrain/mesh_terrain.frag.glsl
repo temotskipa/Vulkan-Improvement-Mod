@@ -30,6 +30,11 @@ layout(push_constant, std430) uniform TerrainFogConstants {
     layout(offset = 208) ivec4 fogMode;
 } fog;
 
+// Whether the layer this pipeline draws can drop a fragment for its alpha. Solid terrain cannot.
+// A shader that may discard keeps the GPU from testing depth before it runs, so the solid
+// pipeline is specialized without the test, as vanilla's solid terrain shader has none.
+layout(constant_id = 0) const bool ALPHA_TEST = true;
+
 // The lightmap is 16 texels a side and a light level addresses the centre of one of them.
 const float LIGHTMAP_HALF_TEXEL = 0.5 / 16.0;
 
@@ -71,12 +76,14 @@ void main() {
     vec2 lightUv = clamp(meshLightUv + LIGHTMAP_HALF_TEXEL, LIGHTMAP_HALF_TEXEL, 1.0 - LIGHTMAP_HALF_TEXEL);
     vec4 light = texture(sampler2D(lightmapTexture, lightmapSampler), lightUv);
     vec4 lit = atlas * meshColor * light;
-    bool alphaMasked = (meshMaterialFlags & 4u) != 0u;
     bool alphaBlended = (meshMaterialFlags & 8u) != 0u;
-    // The thresholds of Minecraft's cutout and translucent terrain pipelines; solid terrain has none.
-    float alphaCutoff = alphaMasked ? 0.5 : (alphaBlended ? 0.1 : 0.0);
-    if (lit.a < alphaCutoff) {
-        discard;
+    if (ALPHA_TEST) {
+        bool alphaMasked = (meshMaterialFlags & 4u) != 0u;
+        // The thresholds of Minecraft's cutout and translucent terrain pipelines; solid terrain has none.
+        float alphaCutoff = alphaMasked ? 0.5 : (alphaBlended ? 0.1 : 0.0);
+        if (lit.a < alphaCutoff) {
+            discard;
+        }
     }
     float environmentalFog = fogAmount(meshFog.x, fog.fogRange.x, fog.fogRange.y);
     float renderDistanceFog = fogAmount(meshFog.y, fog.fogRange.z, fog.fogRange.w);

@@ -195,6 +195,7 @@ validation on real Vulkan hardware.
 | `vim.initialIndexPayloadBytes`         | `67108864`  | Initial index payload buffer size.                    |
 | `vim.terrainMirrorStabilizationMillis` | `750`       | Delay before mirrored terrain is treated as stable.   |
 | `vim.allowCpuVisibleMeshletFallback`   | `false`     | Allow the legacy CPU visible-meshlet ring when work-queue upload is unavailable. |
+| `vim.terrainGpuTimer`                  | `false`     | Write GPU timestamps around the mod's per-frame prepared work and each group of terrain layers, for `terrainRenderer.performance.gpu`. Measures vanilla terrain and the mesh path alike. |
 
 Press the **Dump Vulkan Improvement Diagnostics** key (default: `K` in the Debug category) to log a compact bug-report JSON blob via `RendererDiagnostics`.
 
@@ -250,6 +251,30 @@ by a mean of about 0.03 of 255 per channel; mesh against vanilla is about 1.0,
 with single pixels differing on foliage edges. Compare at noon, at midnight, at
 a short render distance (fog), with blindness (environmental fog), with
 improved transparency on and off, and far from the world origin.
+
+## Performance Check
+
+The mesh path has to be faster than vanilla terrain, not only look like it.
+`TerrainPerformanceMonitor` (in the bug report under
+`terrainRenderer.performance`) times every frame in a world and, with
+`vim.terrainGpuTimer`, the GPU time of the mod's prepared work (`prepareMs`)
+and of each group of terrain layers (`opaqueMs`, `translucentMs`). Its
+`reset()` starts a new sample.
+
+To compare: run the client at 1920x1080 with the frame limit and vsync off and
+`inactivityFpsLimit` not `afk` (Minecraft caps an unattended client at 30 FPS
+after a minute otherwise), freeze ticking, pose the camera, wait until
+Minecraft has no section left to compile, then take a ten-second sample with
+vanilla terrain and one with strict mesh replacement in the same session.
+Compare `meanFps`, `onePercentLowFps` and the GPU group times. Look at more
+than one view: on the ground, high above the terrain, and along the horizon.
+A CPU profile (`jcmd <pid> JFR.start`) shows whether the render thread waits
+for the GPU (swapchain acquire and submit) or is busy itself.
+
+Any buffer the GPU reads or updates every frame lives in device memory
+(`TerrainGpuBuffer.Placement.DEVICE_MAPPED`); host memory is for staging and
+read-back. Two atomics per meshlet on a counter in host memory once made the
+opaque layers take 2.4 ms instead of 0.4 ms.
 
 ## Before The First RT/PT Allocation
 

@@ -28,7 +28,26 @@ final class TerrainGpuBuffer implements Destroyable, AutoCloseable {
     private boolean closed;
     private boolean destroyed;
     
-    TerrainGpuBuffer(VulkanDevice device, String label, long size, int usage, boolean hostVisible) {
+    /**
+     * Where a buffer's memory lives and how the CPU reaches it.
+     */
+    enum Placement {
+        /**
+         * Device memory the CPU cannot map; written by copies only.
+         */
+        DEVICE,
+        /**
+         * Device memory the CPU maps and writes in order, for what the GPU reads or updates every
+         * frame. Where the device has no such memory, host memory the GPU reaches over the bus.
+         */
+        DEVICE_MAPPED,
+        /**
+         * Host memory the CPU reads and writes at random, for staging and read-back.
+         */
+        HOST
+    }
+    
+    TerrainGpuBuffer(VulkanDevice device, String label, long size, int usage, Placement placement) {
         this.device = device;
         this.label = label;
         this.size = size;
@@ -40,9 +59,12 @@ final class TerrainGpuBuffer implements Destroyable, AutoCloseable {
             bufferInfo.sharingMode(VK10.VK_SHARING_MODE_EXCLUSIVE);
             
             VmaAllocationCreateInfo allocationInfo = VmaAllocationCreateInfo.calloc(stack);
-            allocationInfo.usage(hostVisible ? Vma.VMA_MEMORY_USAGE_AUTO_PREFER_HOST : Vma.VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
-            if (hostVisible) {
+            allocationInfo.usage(placement == Placement.HOST ? Vma.VMA_MEMORY_USAGE_AUTO_PREFER_HOST : Vma.VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
+            if (placement == Placement.HOST) {
                 allocationInfo.flags(Vma.VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | Vma.VMA_ALLOCATION_CREATE_MAPPED_BIT);
+            }
+            else if (placement == Placement.DEVICE_MAPPED) {
+                allocationInfo.flags(Vma.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | Vma.VMA_ALLOCATION_CREATE_MAPPED_BIT);
             }
             
             LongBuffer bufferPtr = stack.callocLong(1);
