@@ -23,8 +23,8 @@ public final class TerrainFragmentShaderSamplingInvariantCheck {
         checkBlockAtlasSamplingIsCrispAndMipAware(shader);
         checkCutoutAlphaUsesVanillaMask(shader);
         checkOpaqueMaskedAlphaOutput(shader);
-        checkLightingMatchesMinecraft(shader);
         String meshShader = Files.readString(MESH_SHADER);
+        checkLightingMatchesMinecraft(shader, meshShader);
         checkFogMatchesMinecraft(shader, meshShader);
         checkImprovedFog(shader, Files.readString(MESH_SHADER_PROGRAM), Files.readString(DESCRIPTOR_RESOURCES), Files.readString(TERRAIN_GROUP_MIXIN));
         checkPushConstantsAgree(shader, meshShader, Files.readString(TASK_SHADER), Files.readString(MESH_SHADER_PROGRAM));
@@ -32,14 +32,16 @@ public final class TerrainFragmentShaderSamplingInvariantCheck {
     }
     
     /**
-     * Terrain is lit by the lightmap alone, looked up at the centre of the texel a light level
-     * names. A floor under the light, which this shader once had, made caves and night brighter
+     * Terrain is lit by the lightmap alone, looked up per vertex at the centre of the texel a light
+     * level names, as Minecraft's terrain is; the fragment stage multiplies the atlas by the lit
+     * colour. A floor under the light, which this shader once had, made caves and night brighter
      * than Minecraft draws them.
      */
-    private static void checkLightingMatchesMinecraft(String shader) {
-        require(shader.contains("const float LIGHTMAP_HALF_TEXEL = 0.5 / 16.0;") && shader.contains("clamp(meshLightUv + LIGHTMAP_HALF_TEXEL, LIGHTMAP_HALF_TEXEL, 1.0 - LIGHTMAP_HALF_TEXEL)"), "the lightmap must be sampled at texel centres");
-        require(shader.contains("vec4 lit = atlas * meshColor * light;"), "terrain colour must be the atlas, the vertex colour and the lightmap multiplied");
-        require(!shader.contains("vec3(0.35)") && !shader.contains("max(texture("), "the lightmap must not be given a floor");
+    private static void checkLightingMatchesMinecraft(String shader, String meshShader) {
+        require(meshShader.contains("const float LIGHTMAP_HALF_TEXEL = 0.5 / 16.0;") && meshShader.contains("clamp(lightUv + LIGHTMAP_HALF_TEXEL, LIGHTMAP_HALF_TEXEL, 1.0 - LIGHTMAP_HALF_TEXEL)"), "the lightmap must be sampled at texel centres");
+        require(meshShader.contains("meshColor[vertex] = unpackUnorm4x8(blockVertex.color) * light;"), "the vertex colour must be lit by the lightmap in the mesh stage");
+        require(shader.contains("vec4 lit = atlas * meshColor;"), "terrain colour must be the atlas and the lit vertex colour multiplied");
+        require(!shader.contains("vec3(0.35)") && !shader.contains("max(texture(") && !meshShader.contains("max(textureLod("), "the lightmap must not be given a floor");
     }
     
     /**
@@ -50,7 +52,7 @@ public final class TerrainFragmentShaderSamplingInvariantCheck {
         require(meshShader.contains("layout(location = 4) out vec3 meshFog[];") && shader.contains("layout(location = 4) in vec3 meshFog;"), "the mesh stage must hand fog distances and section fade to the fragment stage");
         require(meshShader.contains("max(length(relative.xz), abs(relative.y))"), "render-distance fog must be measured over the larger of horizontal distance and height difference");
         require(meshShader.contains("mix(1.0, clamp(taskPayload.meshletVisibility, 0.0, 1.0), fadeApplies)"), "a section's fade must not apply next to the camera");
-        require(meshShader.contains("meshColor[vertex] = unpackUnorm4x8(blockVertex.color);"), "a section's fade must not change the alpha that cutout terrain is tested on");
+        require(meshShader.contains("meshColor[vertex] = unpackUnorm4x8(blockVertex.color) * light;") && !meshShader.contains("meshColor[vertex] = unpackUnorm4x8(blockVertex.color) * light * "), "a section's fade must not change the alpha that cutout terrain is tested on");
         require(shader.contains("fogAmount(meshFog.x, fog.fogRange.x, fog.fogRange.y)") && shader.contains("fogAmount(meshFog.y, fog.fogRange.z, fog.fogRange.w)"), "environmental fog must use the distance from the camera and render-distance fog the cylindrical distance");
         require(shader.contains("vec3 fogged = mix(lit.rgb, fogTarget, fogValue);") && shader.contains("vec3 shown = mix(behind, fogged, sectionShown);"), "terrain must fade into the fog with distance and out of what is behind it as its section fades in");
     }

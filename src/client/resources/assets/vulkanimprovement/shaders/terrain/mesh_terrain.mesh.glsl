@@ -52,6 +52,12 @@ struct MaterialRecord {
 };
 
 const int INDEXED_TRIANGLES_FLAG = 1;
+
+// Terrain is lit per vertex, as Minecraft's own terrain is, and the fragment stage is handed the
+// lit colour. The lightmap is 16 texels a side and a light level addresses the centre of one.
+layout(set = 0, binding = 2) uniform texture2D lightmapTexture;
+layout(set = 0, binding = 3) uniform sampler lightmapSampler;
+const float LIGHTMAP_HALF_TEXEL = 0.5 / 16.0;
 const int MATERIAL_TABLE_CAPACITY = 256;
 
 layout(buffer_reference, scalar, buffer_reference_align = 8) readonly buffer MeshletHeaders {
@@ -106,7 +112,6 @@ struct TaskPayload {
 taskPayloadSharedEXT TaskPayload taskPayload;
 layout(location = 0) out vec4 meshColor[];
 layout(location = 1) out vec2 meshUv0[];
-layout(location = 2) out vec2 meshLightUv[];
 layout(location = 3) out flat uint meshMaterialFlags[];
 // x: distance from the camera. y: the larger of the horizontal distance and the height difference.
 // z: how far the section has faded in.
@@ -183,7 +188,9 @@ void main() {
         BlockVertex blockVertex = payload.vertices[sourceVertex];
         vec3 relative = cameraRelative(ivec3(header.sectionX, header.sectionY, header.sectionZ), blockVertex.position);
         gl_MeshVerticesEXT[vertex].gl_Position = projectRelative(relative);
-        meshColor[vertex] = unpackUnorm4x8(blockVertex.color);
+        vec2 lightUv = vec2(float(blockVertex.uv2 & 65535u), float((blockVertex.uv2 >> 16) & 65535u)) / 256.0;
+        vec4 light = textureLod(sampler2D(lightmapTexture, lightmapSampler), clamp(lightUv + LIGHTMAP_HALF_TEXEL, LIGHTMAP_HALF_TEXEL, 1.0 - LIGHTMAP_HALF_TEXEL), 0.0);
+        meshColor[vertex] = unpackUnorm4x8(blockVertex.color) * light;
         float cameraDistance = length(relative);
         float fadeApplies = clamp((cameraDistance - SECTION_FADE_FREE_DISTANCE) / SECTION_FADE_FREE_DISTANCE, 0.0, 1.0);
         meshFog[vertex] = vec3(
@@ -192,10 +199,6 @@ void main() {
                 mix(1.0, clamp(taskPayload.meshletVisibility, 0.0, 1.0), fadeApplies)
         );
         meshUv0[vertex] = blockVertex.uv0;
-        meshLightUv[vertex] = vec2(
-                float(blockVertex.uv2 & 65535u) / 256.0,
-                float((blockVertex.uv2 >> 16) & 65535u) / 256.0
-        );
         meshMaterialFlags[vertex] = materialFlags;
     }
 

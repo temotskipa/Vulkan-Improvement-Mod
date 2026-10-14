@@ -22,6 +22,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.LongAdder;
@@ -75,7 +76,11 @@ public final class DescriptorHeapTerrainResources {
     private volatile GpuResources resources = GpuResources.empty();
     private volatile UploadStats uploadStats = UploadStats.empty();
     private volatile VulkanDevice device;
-    private volatile GpuFence lastTerrainReadFence;
+    // The fence of the frame that started each ring's current lap. A ring starts over only once
+    // that frame is done on the GPU; Minecraft keeps two frames in flight and a lap is far longer,
+    // so that frame has finished long before and nothing waits.
+    private final GpuFence[] ringLaps = new GpuFence[Ring.values().length];
+    private volatile DescriptorWrite lastDescriptorWrite;
     private volatile VisibleMeshletStats lastVisibleMeshletUpload = VisibleMeshletStats.empty();
     private volatile TerrainWorkQueueStats lastWorkQueueUpload = TerrainWorkQueueStats.empty();
     private volatile MeshTaskCommandStats lastMeshTaskCommandUpload = MeshTaskCommandStats.empty();
@@ -155,8 +160,9 @@ public final class DescriptorHeapTerrainResources {
         this.visibleMeshletCursor = 0;
         this.workQueueCursor = 0;
         this.meshTaskCommandCursor = 0;
+        forgetRingLaps();
     }
-    
+
     public synchronized void shutdown() {
         retireResources(this.resources);
         this.resources = GpuResources.empty();
@@ -195,7 +201,7 @@ public final class DescriptorHeapTerrainResources {
         this.workQueueCursor = 0;
         this.meshTaskCommandCursor = 0;
         this.terrainDataDirty.set(false);
-        closeLastTerrainReadFence();
+        forgetRingLaps();
         this.device = null;
         this.lastCapacityGrowthReason = "";
     }
@@ -239,7 +245,7 @@ public final class DescriptorHeapTerrainResources {
         this.workQueueCursor = 0;
         this.meshTaskCommandCursor = 0;
         this.terrainDataDirty.set(false);
-        closeLastTerrainReadFence();
+        forgetRingLaps();
         this.device = null;
         this.lastCapacityGrowthReason = "";
     }
@@ -289,6 +295,11 @@ public final class DescriptorHeapTerrainResources {
             return;
         }
         
+        // Minecraft binds the same atlas and lightmap for every group of every frame.
+        TextureBinding known = this.textureBindings.get(name);
+        if (known != null && !known.unavailable() && known.imageView() == vulkanView.vkImageView() && known.sampler() == vulkanSampler.vkSampler() && known.closed() == view.isClosed()) {
+            return;
+        }
         this.textureBindings.put(name, new TextureBinding(name, vulkanView.vkImageView(), vulkanSampler.vkSampler(), view.getWidth(0), view.getHeight(0), view.baseMipLevel(), view.mipLevels(), sampler.getMaxAnisotropy(), String.valueOf(sampler.getMinFilter()), String.valueOf(sampler.getMagFilter()), String.valueOf(sampler.getMaxLod()), view.isClosed(), false));
         writeTerrainMaterialRecords(this.resources, this.textureBindings.get("Sampler0"), this.textureBindings.get("Sampler2"));
     }
@@ -312,15 +323,6 @@ public final class DescriptorHeapTerrainResources {
     
     public void markTerrainDataDirty() {
         this.terrainDataDirty.set(true);
-    }
-    
-    public synchronized void markTerrainReadInCurrentSubmit() {
-        VulkanDevice activeDevice = this.device;
-        if (activeDevice == null) {
-            return;
-        }
-        closeLastTerrainReadFence();
-        this.lastTerrainReadFence = activeDevice.createCommandEncoder().createFence();
     }
     
     /**
@@ -433,8 +435,11 @@ public final class DescriptorHeapTerrainResources {
         }
     }
 
-    private boolean waitForTerrainReadFence() {
-        GpuFence fence = this.lastTerrainReadFence;
+    /**
+     * Whether a ring may start over: the frame that began its current lap has finished on the GPU.
+     */
+    private boolean awaitRingLap(Ring ring) {
+        GpuFence fence = this.ringLaps[ring.ordinal()];
         if (fence == null) {
             return true;
         }
@@ -444,10 +449,6 @@ public final class DescriptorHeapTerrainResources {
                 return false;
             }
             this.terrainUploadFenceWaits.increment();
-            if (this.lastTerrainReadFence == fence) {
-                this.lastTerrainReadFence = null;
-            }
-            fence.close();
             return true;
         } catch (IllegalStateException ex) {
             this.terrainUploadFenceDeferrals.increment();
@@ -457,13 +458,30 @@ public final class DescriptorHeapTerrainResources {
             throw ex;
         }
     }
-    
-    private void closeLastTerrainReadFence() {
-        GpuFence fence = this.lastTerrainReadFence;
-        this.lastTerrainReadFence = null;
-        if (fence != null) {
-            fence.close();
+
+    /**
+     * Called when a ring hands out its first record again: the frame being recorded starts a lap.
+     */
+    private void beginRingLap(Ring ring) {
+        VulkanDevice activeDevice = this.device;
+        GpuFence previous = this.ringLaps[ring.ordinal()];
+        if (previous != null) {
+            previous.close();
         }
+        this.ringLaps[ring.ordinal()] = activeDevice == null ? null : activeDevice.createCommandEncoder().createFence();
+    }
+
+    private void forgetRingLaps() {
+        for (int i = 0; i < this.ringLaps.length; i++) {
+            if (this.ringLaps[i] != null) {
+                this.ringLaps[i].close();
+                this.ringLaps[i] = null;
+            }
+        }
+    }
+
+    private enum Ring {
+        VISIBLE, WORK_QUEUE, COMMANDS
     }
     
     /**
@@ -493,8 +511,10 @@ public final class DescriptorHeapTerrainResources {
         this.resources.clearWorkQueueCounters();
         this.uploadStats = UploadStats.empty();
         SectionMeshletStore.resetResidentPages(grownLayout.sectionCapacity(), grownLayout.meshletCapacity(), grownLayout.vertexPayloadBytes(), grownLayout.indexPayloadBytes());
+        this.visibleMeshletCursor = 0;
         this.workQueueCursor = 0;
         this.meshTaskCommandCursor = 0;
+        forgetRingLaps();
         this.terrainCapacityGrowths.increment();
         this.terrainDataDirty.set(true);
     }
@@ -582,6 +602,11 @@ public final class DescriptorHeapTerrainResources {
         
         TextureBinding blockAtlas = this.textureBindings.get("Sampler0");
         TextureBinding lightmap = this.textureBindings.get("Sampler2");
+        // The descriptors stay in the buffer; they are written again only when what they describe changes.
+        DescriptorWrite write = new DescriptorWrite(activeResources, textureLayout, blockAtlas.imageView(), blockAtlas.sampler(), lightmap.imageView(), lightmap.sampler(), improvedFog, improvedFog ? textureImageView(SKY_IMAGE) : 0L, improvedFog ? textureImageView(CLOUDS_IMAGE) : 0L, improvedFog ? textureImageView(CLOUDS_DEPTH_IMAGE) : 0L);
+        if (write.equals(this.lastDescriptorWrite)) {
+            return true;
+        }
         ByteBuffer descriptors = activeResources.resourceDescriptorBuffer().mappedByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
         try (MemoryStack stack = MemoryStack.stackPush()) {
             writeSampledImageDescriptor(device, stack, descriptors, textureLayout.blockAtlasImageOffset(), textureLayout.sampledImageDescriptorBytes(), blockAtlas);
@@ -597,7 +622,11 @@ public final class DescriptorHeapTerrainResources {
         activeResources.resourceDescriptorBuffer().flush();
         writeTerrainMaterialRecords(activeResources, blockAtlas, lightmap);
         this.descriptorBufferWrites.increment();
+        this.lastDescriptorWrite = write;
         return true;
+    }
+    
+    private record DescriptorWrite(GpuResources resources, TextureDescriptorLayout layout, long atlasView, long atlasSampler, long lightmapView, long lightmapSampler, boolean improvedFog, long skyView, long cloudsView, long cloudsDepthView) {
     }
     
     private void writeTerrainMaterialRecords(GpuResources activeResources, TextureBinding blockAtlas, TextureBinding lightmap) {
@@ -646,7 +675,7 @@ public final class DescriptorHeapTerrainResources {
         TerrainVisibleMeshletRing visibleRing = new TerrainVisibleMeshletRing(visibleMeshletRecordCapacity(ring), this.visibleMeshletCursor);
         TerrainVisibleMeshletRing.Allocation allocation = visibleRing.allocate(count * 2, false);
         if (allocation.wrapBlocked()) {
-            if (!waitForTerrainReadFence()) {
+            if (!awaitRingLap(Ring.VISIBLE)) {
                 this.visibleMeshletListDeferrals.increment();
                 return VisiblePageUpload.unavailable();
             }
@@ -657,6 +686,9 @@ public final class DescriptorHeapTerrainResources {
             return VisiblePageUpload.unavailable();
         }
         this.visibleMeshletCursor = allocation.nextOffset();
+        if (allocation.offset() == 0) {
+            beginRingLap(Ring.VISIBLE);
+        }
         if (allocation.wrapped()) {
             this.visibleMeshletRingWraps.increment();
         }
@@ -693,7 +725,7 @@ public final class DescriptorHeapTerrainResources {
         TerrainVisibleMeshletRing ring = new TerrainVisibleMeshletRing(capacity, this.visibleMeshletCursor);
         TerrainVisibleMeshletRing.Allocation allocation = ring.allocate(requiredRecords, false);
         if (allocation.wrapBlocked()) {
-            if (!waitForTerrainReadFence()) {
+            if (!awaitRingLap(Ring.VISIBLE)) {
                 this.visibleMeshletListDeferrals.increment();
                 this.lastVisibleMeshletUpload = VisibleMeshletStats.fromAllocation(0, 0, allocation);
                 return VisibleMeshletUpload.unavailable(requiredRecords);
@@ -708,6 +740,9 @@ public final class DescriptorHeapTerrainResources {
         
         int firstRecord = allocation.offset();
         this.visibleMeshletCursor = allocation.nextOffset();
+        if (firstRecord == 0) {
+            beginRingLap(Ring.VISIBLE);
+        }
         if (allocation.wrapped()) {
             this.visibleMeshletRingWraps.increment();
         }
@@ -749,9 +784,9 @@ public final class DescriptorHeapTerrainResources {
         
         boolean wrapped = false;
         if (this.workQueueCursor + requestedRecords > capacity) {
-            if (!waitForTerrainReadFence()) {
+            if (!awaitRingLap(Ring.WORK_QUEUE)) {
                 this.terrainWorkQueueDeferrals.increment();
-                this.lastWorkQueueUpload = TerrainWorkQueueStats.unavailable(requestedRecords, capacity, this.workQueueCursor, "terrain work queue wrap requires completed terrain read fence", true);
+                this.lastWorkQueueUpload = TerrainWorkQueueStats.unavailable(requestedRecords, capacity, this.workQueueCursor, "terrain work queue wrap requires the frame that began the lap to finish", true);
                 return TerrainWorkQueueUpload.unavailable(requestedRecords);
             }
             this.workQueueCursor = 0;
@@ -759,6 +794,9 @@ public final class DescriptorHeapTerrainResources {
         }
         
         int firstRecord = this.workQueueCursor;
+        if (firstRecord == 0) {
+            beginRingLap(Ring.WORK_QUEUE);
+        }
         this.workQueueCursor += requestedRecords;
         ByteBuffer queue = workQueue.mappedByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
         queue.position(0);
@@ -806,9 +844,9 @@ public final class DescriptorHeapTerrainResources {
         
         boolean wrapped = false;
         if (this.workQueueCursor + requiredRecords > capacity) {
-            if (!waitForTerrainReadFence()) {
+            if (!awaitRingLap(Ring.WORK_QUEUE)) {
                 this.terrainWorkQueueDeferrals.increment();
-                this.lastWorkQueueUpload = TerrainWorkQueueStats.unavailable(requiredRecords, capacity, this.workQueueCursor, "visible terrain work queue wrap requires completed terrain read fence", true);
+                this.lastWorkQueueUpload = TerrainWorkQueueStats.unavailable(requiredRecords, capacity, this.workQueueCursor, "visible terrain work queue wrap requires the frame that began the lap to finish", true);
                 return TerrainWorkQueueUpload.unavailable(requiredRecords);
             }
             this.workQueueCursor = 0;
@@ -816,6 +854,9 @@ public final class DescriptorHeapTerrainResources {
         }
         
         int firstRecord = this.workQueueCursor;
+        if (firstRecord == 0) {
+            beginRingLap(Ring.WORK_QUEUE);
+        }
         this.workQueueCursor += requiredRecords;
         ByteBuffer queue = workQueue.mappedByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
         queue.position(0);
@@ -889,9 +930,9 @@ public final class DescriptorHeapTerrainResources {
         
         boolean wrapped = false;
         if (this.meshTaskCommandCursor + 1 > capacity) {
-            if (!waitForTerrainReadFence()) {
+            if (!awaitRingLap(Ring.COMMANDS)) {
                 this.terrainMeshTaskCommandDeferrals.increment();
-                this.lastMeshTaskCommandUpload = MeshTaskCommandStats.unavailable(1, capacity, this.meshTaskCommandCursor, "terrain mesh-task command wrap requires completed terrain read fence", true, gpuGenerated);
+                this.lastMeshTaskCommandUpload = MeshTaskCommandStats.unavailable(1, capacity, this.meshTaskCommandCursor, "terrain mesh-task command wrap requires the frame that began the lap to finish", true, gpuGenerated);
                 return TerrainMeshTaskCommandUpload.unavailable(1);
             }
             this.meshTaskCommandCursor = 0;
@@ -899,6 +940,9 @@ public final class DescriptorHeapTerrainResources {
         }
         
         int commandIndex = this.meshTaskCommandCursor;
+        if (commandIndex == 0) {
+            beginRingLap(Ring.COMMANDS);
+        }
         this.meshTaskCommandCursor++;
         long offsetBytes = TerrainMeshTaskCommandLayout.commandOffset(commandIndex);
         if (wrapped) {
@@ -955,7 +999,7 @@ public final class DescriptorHeapTerrainResources {
         map.put("terrainUploadFenceWaits", this.terrainUploadFenceWaits.sum());
         map.put("terrainUploadFenceDeferrals", this.terrainUploadFenceDeferrals.sum());
         map.put("terrainUploadFenceFailures", this.terrainUploadFenceFailures.sum());
-        map.put("terrainReadFenceInFlight", this.lastTerrainReadFence != null);
+        map.put("ringLapFences", Arrays.stream(this.ringLaps).filter(Objects::nonNull).count());
         map.put("visibleMeshletListUploads", this.visibleMeshletListUploads.sum());
         map.put("visibleMeshletRecordsUploaded", this.visibleMeshletRecordsUploaded.sum());
         map.put("visibleMeshletRecordsDropped", this.visibleMeshletRecordsDropped.sum());

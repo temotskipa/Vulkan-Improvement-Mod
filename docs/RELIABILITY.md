@@ -185,7 +185,7 @@ validation on real Vulkan hardware.
 | `vim.enableMeshTranslucentTerrain`     | `false`     | Capture/upload experimental translucent terrain metadata; visible translucent replacement is safety-gated to vanilla. |
 | `vim.enableMeshletFrustumCulling`      | `false`     | Enable meshlet frustum culling.                       |
 | `vim.enableGpuGeneratedMeshTaskCommands` | `true`    | Let the GPU visibility pass cull a layer's visible pages and write its mesh-task command. Off selects the CPU-written per-meshlet work queue. Only matters with `vim.replaceVanillaTerrain`. |
-| `vim.strictMeshTerrainReplacement`     | `false`     | Let mesh terrain cancel vanilla solid/cutout draws; strict validation mode only until visible coverage is proven. |
+| `vim.strictMeshTerrainReplacement`     | `false`     | With `vim.replaceVanillaTerrain`, take every solid/cutout section layer that has a page on the GPU out of Minecraft's draw lists and draw it with mesh shaders; Minecraft draws the rest. |
 | `vim.enableVanillaChunkVisibilityFade` | `true`      | Keep vanilla chunk visibility fade behavior.          |
 | `vim.drawAllCapturedTerrainLayers`     | `false`     | Draw all captured solid/cutout terrain layers; heavy diagnostic mode split above the mesh-task limit. |
 | `vim.terrainFragmentShadingRate`       | `1`         | Terrain fragment shading-rate value.                  |
@@ -259,13 +259,18 @@ The mesh path has to be faster than vanilla terrain, not only look like it.
 `terrainRenderer.performance`) times every frame in a world and, with
 `vim.terrainGpuTimer`, the GPU time of the mod's prepared work (`prepareMs`)
 and of each group of terrain layers (`opaqueMs`, `translucentMs`). Its
-`reset()` starts a new sample.
+`reset()` starts a new sample. `meanCpuMs` is the time Minecraft's render
+thread spent on a frame without waiting for the GPU; when the frame takes
+longer than that in one mode and not the other, the GPU sets that mode's pace.
 
 To compare: run the client at 1920x1080 with the frame limit and vsync off and
 `inactivityFpsLimit` not `afk` (Minecraft caps an unattended client at 30 FPS
 after a minute otherwise), freeze ticking, pose the camera, wait until
-Minecraft has no section left to compile, then take a ten-second sample with
-vanilla terrain and one with strict mesh replacement in the same session.
+Minecraft has no section left to compile, then sample vanilla terrain and strict mesh replacement in turn, a few
+seconds each and three times over, in the same session, and compare the
+medians. Replacement can be switched on and off without capturing again while
+ticking is frozen. Sessions differ from each other by up to ten percent on
+this machine, more than most single changes are worth.
 Compare `meanFps`, `onePercentLowFps` and the GPU group times. Look at more
 than one view: on the ground, high above the terrain, and along the horizon.
 A CPU profile (`jcmd <pid> JFR.start`) shows whether the render thread waits

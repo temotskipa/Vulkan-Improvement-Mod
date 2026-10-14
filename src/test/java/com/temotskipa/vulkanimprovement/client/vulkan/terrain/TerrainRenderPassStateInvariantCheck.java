@@ -112,10 +112,22 @@ public final class TerrainRenderPassStateInvariantCheck {
         require(fullLayerSegments.contains("return drewAny ? DrawResult.fallbackAfterPartialDraw() : DrawResult.passThrough();"), "full-layer segmented failure must fall back to vanilla after restoring any emitted VIM draw");
     }
     
+    /**
+     * In strict replacement the mesh path takes the section layers it can draw out of Minecraft's
+     * draw lists as Minecraft collects them, and Minecraft draws the rest; nothing it collected is
+     * cancelled. Without strict replacement both draw.
+     */
     private static void checkVisibleReplacementRespectsStrictMode(String source) {
+        String takeover = methodBody(source, "public boolean takesOverSectionLayers");
+        require(takeover.contains("!TerrainRendererDebugConfig.strictMeshTerrainReplacement()"), "taking section layers from Minecraft's draw lists must be gated by the strict replacement flag");
+        require(takeover.contains("wireframe ||"), "wireframe terrain must stay Minecraft's to draw");
+        require(takeover.contains("MeshShaderTerrainProgram.get().ready()"), "a section layer may only be taken when the mesh path can draw it");
         String visibleReplacement = methodBody(source, "private DrawResult visibleDrawResult");
-        require(visibleReplacement.contains("TerrainRendererDebugConfig.strictMeshTerrainReplacement()"), "visible mesh replacement cancellation must be gated by the strict replacement flag");
-        require(visibleReplacement.contains("return TerrainRendererDebugConfig.strictMeshTerrainReplacement() ? DrawResult.replaced() : DrawResult.overlayOnly();"), "visible mesh replacement must draw overlay-only in non-strict mode so vanilla terrain remains visible");
+        require(visibleReplacement.contains("return DrawResult.overlayOnly();"), "Minecraft's draws for a layer must run after the mesh path's: they hold only what was not taken");
+        String store = readUnchecked(Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/SectionMeshletStore.java"));
+        String take = methodBody(store, "public static boolean takeSectionLayer");
+        require(take.contains("!VISIBLE_FRAME.takeover() || !TerrainLayerReplacementPolicy.canReplaceLayer(layer)"), "only a takeover frame takes section layers, and never translucent ones");
+        require(take.contains("if (page == null || page.meshletCount() <= 0)") && take.indexOf("return false;", take.indexOf("if (page == null")) < take.indexOf("VISIBLE_FRAME.take("), "a section layer without a page on the GPU must stay in Minecraft's draw lists");
         String configSource = readUnchecked(Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/TerrainRendererDebugConfig.java"));
         require(configSource.contains("strictMeshTerrainReplacement = booleanProperty(\"vim.strictMeshTerrainReplacement\", false)"), "strict mesh terrain replacement must default to vanilla fallback until visible coverage is proven");
     }

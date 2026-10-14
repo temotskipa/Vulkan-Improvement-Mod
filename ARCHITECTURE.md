@@ -18,14 +18,17 @@ augmenting vanilla terrain rendering through modern Vulkan capabilities.
    singleton `MeshTerrainRenderer`.
 5. Chunk-section mixins mirror vanilla chunk geometry into `SectionMeshletStore`
    and related GPU buffers.
-6. Each frame Minecraft collects the section layers it will draw.
-   `LevelRendererMixin` and `SectionRenderDispatcherMixin` record them, and
-   `MeshTerrainRenderer.prepareVisibleFrame` uploads terrain data and prepares
-   mesh-task commands before Minecraft opens a render pass.
+6. Each frame Minecraft collects the section layers it will draw. With strict
+   replacement, `LevelRendererMixin` takes every solid or cutout section layer
+   that has a page on the GPU out of that collection for the mesh path, and
+   Minecraft builds draws only for the rest. Otherwise
+   `SectionRenderDispatcherMixin` records what Minecraft collected.
+   `MeshTerrainRenderer.prepareVisibleFrame` then uploads terrain data and
+   prepares mesh-task commands before Minecraft opens a render pass.
 7. Inside Minecraft's terrain render pass, the layer mixins on both of its
    draw strategies call `MeshTerrainRenderer` once the layer's pipeline is
-   bound, to draw mesh terrain when configured and safe; otherwise the vanilla
-   draws for the layer run unchanged.
+   bound, to draw mesh terrain when configured and safe; Minecraft's own draws
+   for the layer then run, holding whatever the mesh path did not take.
 
 ## Source Sets
 
@@ -84,10 +87,19 @@ renderer code does not drift back into a catch-all root package.
 - `RendererDomainRegistry` records the selected path and CPU/GPU work split for
   terrain and non-terrain renderer domains.
 - The mod extends Minecraft's terrain drawing and does not replace how a
-  frame's sections are chosen. The visible set is the one
-  `LevelRenderer.extractSectionDrawGroups` collects for Minecraft's own draws,
-  and a layer is drawn by the mesh path only when every section layer in that
-  set has meshlets on the GPU.
+  frame's sections are chosen: the visible set is the one
+  `LevelRenderer.extractSectionDrawGroups` collects. With strict replacement
+  the mesh path takes each section layer of that set that it can draw, decided
+  per section layer as Minecraft looks it up, and Minecraft never looks up or
+  builds a draw for a taken one; a section layer captured this frame, or
+  without a page yet, stays Minecraft's for the frame. Whether a frame takes
+  anything is decided before Minecraft collects it
+  (`MeshTerrainRenderer.takesOverSectionLayers`), because a taken section layer
+  is drawn by nobody else. Without strict replacement nothing is taken and the
+  mesh path draws over Minecraft's terrain.
+- A compiled section mesh carries the mod's record of it
+  (`SectionMeshletStore.CaptureHolder`), and that record the page each layer
+  has now, so collecting a frame needs no map lookup per section layer.
 - Nothing is uploaded and no compute work is recorded while Minecraft's
   terrain render pass is open. Minecraft's command encoder fails the frame
   otherwise.
@@ -163,7 +175,9 @@ renderer code does not drift back into a catch-all root package.
   resource-set, buffer, and byte counts so terrain capacity growth and shutdown
   pressure are visible.
 - The mesh terrain pipeline stands in for a vanilla terrain pipeline and is
-  meant to be indistinguishable from it. `TerrainPipelineState` carries the
+  meant to be indistinguishable from it. As in Minecraft's terrain shader, the
+  lightmap is sampled per vertex, in the mesh stage, and the fragment stage
+  gets the lit colour. `TerrainPipelineState` carries the
   vanilla pipeline's polygon mode, culling, depth and blend state; the fragment
   stage samples the atlas and the lightmap as vanilla terrain does, applies the
   frame's fog from `TerrainFogState`, and with improved transparency fades into

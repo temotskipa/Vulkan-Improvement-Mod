@@ -149,12 +149,22 @@ inside a render pass the level renderer has already opened.
   `prepareChunkRenders` and by `prepareChunkRendersIndirect` before the frame
   graph opens a render pass; public `invalidateCompiledGeometry`,
   `resetLevelRenderData` and `close`.
+  Inside `extractSectionDrawGroups`, for each section of `visibleSections` and
+  each `ChunkSectionLayer`, Minecraft calls
+  `SectionRenderDispatcher.getRenderSectionSlice(SectionMesh, ChunkSectionLayer)`
+  and builds a draw only when it returns a slice; its locals include the
+  `RenderSection` and, as its first two `long`s, the fade duration and the
+  time, which `RenderSection.getVisibility(long, long)` takes.
 - Source tokens: `private LevelRenderState levelRenderState`,
   `method = "extractSectionDrawGroups"`,
+  `SectionRenderDispatcher;getRenderSectionSlice(`,
   `method = "invalidateCompiledGeometry"`, `method = "resetLevelRenderData"`,
   `method = "close"`.
-- Purpose: bracket the collection of a frame's section layers, prepare the mesh
-  path once they are known, and clear VIM terrain-derived caches for geometry
+- Purpose: bracket the collection of a frame's section layers, take the
+  section layers the mesh path draws out of it in strict replacement (a
+  MixinExtras `@WrapOperation` of the slice lookup that returns no slice for a
+  taken layer), prepare the mesh path once they are known, and clear VIM
+  terrain-derived caches for geometry
   invalidation, level reset and renderer close.
 
 ### SectionRenderDispatcherMixin
@@ -246,4 +256,5 @@ inside a render pass the level renderer has already opened.
 - mcdev 26.4 surface: method `close`.
 - Source tokens: `method = "close"`.
 - Purpose: release VIM meshlet mappings when vanilla closes a compiled section
-  mesh.
+  mesh, and carry the mod's record of the mesh in a field, so a frame finds it
+  without a map lookup.

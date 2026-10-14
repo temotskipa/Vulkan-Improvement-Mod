@@ -1,5 +1,8 @@
 package com.temotskipa.vulkanimprovement.mixin.client;
 
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import com.llamalad7.mixinextras.sugar.Local;
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.VulkanImprovementRuntime;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.MeshTerrainRenderer;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.SectionMeshletStore;
@@ -10,6 +13,9 @@ import net.minecraft.client.Options;
 import net.minecraft.client.color.block.BlockColors;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
+import net.minecraft.client.renderer.chunk.SectionMesh;
+import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
 import net.minecraft.client.renderer.state.level.LevelRenderState;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -34,8 +40,20 @@ public final class LevelRendererMixin {
     @Inject(method = "extractSectionDrawGroups", at = @At("HEAD"))
     private void vim$beginVisibleFrame(boolean respectTranslucentOrder, List<?> sectionInfos, Map<?, ?> drawGroups, CallbackInfoReturnable<Integer> cir) {
         if (VulkanImprovementRuntime.isVulkanBackendActive() && TerrainRendererDebugConfig.terrainCaptureEnabled()) {
-            SectionMeshletStore.beginVisibleFrame();
+            SectionMeshletStore.beginVisibleFrame(MeshTerrainRenderer.get().takesOverSectionLayers(this.levelRenderState.renderWireframeTerrain));
         }
+    }
+
+    /**
+     * In strict replacement a section layer the mesh path draws is never looked up by Minecraft,
+     * and so gets no draw of its own.
+     */
+    @WrapOperation(method = "extractSectionDrawGroups", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/chunk/SectionRenderDispatcher;getRenderSectionSlice(Lnet/minecraft/client/renderer/chunk/SectionMesh;Lnet/minecraft/client/renderer/chunk/ChunkSectionLayer;)Lnet/minecraft/client/renderer/chunk/SectionRenderDispatcher$RenderSectionBufferSlice;"))
+    private SectionRenderDispatcher.RenderSectionBufferSlice vim$takeSectionLayer(SectionRenderDispatcher dispatcher, SectionMesh sectionMesh, ChunkSectionLayer layer, Operation<SectionRenderDispatcher.RenderSectionBufferSlice> original, @Local SectionRenderDispatcher.RenderSection section, @Local(ordinal = 0) long fadeDuration, @Local(ordinal = 1) long now) {
+        if (SectionMeshletStore.takeSectionLayer(sectionMesh, layer, section, now, fadeDuration)) {
+            return null;
+        }
+        return original.call(dispatcher, sectionMesh, layer);
     }
     
     /**

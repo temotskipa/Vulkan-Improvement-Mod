@@ -2,6 +2,7 @@ package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
 import com.mojang.renderpearl.api.commands.GpuQueryPool;
 import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayerGroup;
 import org.jspecify.annotations.Nullable;
 import org.lwjgl.system.MemoryStack;
@@ -16,7 +17,9 @@ import java.util.OptionalLong;
 
 /**
  * Measures what terrain costs a frame, for vanilla terrain and the mesh path alike. The time
- * between frames is taken where Minecraft collects a frame's sections, once per frame in a world.
+ * between frames is taken where Minecraft collects a frame's sections, once per frame in a world,
+ * together with the time Minecraft's render thread spent on the previous frame without waiting for
+ * the GPU: when that is well below the time between frames, the GPU sets the pace.
  * With {@code vim.terrainGpuTimer} on, GPU timestamps bracket the work the mod prepares before
  * Minecraft's render pass and each group of terrain layers Minecraft draws inside it. They are
  * written the way Minecraft writes its own, through its command encoder into a query pool of
@@ -36,6 +39,7 @@ public final class TerrainPerformanceMonitor {
     private static final TerrainPerformanceMonitor INSTANCE = new TerrainPerformanceMonitor();
 
     private final long[] frameIntervals = new long[FRAME_SAMPLES];
+    private final long[] cpuFrameTimes = new long[FRAME_SAMPLES];
     private final long[] slotWritten = new long[SLOTS];
     private final long[] gpuNanos = new long[1 + GROUPS];
     private final long[] gpuSamples = new long[1 + GROUPS];
@@ -89,6 +93,7 @@ public final class TerrainPerformanceMonitor {
         long now = System.nanoTime();
         if (this.lastFrameNanos != 0L) {
             this.frameIntervals[this.frameCount % FRAME_SAMPLES] = now - this.lastFrameNanos;
+            this.cpuFrameTimes[this.frameCount % FRAME_SAMPLES] = Minecraft.getInstance().getFrameTimeNs();
             this.frameCount++;
         }
         this.lastFrameNanos = now;
@@ -145,6 +150,7 @@ public final class TerrainPerformanceMonitor {
             map.put("p99FrameMs", percentile(sorted, 0.99) / 1.0e6);
             map.put("maxFrameMs", sorted[samples - 1] / 1.0e6);
             map.put("meanFps", meanNanos > 0.0 ? 1.0e9 / meanNanos : 0.0);
+            map.put("meanCpuMs", Arrays.stream(this.cpuFrameTimes, 0, samples).average().orElse(0.0) / 1.0e6);
             map.put("onePercentLowFps", lowFps(sorted));
         }
         Map<String, Object> gpu = new LinkedHashMap<>();

@@ -2,17 +2,15 @@
 // The sky and cloud images are read texel by texel, without a sampler.
 #extension GL_EXT_samplerless_texture_functions : require
 
+// The vertex colour, already lit by the lightmap in the mesh stage.
 layout(location = 0) in vec4 meshColor;
 layout(location = 1) in vec2 meshUv0;
-layout(location = 2) in vec2 meshLightUv;
 layout(location = 3) flat in uint meshMaterialFlags;
 // x: distance from the camera. y: the larger of the horizontal distance and the height difference.
 // z: how far the section has faded in.
 layout(location = 4) in vec3 meshFog;
 layout(set = 0, binding = 0) uniform texture2D blockAtlasTexture;
 layout(set = 0, binding = 1) uniform sampler blockAtlasSampler;
-layout(set = 0, binding = 2) uniform texture2D lightmapTexture;
-layout(set = 0, binding = 3) uniform sampler lightmapSampler;
 // What Minecraft has drawn behind the terrain. Read only when the frame uses improved fog.
 layout(set = 0, binding = 4) uniform texture2D skyTexture;
 layout(set = 0, binding = 5) uniform texture2D cloudsTexture;
@@ -34,9 +32,6 @@ layout(push_constant, std430) uniform TerrainFogConstants {
 // A shader that may discard keeps the GPU from testing depth before it runs, so the solid
 // pipeline is specialized without the test, as vanilla's solid terrain shader has none.
 layout(constant_id = 0) const bool ALPHA_TEST = true;
-
-// The lightmap is 16 texels a side and a light level addresses the centre of one of them.
-const float LIGHTMAP_HALF_TEXEL = 0.5 / 16.0;
 
 // Samples the block atlas so that a texel keeps a hard edge while it covers more than a pixel and
 // the mip chain takes over once it covers less. Fetching mip 0 directly, as this shader did,
@@ -73,9 +68,7 @@ vec3 behindTerrain() {
 
 void main() {
     vec4 atlas = sampleBlockAtlas(meshUv0);
-    vec2 lightUv = clamp(meshLightUv + LIGHTMAP_HALF_TEXEL, LIGHTMAP_HALF_TEXEL, 1.0 - LIGHTMAP_HALF_TEXEL);
-    vec4 light = texture(sampler2D(lightmapTexture, lightmapSampler), lightUv);
-    vec4 lit = atlas * meshColor * light;
+    vec4 lit = atlas * meshColor;
     bool alphaBlended = (meshMaterialFlags & 8u) != 0u;
     if (ALPHA_TEST) {
         bool alphaMasked = (meshMaterialFlags & 4u) != 0u;

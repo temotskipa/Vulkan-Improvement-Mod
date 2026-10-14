@@ -84,11 +84,47 @@ Vanilla is CPU-bound here at about 1.2 ms a frame, with its terrain about a
 quarter of that on the GPU. The mesh path is now behind it by about 0.15 ms a
 frame, mostly the mod's own CPU work per frame.
 
+Later the same day, steps 2 and 4, measured the A/B way (vanilla and strict
+mesh in turn, three times each, medians; GPU timer off):
+
+| Scene    | Vanilla FPS | Mesh FPS | Mesh / vanilla | Render-thread ms, vanilla / mesh |
+|----------|-------------|----------|----------------|----------------------------------|
+| ground   | 886         | 831      | 0.94           | 0.78 / 0.77                      |
+| overlook | 701         | 682      | 0.97           | 0.85 / 0.83                      |
+| horizon  | 714         | 731      | 1.02           | 0.70 / 0.67                      |
+
+What changed, each measured on its own:
+
+- The mod's work per frame went from about a quarter of the render thread to
+  about a tenth. A frame's section layers are kept in arrays that hold each
+  section layer's page binding and fade-in, instead of hash maps keyed by
+  records and boxed numbers; the backend check is cached; a compiled mesh
+  carries the mod's record of it; the visibility pass's rings wait for the
+  frame that began their lap, which has long finished, instead of the frame
+  before (the command ring wrapped every 32 frames and stalled the CPU until
+  the GPU caught up); descriptors and the material table are written only
+  when what they describe changes.
+- Strict replacement takes the section layers it draws out of Minecraft's
+  collection, so Minecraft no longer looks them up and builds and uploads
+  draws that are then cancelled (that was about a fifth of vanilla's render
+  thread). Minecraft draws what was not taken.
+- The lightmap is sampled per vertex in the mesh stage, as Minecraft does,
+  instead of per fragment: one texture fetch and two varyings less.
+
+With these the render thread does no more in the mesh path than in vanilla;
+where the mesh path is still slower the GPU sets its pace, and its opaque
+layers still cost more than vanilla's.
+
 ## Decisions
 
 - Solid terrain's mesh pipeline is specialized without the alpha test, as
   vanilla's solid shader has none. It did not change the measured time on this
   machine, which tests depth early either way, and costs nothing.
+- Strict replacement no longer cancels Minecraft's draws for a layer when the
+  mesh path covers every section layer of it. It takes what it can draw as
+  Minecraft collects the frame, so one section without a page no longer sends
+  the whole layer back to Minecraft, and Minecraft does no work for what was
+  taken.
 - The render-distance 32 runs of the baseline did not load more sections than
   render distance 16 and are left out until the benchmark waits for the
   server to send the chunks.

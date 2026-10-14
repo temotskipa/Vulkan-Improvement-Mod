@@ -102,6 +102,21 @@ public final class MeshTerrainRenderer {
     }
     
     /**
+     * Whether the mesh path takes the section layers it can draw out of Minecraft's draw lists for
+     * the frame about to be collected. Decided before Minecraft collects the frame: a layer taken
+     * then is drawn by nobody else, so it is only done when the mesh path is ready to draw.
+     *
+     * @param wireframe whether Minecraft draws this frame's terrain as wireframe, which is left to it
+     */
+    public boolean takesOverSectionLayers(boolean wireframe) {
+        if (wireframe || !TerrainRendererDebugConfig.replaceVanillaTerrain() || !TerrainRendererDebugConfig.strictMeshTerrainReplacement() || TerrainRendererDebugConfig.drawAllCapturedTerrainLayers()) {
+            return false;
+        }
+        DescriptorHeapTerrainResources terrainResources = DescriptorHeapTerrainResources.get();
+        return RendererCoreServices.get().currentLifecycleState().drawable() && terrainResources.hasGpuTerrainData() && MeshShaderTerrainProgram.get().ready() && terrainResources.meshletsUploaded() > 0;
+    }
+
+    /**
      * Called once Minecraft has collected the frame's section layers and before it opens a render
      * pass. Minecraft hands the terrain renderers a pass that is already open, and neither an
      * upload nor the compute step that writes mesh-task commands can be recorded inside one, so
@@ -252,8 +267,12 @@ public final class MeshTerrainRenderer {
         return drewAny ? visibleDrawResult() : DrawResult.passThrough();
     }
     
+    /**
+     * In strict replacement Minecraft's own draws for the layer are what the mesh path did not
+     * take, so they run too; otherwise they are drawn over.
+     */
     private DrawResult visibleDrawResult() {
-        return TerrainRendererDebugConfig.strictMeshTerrainReplacement() ? DrawResult.replaced() : DrawResult.overlayOnly();
+        return DrawResult.overlayOnly();
     }
     
     /**
@@ -392,7 +411,6 @@ public final class MeshTerrainRenderer {
             drawDispatch = dispatch.withIndirectCommand(commandUpload);
         }
         if (MeshShaderTerrainProgram.get().drawTerrain(context.commandBuffer(), vanillaPipeline, drawDispatch, terrainResources.meshletHeaderAddress(), terrainResources.meshletVertexPayloadAddress(), terrainResources.meshletIndexPayloadAddress())) {
-            terrainResources.markTerrainReadInCurrentSubmit();
             this.meshReplacementDrawCalls.increment();
             this.meshReplacementTasks.add(drawDispatch.taskCount());
             this.lastTerrainDispatch = drawDispatch;
@@ -527,16 +545,11 @@ public final class MeshTerrainRenderer {
     
     public record DrawResult(boolean drewMeshTerrain, boolean cancelVanillaDraw) {
         private static final DrawResult PASS_THROUGH = new DrawResult(false, false);
-        private static final DrawResult REPLACED = new DrawResult(true, true);
         private static final DrawResult OVERLAY_ONLY = new DrawResult(true, false);
         private static final DrawResult FALLBACK_AFTER_PARTIAL_DRAW = new DrawResult(true, false);
         
         static DrawResult passThrough() {
             return PASS_THROUGH;
-        }
-        
-        static DrawResult replaced() {
-            return REPLACED;
         }
         
         static DrawResult overlayOnly() {

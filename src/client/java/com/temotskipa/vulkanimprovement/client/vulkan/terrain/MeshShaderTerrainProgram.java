@@ -403,8 +403,9 @@ public final class MeshShaderTerrainProgram {
             VkDescriptorSetLayoutBinding.Buffer textureBindings = VkDescriptorSetLayoutBinding.calloc(7, stack);
             textureBindings.get(0).binding(0).descriptorType(VK10.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE).descriptorCount(1).stageFlags(VK10.VK_SHADER_STAGE_FRAGMENT_BIT);
             textureBindings.get(1).binding(1).descriptorType(VK10.VK_DESCRIPTOR_TYPE_SAMPLER).descriptorCount(1).stageFlags(VK10.VK_SHADER_STAGE_FRAGMENT_BIT);
-            textureBindings.get(2).binding(2).descriptorType(VK10.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE).descriptorCount(1).stageFlags(VK10.VK_SHADER_STAGE_FRAGMENT_BIT);
-            textureBindings.get(3).binding(3).descriptorType(VK10.VK_DESCRIPTOR_TYPE_SAMPLER).descriptorCount(1).stageFlags(VK10.VK_SHADER_STAGE_FRAGMENT_BIT);
+            // The lightmap is read per vertex by the mesh stage.
+            textureBindings.get(2).binding(2).descriptorType(VK10.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE).descriptorCount(1).stageFlags(EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT);
+            textureBindings.get(3).binding(3).descriptorType(VK10.VK_DESCRIPTOR_TYPE_SAMPLER).descriptorCount(1).stageFlags(EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT);
             // The sky, cloud and cloud-depth images of improved fog, read texel by texel.
             for (int binding = 4; binding < 7; binding++) {
                 textureBindings.get(binding).binding(binding).descriptorType(VK10.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE).descriptorCount(1).stageFlags(VK10.VK_SHADER_STAGE_FRAGMENT_BIT);
