@@ -221,6 +221,19 @@ against 0.86 with 128 in the sessions before; frame rates were 552 against
 task record counts a page's tasks in six bits now, so a page may still have
 the meshlets of a section layer full of faces.
 
+Where the GPU time goes, with `vim.terrainGpuTimer` and Minecraft's GPU
+timer both on, in one session at render distance 32:
+
+| Scene    | Vanilla FPS | Mesh FPS | Change | Opaque terrain GPU, vanilla / mesh | Whole frame GPU, vanilla / mesh |
+|----------|-------------|----------|--------|------------------------------------|---------------------------------|
+| ground   | 512         | 547      | +7 %   | 0.75 / 0.52 ms                     | 1.25 / 1.00 ms                  |
+| overlook | 455         | 486      | +7 %   | 0.94 / 0.68 ms                     | 1.54 / 1.25 ms                  |
+| horizon  | 435         | 482      | +11 %  | 0.62 / 0.44 ms                     | 1.49 / 1.38 ms                  |
+
+The mesh path's opaque layers cost the GPU about 30 % less than vanilla's.
+The timer's translucent group reads zero: Minecraft 26.4 draws translucent
+terrain outside the group the mixin marks, so its share is not measured yet.
+
 ## Decisions
 
 - Solid terrain's mesh pipeline is specialized without the alpha test, as
