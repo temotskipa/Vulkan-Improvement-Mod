@@ -152,9 +152,11 @@ inside a render pass the level renderer has already opened.
   Inside `extractSectionDrawGroups`, for each section of `visibleSections` and
   each `ChunkSectionLayer`, Minecraft calls
   `SectionRenderDispatcher.getRenderSectionSlice(SectionMesh, ChunkSectionLayer)`
-  and builds a draw only when it returns a slice; its locals include the
-  `RenderSection` and, as its first two `long`s, the fade duration and the
-  time, which `RenderSection.getVisibility(long, long)` takes.
+  and builds a draw only when it returns a slice and the layer's
+  `SectionMesh.SectionDraw`, looked up just before, is not null; its locals
+  include that draw, the `RenderSection` and, as its first two `long`s, the
+  fade duration and the time, which `RenderSection.getVisibility(long, long)`
+  takes.
 - Source tokens: `private LevelRenderState levelRenderState`,
   `method = "extractSectionDrawGroups"`,
   `SectionRenderDispatcher;getRenderSectionSlice(`,
@@ -163,7 +165,8 @@ inside a render pass the level renderer has already opened.
 - Purpose: bracket the collection of a frame's section layers, take the
   section layers the mesh path draws out of it in strict replacement (a
   MixinExtras `@WrapOperation` of the slice lookup that returns no slice for a
-  taken layer), prepare the mesh path once they are known, and clear VIM
+  taken layer, and in such a frame skips the lookup for a layer the section
+  has nothing in), prepare the mesh path once they are known, and clear VIM
   terrain-derived caches for geometry
   invalidation, level reset and renderer close.
 

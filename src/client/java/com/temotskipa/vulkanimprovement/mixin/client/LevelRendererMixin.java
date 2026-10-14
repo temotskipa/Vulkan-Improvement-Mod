@@ -46,11 +46,12 @@ public final class LevelRendererMixin {
 
     /**
      * In strict replacement a section layer the mesh path draws is never looked up by Minecraft,
-     * and so gets no draw of its own.
+     * and so gets no draw of its own. Nor is a layer the section has nothing in: Minecraft ignores
+     * its slice, and the lookup costs a hash probe or two for every section and layer.
      */
     @WrapOperation(method = "extractSectionDrawGroups", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/chunk/SectionRenderDispatcher;getRenderSectionSlice(Lnet/minecraft/client/renderer/chunk/SectionMesh;Lnet/minecraft/client/renderer/chunk/ChunkSectionLayer;)Lnet/minecraft/client/renderer/chunk/SectionRenderDispatcher$RenderSectionBufferSlice;"))
-    private SectionRenderDispatcher.RenderSectionBufferSlice vim$takeSectionLayer(SectionRenderDispatcher dispatcher, SectionMesh sectionMesh, ChunkSectionLayer layer, Operation<SectionRenderDispatcher.RenderSectionBufferSlice> original, @Local SectionRenderDispatcher.RenderSection section, @Local(ordinal = 0) long fadeDuration, @Local(ordinal = 1) long now) {
-        if (SectionMeshletStore.takeSectionLayer(sectionMesh, layer, section, now, fadeDuration)) {
+    private SectionRenderDispatcher.RenderSectionBufferSlice vim$takeSectionLayer(SectionRenderDispatcher dispatcher, SectionMesh sectionMesh, ChunkSectionLayer layer, Operation<SectionRenderDispatcher.RenderSectionBufferSlice> original, @Local SectionMesh.SectionDraw draw, @Local SectionRenderDispatcher.RenderSection section, @Local(ordinal = 0) long fadeDuration, @Local(ordinal = 1) long now) {
+        if (draw == null && SectionMeshletStore.collectingTakeoverFrame() || SectionMeshletStore.takeSectionLayer(sectionMesh, layer, section, now, fadeDuration)) {
             return null;
         }
         return original.call(dispatcher, sectionMesh, layer);

@@ -161,6 +161,25 @@ scene, the horizon included. Medians in one session at render distance 32:
 | overlook | 393         | 419      | +7 %   | 2.36 / 2.21 ms                | 1.53 / 1.32 ms                |
 | horizon  | 441         | 466      | +6 %   | 1.64 / 1.51 ms                | 1.66 / 1.50 ms                |
 
+A render-thread profile (JFR) at render distance 32 then showed Minecraft
+looking up a buffer slice for every layer of every visible section, one or
+two hash probes each, also for layers the section has nothing in, whose
+slice it then ignores. In a takeover frame those lookups are skipped. The
+same kind of session:
+
+| Scene    | Vanilla FPS | Mesh FPS | Change | Render thread, vanilla / mesh | GPU per frame, vanilla / mesh |
+|----------|-------------|----------|--------|-------------------------------|-------------------------------|
+| ground   | 482         | 549      | +14 %  | 1.89 / 1.65 ms                | 1.23 / 1.06 ms                |
+| overlook | 428         | 484      | +13 %  | 2.16 / 1.89 ms                | 1.53 / 1.30 ms                |
+| horizon  | 452         | 463      | +2 %   | 1.65 / 1.40 ms                | 1.69 / 1.39 ms                |
+
+Minecraft's frame time (`Minecraft.getFrameTimeNs()`, the render-thread
+column) runs from extraction to the blit to the swapchain; acquiring the
+swapchain image, the submit, which waits for the frame before last, and the
+present are outside it, and its GPU timer covers the same span. At the
+horizon a frame spends about 0.75 ms outside that span in both modes, which
+is why less work on either side barely shows there.
+
 ## Decisions
 
 - Solid terrain's mesh pipeline is specialized without the alpha test, as
@@ -183,9 +202,9 @@ scene, the horizon included. Medians in one session at render distance 32:
 
 ## Follow-Up
 
-- At the horizon a frame takes longer than its render thread or its GPU work
-  (in one session 2.2 ms a frame against 1.2 ms and 1.1 ms), in both modes.
-  What sets that pace is not known yet.
+- At the horizon a frame spends about 0.75 ms outside Minecraft's frame time
+  (acquire, submit, present), in both modes. What it waits for there is not
+  known yet.
 - Meshlets of 64 vertices instead of 128 have not been measured since tasks
   became small.
 - Occlusion culling on the GPU (step 5).

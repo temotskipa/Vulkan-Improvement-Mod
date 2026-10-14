@@ -136,6 +136,14 @@ public final class SectionMeshletStore {
     }
 
     /**
+     * Whether a frame is being collected in which the mesh path takes section layers out of
+     * Minecraft's draw lists.
+     */
+    public static boolean collectingTakeoverFrame() {
+        return VISIBLE_FRAME.collectingTakeover();
+    }
+
+    /**
      * Called for each section layer Minecraft looks at while it collects a frame, before it looks
      * the layer's buffers up. In a takeover frame a layer the mesh path stands in for, whose
      * section has a page on the GPU, is listed for the mesh path and left out of Minecraft's
@@ -683,6 +691,10 @@ public final class SectionMeshletStore {
 
         private boolean takeover() {
             return this.takeover;
+        }
+
+        private boolean collectingTakeover() {
+            return this.open && this.takeover;
         }
 
         private boolean take(int layerOrdinal, PageBinding binding, long sectionNode, float visibility) {
