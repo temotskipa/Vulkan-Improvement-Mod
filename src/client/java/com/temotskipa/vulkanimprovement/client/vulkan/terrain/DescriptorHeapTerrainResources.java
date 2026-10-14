@@ -667,11 +667,11 @@ public final class DescriptorHeapTerrainResources {
      * reserves as much room again behind them for the list of those the GPU keeps. This short list
      * is all a frame uploads for a layer.
      */
-    public synchronized VisiblePageUpload writeVisiblePageList(List<SectionMeshletStore.PageRef> pages) {
+    public synchronized VisiblePageUpload writeVisiblePageList(SectionMeshletStore.PageList pages, int from, int to) {
         TerrainGpuBuffer ring = this.resources.visibleMeshlets();
         int count = 0;
-        for (SectionMeshletStore.PageRef page : pages) {
-            count += page.tasks();
+        for (int page = from; page < to; page++) {
+            count += pages.tasks(page);
         }
         if (count <= 0 || ring == null || ring.deviceAddress() == 0L || !ring.hostVisible()) {
             return VisiblePageUpload.unavailable();
@@ -698,10 +698,11 @@ public final class DescriptorHeapTerrainResources {
         }
         ByteBuffer records = ring.mappedByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
         records.position(allocation.offset() * TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE);
-        for (SectionMeshletStore.PageRef page : pages) {
-            float visibility = Math.clamp(page.visibility(), 0.0F, 1.0F);
-            for (int task = 0; task < page.tasks(); task++) {
-                records.putInt(page.slot() | task << TerrainGpuLayout.TASK_RECORD_PAGE_BITS);
+        for (int page = from; page < to; page++) {
+            int slot = pages.slot(page);
+            float visibility = Math.clamp(pages.visibility(page), 0.0F, 1.0F);
+            for (int task = 0, tasks = pages.tasks(page); task < tasks; task++) {
+                records.putInt(slot | task << TerrainGpuLayout.TASK_RECORD_PAGE_BITS);
                 records.putFloat(visibility);
             }
         }

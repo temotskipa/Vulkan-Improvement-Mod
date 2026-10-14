@@ -339,15 +339,16 @@ public final class MeshTerrainRenderer {
                 continue;
             }
             int layerOrdinal = layer.ordinal();
-            List<SectionMeshletStore.PageRef> pages = SectionMeshletStore.visiblePages(layerOrdinal);
+            SectionMeshletStore.PageList pages = SectionMeshletStore.visiblePages(layerOrdinal);
             if (pages == null) {
                 this.meshReplacementPreparedGpuCommandRefusals.increment();
                 this.visibilityFallbackLayers.increment();
                 continue;
             }
 
-            for (List<SectionMeshletStore.PageRef> batch : taskBatches(pages)) {
-                DescriptorHeapTerrainResources.VisiblePageUpload upload = terrainResources.writeVisiblePageList(batch);
+            for (int first = 0, end; first < pages.size(); first = end) {
+                end = taskBatchEnd(pages, first);
+                DescriptorHeapTerrainResources.VisiblePageUpload upload = terrainResources.writeVisiblePageList(pages, first, end);
                 TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.gpuVisiblePages(upload, layerOrdinal);
                 DescriptorHeapTerrainResources.TerrainMeshTaskCommandUpload commandUpload = terrainResources.reserveMeshTaskCommand(dispatch.taskCount());
                 TerrainMeshTaskDispatch preparedDispatch = dispatch.withIndirectCommand(commandUpload);
@@ -389,14 +390,15 @@ public final class MeshTerrainRenderer {
                 continue;
             }
             int layerOrdinal = layer.ordinal();
-            List<SectionMeshletStore.PageRef> pages = SectionMeshletStore.visiblePages(layerOrdinal);
+            SectionMeshletStore.PageList pages = SectionMeshletStore.visiblePages(layerOrdinal);
             if (pages == null) {
                 this.meshReplacementPreparedGpuCommandRefusals.increment();
                 this.visibilityFallbackLayers.increment();
                 continue;
             }
-            for (List<SectionMeshletStore.PageRef> batch : taskBatches(pages)) {
-                TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.listedPages(terrainResources.writeVisiblePageList(batch), layerOrdinal);
+            for (int first = 0, end; first < pages.size(); first = end) {
+                end = taskBatchEnd(pages, first);
+                TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.listedPages(terrainResources.writeVisiblePageList(pages, first, end), layerOrdinal);
                 if (dispatch.ready()) {
                     TerrainRenderContext.enqueuePreparedLayerDispatch(layerOrdinal, dispatch);
                     this.meshReplacementPreparedVisibleGpuCommands.increment();
@@ -410,25 +412,18 @@ public final class MeshTerrainRenderer {
     }
 
     /**
-     * Splits a layer's pages, in their order, into runs whose tasks one draw can launch.
+     * Where the run of a layer's pages that starts at {@code first} ends: as many pages, in their
+     * order, as one draw can launch the tasks of. A page has far fewer tasks than a draw can launch,
+     * so a run holds at least one.
      */
-    private static List<List<SectionMeshletStore.PageRef>> taskBatches(List<SectionMeshletStore.PageRef> pages) {
-        List<List<SectionMeshletStore.PageRef>> batches = new ArrayList<>();
-        int first = 0;
+    private static int taskBatchEnd(SectionMeshletStore.PageList pages, int first) {
+        int end = first;
         int tasks = 0;
-        for (int i = 0; i < pages.size(); i++) {
-            int pageTasks = pages.get(i).tasks();
-            if (tasks + pageTasks > TerrainMeshTaskDispatch.MAX_DIRECT_TASKS) {
-                batches.add(pages.subList(first, i));
-                first = i;
-                tasks = 0;
-            }
-            tasks += pageTasks;
+        while (end < pages.size() && tasks + pages.tasks(end) <= TerrainMeshTaskDispatch.MAX_DIRECT_TASKS) {
+            tasks += pages.tasks(end);
+            end++;
         }
-        if (first < pages.size()) {
-            batches.add(pages.subList(first, pages.size()));
-        }
-        return batches;
+        return end;
     }
 
     /**

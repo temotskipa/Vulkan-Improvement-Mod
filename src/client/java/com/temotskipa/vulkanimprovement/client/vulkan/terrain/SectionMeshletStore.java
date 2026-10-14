@@ -174,7 +174,7 @@ public final class SectionMeshletStore {
             return false;
         }
         float visibility = TerrainRendererDebugConfig.vanillaChunkVisibilityFadeEnabled() ? Math.clamp(section.getVisibility(now, fadeDuration), 0.0F, 1.0F) : 1.0F;
-        return VISIBLE_FRAME.take(layer.ordinal(), binding, capturedSection.sectionNode, visibility);
+        return VISIBLE_FRAME.take(layer.ordinal(), binding, page, capturedSection.sectionNode, visibility);
     }
     
     public static void endVisibleFrame() {
@@ -229,9 +229,10 @@ public final class SectionMeshletStore {
 
     /**
      * The pages of the section layers Minecraft draws this frame for a layer, or {@code null} when
-     * one of them has no page on the GPU yet.
+     * one of them has no page on the GPU yet. The list is the layer's own and is filled again by
+     * the next call.
      */
-    public static @Nullable List<PageRef> visiblePages(int layerOrdinal) {
+    public static @Nullable PageList visiblePages(int layerOrdinal) {
         return VISIBLE_FRAME.pages(layerOrdinal);
     }
 
@@ -640,15 +641,53 @@ public final class SectionMeshletStore {
     }
     
     /**
-     * A page as a frame refers to it: its slot in the GPU page table, how many meshlets it has, and
-     * how far its section has faded in.
+     * How many tasks draw a page, one per {@link TerrainGpuLayout#MESHLETS_PER_TASK} of its meshlets.
      */
-    public record PageRef(int slot, int meshletCount, float visibility) {
-        /**
-         * How many tasks draw the page, one per {@link TerrainGpuLayout#MESHLETS_PER_TASK} of its meshlets.
-         */
-        public int tasks() {
-            return (this.meshletCount + TerrainGpuLayout.MESHLETS_PER_TASK - 1) / TerrainGpuLayout.MESHLETS_PER_TASK;
+    public static int tasks(int meshletCount) {
+        return (meshletCount + TerrainGpuLayout.MESHLETS_PER_TASK - 1) / TerrainGpuLayout.MESHLETS_PER_TASK;
+    }
+
+    /**
+     * A layer's pages as a frame draws them, in Minecraft's order: each page's slot in the GPU page
+     * table, how many tasks draw it, and how far its section has faded in. Refilled every frame.
+     */
+    public static final class PageList {
+        private int[] slots = new int[256];
+        private int[] tasks = new int[256];
+        private float[] visibility = new float[256];
+        private int size;
+
+        public int size() {
+            return this.size;
+        }
+
+        public int slot(int index) {
+            return this.slots[index];
+        }
+
+        public int tasks(int index) {
+            return this.tasks[index];
+        }
+
+        public float visibility(int index) {
+            return this.visibility[index];
+        }
+
+        private void clear() {
+            this.size = 0;
+        }
+
+        private void add(int slot, int meshletCount, float sectionVisibility) {
+            if (this.size == this.slots.length) {
+                int capacity = this.size * 2;
+                this.slots = Arrays.copyOf(this.slots, capacity);
+                this.tasks = Arrays.copyOf(this.tasks, capacity);
+                this.visibility = Arrays.copyOf(this.visibility, capacity);
+            }
+            this.slots[this.size] = slot;
+            this.tasks[this.size] = SectionMeshletStore.tasks(meshletCount);
+            this.visibility[this.size] = sectionVisibility;
+            this.size++;
         }
     }
     
@@ -678,6 +717,7 @@ public final class SectionMeshletStore {
      */
     private static final class VisibleFrame {
         private final LayerEntries[] layers = new LayerEntries[ChunkSectionLayer.values().length];
+        private final PageList[] pageLists = new PageList[ChunkSectionLayer.values().length];
         private final int[] uncaptured = new int[ChunkSectionLayer.values().length];
         private boolean open;
         private volatile boolean takeover;
@@ -689,6 +729,7 @@ public final class SectionMeshletStore {
         private VisibleFrame() {
             for (int layer = 0; layer < this.layers.length; layer++) {
                 this.layers[layer] = new LayerEntries();
+                this.pageLists[layer] = new PageList();
             }
         }
 
@@ -706,11 +747,11 @@ public final class SectionMeshletStore {
             return this.open && this.takeover;
         }
 
-        private boolean take(int layerOrdinal, PageBinding binding, long sectionNode, float visibility) {
+        private boolean take(int layerOrdinal, PageBinding binding, ResidentTerrainPages.Page page, long sectionNode, float visibility) {
             if (!this.open || !this.takeover) {
                 return false;
             }
-            this.layers[layerOrdinal].add(binding, sectionNode, visibility);
+            this.layers[layerOrdinal].add(binding, page, sectionNode, visibility);
             return true;
         }
 
@@ -765,7 +806,7 @@ public final class SectionMeshletStore {
             if (!this.open) {
                 return;
             }
-            this.layers[layerOrdinal].add(binding, sectionNode, sectionNode == this.currentSection ? this.currentVisibility : 1.0F);
+            this.layers[layerOrdinal].add(binding, binding.page, sectionNode, sectionNode == this.currentSection ? this.currentVisibility : 1.0F);
             this.lastLayer = layerOrdinal;
         }
 
@@ -780,15 +821,21 @@ public final class SectionMeshletStore {
             }
         }
 
-        private @Nullable List<PageRef> pages(int layerOrdinal) {
+        private @Nullable PageList pages(int layerOrdinal) {
             if (layerOrdinal < 0 || layerOrdinal >= this.layers.length || !this.takeover && this.uncaptured[layerOrdinal] > 0) {
                 return null;
             }
             LayerEntries entries = this.layers[layerOrdinal];
-            List<PageRef> pages = new ArrayList<>(entries.size);
+            PageList pages = this.pageLists[layerOrdinal];
+            pages.clear();
             for (int i = 0; i < entries.size; i++) {
                 ResidentTerrainPages.Page page = entries.bindings[i].page;
-                if (page == null || page.meshletCount() <= 0) {
+                if (page != null && page == entries.pages[i]) {
+                    // The page the section layer had when it was collected, as noted then.
+                    pages.add(entries.slots[i], entries.meshletCounts[i], entries.visibility[i]);
+                    continue;
+                }
+                if (!drawable(page)) {
                     // A taken section layer whose page went away this frame is left out: Minecraft
                     // no longer draws it either, which is a hole for one frame, not a stale page.
                     if (this.takeover) {
@@ -796,7 +843,7 @@ public final class SectionMeshletStore {
                     }
                     return null;
                 }
-                pages.add(new PageRef(page.slot(), page.meshletCount(), entries.visibility[i]));
+                pages.add(page.slot(), page.meshletCount(), entries.visibility[i]);
             }
             return pages;
         }
@@ -836,20 +883,43 @@ public final class SectionMeshletStore {
     /**
      * One layer's entries of a frame, in parallel arrays that are reused from frame to frame.
      */
+    /**
+     * Whether the mesh path can draw a page: it has meshlets, and no more than its task records can
+     * name.
+     */
+    private static boolean drawable(ResidentTerrainPages.@Nullable Page page) {
+        return page != null && page.meshletCount() > 0 && page.meshletCount() <= TerrainGpuLayout.MAX_PAGE_MESHLETS;
+    }
+
+    /**
+     * A layer's section layers of the frame being collected. Each keeps its page binding, and the
+     * page it had when collected with that page's slot and size, read while the page was at hand:
+     * the frame's list is built from these unless the binding has changed since.
+     */
     private static final class LayerEntries {
         private PageBinding[] bindings = new PageBinding[256];
+        private ResidentTerrainPages.Page[] pages = new ResidentTerrainPages.Page[256];
+        private int[] slots = new int[256];
+        private int[] meshletCounts = new int[256];
         private long[] sectionNodes = new long[256];
         private float[] visibility = new float[256];
         private int size;
 
-        private void add(PageBinding binding, long sectionNode, float sectionVisibility) {
+        private void add(PageBinding binding, ResidentTerrainPages.@Nullable Page page, long sectionNode, float sectionVisibility) {
             if (this.size == this.bindings.length) {
                 int capacity = this.size * 2;
                 this.bindings = Arrays.copyOf(this.bindings, capacity);
+                this.pages = Arrays.copyOf(this.pages, capacity);
+                this.slots = Arrays.copyOf(this.slots, capacity);
+                this.meshletCounts = Arrays.copyOf(this.meshletCounts, capacity);
                 this.sectionNodes = Arrays.copyOf(this.sectionNodes, capacity);
                 this.visibility = Arrays.copyOf(this.visibility, capacity);
             }
+            boolean drawable = drawable(page);
             this.bindings[this.size] = binding;
+            this.pages[this.size] = drawable ? page : null;
+            this.slots[this.size] = drawable ? page.slot() : 0;
+            this.meshletCounts[this.size] = drawable ? page.meshletCount() : 0;
             this.sectionNodes[this.size] = sectionNode;
             this.visibility[this.size] = sectionVisibility;
             this.size++;
@@ -863,6 +933,7 @@ public final class SectionMeshletStore {
 
         private void clear() {
             Arrays.fill(this.bindings, 0, this.size, null);
+            Arrays.fill(this.pages, 0, this.size, null);
             this.size = 0;
         }
     }
