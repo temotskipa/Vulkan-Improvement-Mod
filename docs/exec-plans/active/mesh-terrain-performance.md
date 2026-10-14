@@ -213,6 +213,14 @@ distance 16, where the mesh path trailed vanilla before these steps:
 | overlook | 815         | 902      | +11 %  | 0.82 / 0.78 ms                | 0.65 / 0.59 ms                |
 | horizon  | 810         | 844      | +4 %   | 0.63 / 0.60 ms                | 0.56 / 0.52 ms                |
 
+With tasks small, meshlets of 64 vertices (sixteen quads) cost the GPU less
+than meshlets of 128: in one session at render distance 32 the mesh path's
+GPU time a frame was 0.81 of vanilla's on the ground and 0.83 from above,
+against 0.86 with 128 in the sessions before; frame rates were 552 against
+519 (ground), 493 against 456 (overlook) and 462 against 429 (horizon). A
+task record counts a page's tasks in six bits now, so a page may still have
+the meshlets of a section layer full of faces.
+
 ## Decisions
 
 - Solid terrain's mesh pipeline is specialized without the alpha test, as
@@ -229,6 +237,8 @@ distance 16, where the mesh path trailed vanilla before these steps:
   draw instead, to rule out a stall where the GPU switches between Minecraft's
   descriptor sets and the mod's descriptor buffer, made no difference in any
   scene (horizon: 451 against 452 FPS, 1.13 against 1.11 ms of GPU a frame).
+- Meshlets hold 64 vertices. With 128, the mesh stage's outputs are twice as
+  large and its GPU time on the same terrain about a twentieth higher.
 - The render-distance 32 runs of the baseline did not load more sections than
   render distance 16 and are left out until the benchmark waits for the
   server to send the chunks.
@@ -241,6 +251,4 @@ distance 16, where the mesh path trailed vanilla before these steps:
   the D3D12 queue copies to the swapchain after waiting on a Vulkan semaphore,
   with a frame latency of two. Whether that hand-off can let more of the GPU's
   work overlap is open; it is Minecraft's presentation, not the terrain path.
-- Meshlets of 64 vertices instead of 128 have not been measured since tasks
-  became small.
 - Occlusion culling on the GPU (step 5).

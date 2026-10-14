@@ -5,7 +5,7 @@
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
 layout(local_size_x = 32) in;
-layout(triangles, max_vertices = 128, max_primitives = 64) out;
+layout(triangles, max_vertices = 64, max_primitives = 32) out;
 
 struct MeshletHeader {
     uint64_t sectionNode;
@@ -169,8 +169,8 @@ void main() {
         return;
     }
 
-    uint vertexCount = indexedTriangles ? uint(clamp(header.indexCount, 0, 128)) : uint(clamp(header.vertexCount, 0, 128));
-    uint primitiveCount = indexedTriangles ? min(vertexCount / 3u, 64u) : min(vertexCount / 4u * 2u, 64u);
+    uint vertexCount = indexedTriangles ? uint(clamp(header.indexCount, 0, 64)) : uint(clamp(header.vertexCount, 0, 64));
+    uint primitiveCount = indexedTriangles ? min(vertexCount / 3u, 32u) : min(vertexCount / 4u * 2u, 32u);
     TerrainVertices payload = TerrainVertices(
             pc.vertexPayload
             + uint64_t(header.vertexByteOffset)

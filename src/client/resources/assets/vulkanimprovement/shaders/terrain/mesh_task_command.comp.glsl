@@ -82,7 +82,7 @@ layout(push_constant, scalar) uniform CommandPushConstants {
 } pc;
 
 // A record names its page in the low bits and which of the page's tasks it is above them.
-const uint TASK_RECORD_PAGE_BITS = 27u;
+const uint TASK_RECORD_PAGE_BITS = 26u;
 
 // A section's mesh may reach a little past its sixteen blocks, so the box that is tested is this
 // much larger on every side. Minecraft tests the box without a margin when it collects a frame's

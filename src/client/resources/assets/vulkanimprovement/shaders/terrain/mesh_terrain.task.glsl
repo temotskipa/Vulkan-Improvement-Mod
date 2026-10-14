@@ -9,7 +9,7 @@ layout(local_size_x = 32) in;
 
 const uint MESHLETS_PER_TASK = 32u;
 // A task's record names its page in the low bits and which of the page's tasks it is above them.
-const uint TASK_RECORD_PAGE_BITS = 27u;
+const uint TASK_RECORD_PAGE_BITS = 26u;
 const uint TASK_RECORD_PAGE_MASK = (1u << TASK_RECORD_PAGE_BITS) - 1u;
 const uint CULL_BACK_FACING_MESHLETS = 2u;
 const uint CULL_MESHLETS_OUTSIDE_VIEW = 4u;

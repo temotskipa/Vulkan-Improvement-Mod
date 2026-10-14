@@ -51,10 +51,14 @@ public final class TerrainGpuLayout {
      */
     public static final int VULKAN_1_4_MIN_PUSH_CONSTANT_BYTES = 256;
     
-    public static final int TARGET_VERTICES_PER_MESHLET = 128;
-    public static final int TARGET_TRIANGLES_PER_INDEXED_MESHLET = 32;
-    public static final int MAX_MESH_OUTPUT_VERTICES = 128;
-    public static final int MAX_MESH_OUTPUT_PRIMITIVES = 64;
+    /**
+     * A meshlet's size: sixteen quads, or 21 triangles whose 63 corners fit the mesh stage's
+     * output. Meshlets of 128 vertices cost the GPU about a twentieth more on the same terrain.
+     */
+    public static final int TARGET_VERTICES_PER_MESHLET = 64;
+    public static final int TARGET_TRIANGLES_PER_INDEXED_MESHLET = 21;
+    public static final int MAX_MESH_OUTPUT_VERTICES = 64;
+    public static final int MAX_MESH_OUTPUT_PRIMITIVES = 32;
     public static final int BLOCK_VERTEX_STRIDE = 28;
     public static final int INDEXED_TRIANGLES_FLAG = 1;
     /**
@@ -67,17 +71,17 @@ public final class TerrainGpuLayout {
      * A task's record names its page in this many low bits and, above them, which of the page's
      * tasks it is.
      */
-    public static final int TASK_RECORD_PAGE_BITS = 27;
+    public static final int TASK_RECORD_PAGE_BITS = 26;
     /**
      * The most pages the page table may hold, as many as a task record can name.
      */
     public static final int MAX_PAGES = 1 << TASK_RECORD_PAGE_BITS;
     /**
      * The most meshlets a page may have: as many tasks as the bits above a task record's page can
-     * count. A page for one section layer of whole block faces has at most 24,576 quads, 768
+     * count. A page for one section layer of whole block faces has at most 24,576 quads, 1,536
      * meshlets and a few partial ones.
      */
-    public static final int MAX_PAGE_MESHLETS = 1024;
+    public static final int MAX_PAGE_MESHLETS = 2048;
     /**
      * The task stage's workgroup: one invocation tests one of the task's meshlets.
      */

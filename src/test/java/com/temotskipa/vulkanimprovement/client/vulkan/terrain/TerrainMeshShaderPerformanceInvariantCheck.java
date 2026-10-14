@@ -45,13 +45,14 @@ public final class TerrainMeshShaderPerformanceInvariantCheck {
     }
     
     private static void checkMeshletGranularityReducesDispatchCount(String shader) {
-        require(TerrainGpuLayout.TARGET_VERTICES_PER_MESHLET == 128, "terrain meshlets must batch 128 non-indexed vertices to reduce task-dispatch overhead");
-        require(TerrainGpuLayout.TARGET_TRIANGLES_PER_INDEXED_MESHLET == 32, "indexed terrain meshlets must batch 32 triangles to reduce task-dispatch overhead");
-        require(TerrainGpuLayout.MAX_MESH_OUTPUT_VERTICES == 128, "mesh shader output vertex limit must match the terrain meshlet vertex target");
-        require(TerrainGpuLayout.MAX_MESH_OUTPUT_PRIMITIVES == 64, "mesh shader output primitive limit must support 32 terrain quads per meshlet");
-        require(shader.contains("layout(triangles, max_vertices = 128, max_primitives = 64) out;"), "mesh shader layout must match the 128-vertex terrain meshlet contract");
-        require(shader.contains("clamp(header.indexCount, 0, 128)"), "indexed terrain mesh shader emission must clamp to the output vertex limit");
-        require(shader.contains("clamp(header.vertexCount, 0, 128)"), "non-indexed terrain mesh shader emission must clamp to the output vertex limit");
+        // 64 vertices cost the GPU about a twentieth less than 128 on the same terrain.
+        require(TerrainGpuLayout.TARGET_VERTICES_PER_MESHLET == 64, "terrain meshlets must hold 64 non-indexed vertices, sixteen quads");
+        require(TerrainGpuLayout.TARGET_TRIANGLES_PER_INDEXED_MESHLET * 3 <= TerrainGpuLayout.MAX_MESH_OUTPUT_VERTICES, "an indexed meshlet's corners must fit the mesh stage's output");
+        require(TerrainGpuLayout.MAX_MESH_OUTPUT_VERTICES == TerrainGpuLayout.TARGET_VERTICES_PER_MESHLET, "mesh shader output vertex limit must match the terrain meshlet vertex target");
+        require(TerrainGpuLayout.MAX_MESH_OUTPUT_PRIMITIVES == TerrainGpuLayout.TARGET_VERTICES_PER_MESHLET / 2, "mesh shader output primitive limit must hold two triangles per quad of a meshlet");
+        require(shader.contains("layout(triangles, max_vertices = 64, max_primitives = 32) out;"), "mesh shader layout must match the 64-vertex terrain meshlet contract");
+        require(shader.contains("clamp(header.indexCount, 0, 64)"), "indexed terrain mesh shader emission must clamp to the output vertex limit");
+        require(shader.contains("clamp(header.vertexCount, 0, 64)"), "non-indexed terrain mesh shader emission must clamp to the output vertex limit");
     }
     
     private static void require(boolean condition, String message) {
