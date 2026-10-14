@@ -4,7 +4,7 @@
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
 // Decides which of a layer's pages are drawn this frame and writes the mesh-task command that
-// draws them. One invocation takes one page of the frame's visible list, tests its section
+// draws them. One invocation takes one task of a page in the frame's visible list, tests its section
 // against the view frustum, and appends the page to the layer's draw list. The command's task
 // count is the length of that list: it is counted up here and never read back by the CPU.
 layout(local_size_x = 64) in;
@@ -81,6 +81,9 @@ layout(push_constant, scalar) uniform CommandPushConstants {
     vec4 projection;
 } pc;
 
+// A record names its page in the low bits and which of the page's tasks it is above them.
+const uint TASK_RECORD_PAGE_BITS = 27u;
+
 // A section's mesh may reach a little past its sixteen blocks, so the box that is tested is this
 // much larger on every side. Minecraft tests the box without a margin when it collects a frame's
 // sections, so this test never drops a section Minecraft would draw from where the camera is.
@@ -111,7 +114,7 @@ void main() {
     VisiblePages list = VisiblePages(pc.visiblePages);
     VisibilityCounters counters = VisibilityCounters(pc.counters);
     VisiblePage visible = list.records[pc.inputOffset + index];
-    ResidentPage page = PageTable(pc.pageTable).pages[visible.pageIndex];
+    ResidentPage page = PageTable(pc.pageTable).pages[visible.pageIndex & ((1u << TASK_RECORD_PAGE_BITS) - 1u)];
     atomicAdd(counters.inputPages, 1u);
     if (outsideFrustum(ivec3(page.sectionX, page.sectionY, page.sectionZ))) {
         atomicAdd(counters.culledPages, 1u);

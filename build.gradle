@@ -436,6 +436,10 @@ tasks.register("checkTerrainLayoutManifest") {
                                  "TARGET_TRIANGLES_PER_INDEXED_MESHLET",
                                  "MAX_MESH_OUTPUT_VERTICES",
                                  "MAX_MESH_OUTPUT_PRIMITIVES",
+                                 "MESHLETS_PER_TASK",
+                                 "TASK_RECORD_PAGE_BITS",
+                                 "MAX_PAGE_MESHLETS",
+                                 "TASK_WORKGROUP_SIZE",
                                  "BLOCK_VERTEX_STRIDE",
                                  "INDEXED_TRIANGLES_FLAG",
                                  "NORMALIZED_INDEX_STRIDE"]
@@ -482,11 +486,21 @@ tasks.register("checkTerrainLayoutManifest") {
         requireNormalizedText("task terrain shader",
                 taskShader,
                 "struct MeshletHeader { uint64_t sectionNode; int sectionX; int sectionY; int sectionZ; int layer; int firstVertex; int vertexCount; int firstIndex; int indexCount; uint vertexByteOffset; uint indexByteOffset; int vertexBytes; int indexBytes; int flags0; int materialId; vec3 boundsMin; vec3 boundsMax; int facing; int reserved0; };")
-        def taskPayloadStruct = "struct TaskPayload { float meshletVisibility; uint meshletCount; uint meshlets[MAX_TASK_MESHLETS]; };"
+        def taskPayloadStruct = "struct TaskPayload { float meshletVisibility; uint meshletCount; uint meshlets[MESHLETS_PER_TASK]; };"
         requireNormalizedText("task terrain shader", taskShader, taskPayloadStruct)
         requireNormalizedText("mesh terrain shader", meshShader, taskPayloadStruct)
-        requireText("task terrain shader", taskShader, "const uint MAX_TASK_MESHLETS = ${constants.MAX_TASK_MESHLETS}u;")
-        requireText("mesh terrain shader", meshShader, "const uint MAX_TASK_MESHLETS = ${constants.MAX_TASK_MESHLETS}u;")
+        requireText("task terrain shader", taskShader, "const uint MESHLETS_PER_TASK = ${constants.MESHLETS_PER_TASK}u;")
+        requireText("mesh terrain shader", meshShader, "const uint MESHLETS_PER_TASK = ${constants.MESHLETS_PER_TASK}u;")
+        requireText("task terrain shader", taskShader, "const uint TASK_RECORD_PAGE_BITS = ${constants.TASK_RECORD_PAGE_BITS}u;")
+        requireText("visibility pass shader", commandShader, "const uint TASK_RECORD_PAGE_BITS = ${constants.TASK_RECORD_PAGE_BITS}u;")
+        // One invocation tests one meshlet, and the kept ones are marked in one 32-bit mask.
+        if (constants.MESHLETS_PER_TASK != constants.TASK_WORKGROUP_SIZE || constants.MESHLETS_PER_TASK > 32) {
+            throw new GradleException("A task must test its meshlets one per invocation, at most 32: MESHLETS_PER_TASK=${constants.MESHLETS_PER_TASK}, TASK_WORKGROUP_SIZE=${constants.TASK_WORKGROUP_SIZE}")
+        }
+        // The bits above a record's page count the page's tasks.
+        if (constants.MAX_PAGE_MESHLETS != constants.MESHLETS_PER_TASK << (32 - constants.TASK_RECORD_PAGE_BITS)) {
+            throw new GradleException("MAX_PAGE_MESHLETS must be as many meshlets as a task record can count tasks for: ${constants.MESHLETS_PER_TASK << (32 - constants.TASK_RECORD_PAGE_BITS)}")
+        }
         requireText("task terrain shader", taskShader, "layout(local_size_x = ${constants.TASK_WORKGROUP_SIZE}) in;")
         requireText("task terrain shader", taskShader, "const uint CULL_BACK_FACING_MESHLETS = ${constants.CULL_BACK_FACING_MESHLETS}u;")
         requireText("task terrain shader", taskShader, "const uint CULL_MESHLETS_OUTSIDE_VIEW = ${constants.CULL_MESHLETS_OUTSIDE_VIEW}u;")
@@ -523,7 +537,9 @@ tasks.register("checkTerrainLayoutManifest") {
         requireText("mesh-task command shader", commandShader, "layout(local_size_x = ${constants.VISIBILITY_WORKGROUP_SIZE}) in;")
         requireText("mesh-task command shader", commandShader, "uint drawn = atomicAdd(commands.commands[pc.commandIndex].groupCountX, 1u);")
         requireText("mesh-task command shader", commandShader, "list.records[pc.outputOffset + drawn] = visible;")
-        requireText("task terrain shader", taskShader, "ResidentPage page = PageTable(pc.pageTable).pages[record.meshletIndex];")
+        requireText("task terrain shader", taskShader, "ResidentPage page = PageTable(pc.pageTable).pages[record.meshletIndex & TASK_RECORD_PAGE_MASK];")
+        requireText("task terrain shader", taskShader, "uint first = (record.meshletIndex >> TASK_RECORD_PAGE_BITS) * MESHLETS_PER_TASK;")
+        requireText("mesh-task command shader", commandShader, "ResidentPage page = PageTable(pc.pageTable).pages[visible.pageIndex & ((1u << TASK_RECORD_PAGE_BITS) - 1u)];")
         requireText("task terrain shader", taskShader, "EmitMeshTasksEXT(kept, 1, 1);")
         requireText("mesh terrain shader", meshShader, "meshlets.headers[taskPayload.meshlets[gl_WorkGroupID.x]]")
         def residentPageStruct = "struct ResidentPage { uint64_t sectionNode; int sectionX; int sectionY; int sectionZ; int layer; int firstMeshlet; int meshletCount; int estimatedVertices; int estimatedMeshlets; int vertexBytes; int indexBytes; int vertexByteOffset; int indexByteOffset; int reserved0; int customIndexBuffer; int reserved1; int reserved2; uint64_t reserved3; };"

@@ -272,9 +272,9 @@ public final class TerrainRendererDebugConfig {
     }
 
     /**
-     * Whether each layer's listed pages go straight to the task stage, one task each in Minecraft's
-     * order, the task stage dropping what is out of view; otherwise the GPU visibility pass culls
-     * and compacts them first.
+     * Whether each layer's listed pages go straight to the task stage, in Minecraft's order, the
+     * task stage dropping what is out of view; otherwise the GPU visibility pass culls and compacts
+     * them first.
      */
     public static boolean taskStagePageCullingEnabled() {
         return taskStagePageCulling;

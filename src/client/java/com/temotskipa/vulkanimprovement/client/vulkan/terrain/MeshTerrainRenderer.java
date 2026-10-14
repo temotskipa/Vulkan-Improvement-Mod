@@ -346,8 +346,7 @@ public final class MeshTerrainRenderer {
                 continue;
             }
 
-            for (int first = 0; first < pages.size(); first += TerrainMeshTaskDispatch.MAX_DIRECT_TASKS) {
-                List<SectionMeshletStore.PageRef> batch = pages.subList(first, Math.min(pages.size(), first + TerrainMeshTaskDispatch.MAX_DIRECT_TASKS));
+            for (List<SectionMeshletStore.PageRef> batch : taskBatches(pages)) {
                 DescriptorHeapTerrainResources.VisiblePageUpload upload = terrainResources.writeVisiblePageList(batch);
                 TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.gpuVisiblePages(upload, layerOrdinal);
                 DescriptorHeapTerrainResources.TerrainMeshTaskCommandUpload commandUpload = terrainResources.reserveMeshTaskCommand(dispatch.taskCount());
@@ -379,8 +378,8 @@ public final class MeshTerrainRenderer {
     }
 
     /**
-     * Hands each layer's listed pages straight to the task stage, one task a page in the order
-     * Minecraft collected them, nearest first. Nothing runs before the draw: the task stage drops
+     * Hands each layer's listed pages straight to the task stage in the order Minecraft collected
+     * them, nearest first, one task per 32 of a page's meshlets. Nothing runs before the draw: the task stage drops
      * pages and meshlets out of view or seen from behind, and the draw keeps Minecraft's order,
      * which lets the GPU reject hidden terrain by depth as early as vanilla does.
      */
@@ -396,8 +395,7 @@ public final class MeshTerrainRenderer {
                 this.visibilityFallbackLayers.increment();
                 continue;
             }
-            for (int first = 0; first < pages.size(); first += TerrainMeshTaskDispatch.MAX_DIRECT_TASKS) {
-                List<SectionMeshletStore.PageRef> batch = pages.subList(first, Math.min(pages.size(), first + TerrainMeshTaskDispatch.MAX_DIRECT_TASKS));
+            for (List<SectionMeshletStore.PageRef> batch : taskBatches(pages)) {
                 TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.listedPages(terrainResources.writeVisiblePageList(batch), layerOrdinal);
                 if (dispatch.ready()) {
                     TerrainRenderContext.enqueuePreparedLayerDispatch(layerOrdinal, dispatch);
@@ -409,6 +407,28 @@ public final class MeshTerrainRenderer {
                 }
             }
         }
+    }
+
+    /**
+     * Splits a layer's pages, in their order, into runs whose tasks one draw can launch.
+     */
+    private static List<List<SectionMeshletStore.PageRef>> taskBatches(List<SectionMeshletStore.PageRef> pages) {
+        List<List<SectionMeshletStore.PageRef>> batches = new ArrayList<>();
+        int first = 0;
+        int tasks = 0;
+        for (int i = 0; i < pages.size(); i++) {
+            int pageTasks = pages.get(i).tasks();
+            if (tasks + pageTasks > TerrainMeshTaskDispatch.MAX_DIRECT_TASKS) {
+                batches.add(pages.subList(first, i));
+                first = i;
+                tasks = 0;
+            }
+            tasks += pageTasks;
+        }
+        if (first < pages.size()) {
+            batches.add(pages.subList(first, pages.size()));
+        }
+        return batches;
     }
 
     /**

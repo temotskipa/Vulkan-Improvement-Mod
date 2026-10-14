@@ -128,7 +128,7 @@ public final class TerrainRenderPassStateInvariantCheck {
         String take = methodBody(store, "public static boolean takeSectionLayer");
         require(take.contains("!VISIBLE_FRAME.takeover() || !TerrainLayerReplacementPolicy.canReplaceLayer(layer)"), "only a takeover frame takes section layers, and never translucent ones");
         require(take.contains("if (page == null || page.meshletCount() <= 0") && take.indexOf("return false;", take.indexOf("if (page == null")) < take.indexOf("VISIBLE_FRAME.take("), "a section layer without a page on the GPU must stay in Minecraft's draw lists");
-        require(take.contains("page.meshletCount() > TerrainGpuLayout.MAX_TASK_MESHLETS"), "a page with more meshlets than one task can hand on must stay in Minecraft's draw lists");
+        require(take.contains("page.meshletCount() > TerrainGpuLayout.MAX_PAGE_MESHLETS"), "a page with more meshlets than its task records can name must stay in Minecraft's draw lists");
         String configSource = readUnchecked(Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/TerrainRendererDebugConfig.java"));
         require(configSource.contains("strictMeshTerrainReplacement = booleanProperty(\"vim.strictMeshTerrainReplacement\", false)"), "strict mesh terrain replacement must default to vanilla fallback until visible coverage is proven");
     }

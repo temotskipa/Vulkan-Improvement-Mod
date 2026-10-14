@@ -80,13 +80,9 @@ public record TerrainMeshTaskDispatch(int meshletOffset, int layerOrdinal, int r
     }
     
     /**
-     * A dispatch whose tasks are pages: one task for every page the GPU visibility pass kept,
-     * which is at most as many as were listed for it. The pass writes the command that says how
-     * many, so this dispatch is only drawn with that command.
-     */
-    /**
-     * The pages of a layer's section layers as Minecraft listed them, one task each, in Minecraft's
-     * order; the task stage drops what is out of view.
+     * The pages of a layer's section layers as Minecraft listed them, in Minecraft's order, one task
+     * per {@link com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout#MESHLETS_PER_TASK}
+     * of a page's meshlets; the task stage drops what is out of view.
      */
     static TerrainMeshTaskDispatch listedPages(DescriptorHeapTerrainResources.VisiblePageUpload upload, int layerOrdinal) {
         if (upload == null || !upload.ready()) {
@@ -95,6 +91,11 @@ public record TerrainMeshTaskDispatch(int meshletOffset, int layerOrdinal, int r
         return new TerrainMeshTaskDispatch(upload.inputOffset(), layerOrdinal, upload.count(), Math.min(upload.count(), MAX_DIRECT_TASKS), upload.address(), 0L, 0L, 0L, 0, 0L, false, Source.LISTED_PAGES, "");
     }
 
+    /**
+     * A dispatch whose tasks are those of the pages the GPU visibility pass kept, which is at most as
+     * many as were listed for it. The pass writes the command that says how many, so this dispatch
+     * is only drawn with that command.
+     */
     static TerrainMeshTaskDispatch gpuVisiblePages(DescriptorHeapTerrainResources.VisiblePageUpload upload, int layerOrdinal) {
         if (upload == null || !upload.ready()) {
             return unavailable("visible page upload unavailable");

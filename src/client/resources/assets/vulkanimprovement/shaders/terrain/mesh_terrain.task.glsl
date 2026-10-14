@@ -4,10 +4,13 @@
 #extension GL_EXT_scalar_block_layout : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
-// A page's meshlets are tested this many at a time, one per invocation.
+// A task tests this many of a page's meshlets, one per invocation.
 layout(local_size_x = 32) in;
 
-const uint MAX_TASK_MESHLETS = 1024u;
+const uint MESHLETS_PER_TASK = 32u;
+// A task's record names its page in the low bits and which of the page's tasks it is above them.
+const uint TASK_RECORD_PAGE_BITS = 27u;
+const uint TASK_RECORD_PAGE_MASK = (1u << TASK_RECORD_PAGE_BITS) - 1u;
 const uint CULL_BACK_FACING_MESHLETS = 2u;
 const uint CULL_MESHLETS_OUTSIDE_VIEW = 4u;
 const int FACING_EAST = 0;
@@ -21,7 +24,7 @@ const int FACING_NORTH = 5;
 struct TaskPayload {
     float meshletVisibility;
     uint meshletCount;
-    uint meshlets[MAX_TASK_MESHLETS];
+    uint meshlets[MESHLETS_PER_TASK];
 };
 
 taskPayloadSharedEXT TaskPayload taskPayload;
@@ -171,38 +174,36 @@ bool keepMeshlet(MeshletHeader header, ResidentPage page) {
 void main() {
     uint lane = gl_LocalInvocationID.x;
     if (pc.pageTable != uint64_t(0)) {
-        // The GPU listed the pages to draw. This task draws one of them: it hands on the page's
-        // meshlets that may be seen, in their order. The record's index is a page's, not a meshlet's.
+        // The pages to draw were listed, each as one task per MESHLETS_PER_TASK of its meshlets.
+        // This task hands on those of its share that may be seen, in their order.
         VisibleMeshlets drawn = VisibleMeshlets(pc.visibleMeshlets);
         VisibleMeshletRecord record = drawn.records[pc.meshletOffset + gl_WorkGroupID.x];
-        ResidentPage page = PageTable(pc.pageTable).pages[record.meshletIndex];
+        ResidentPage page = PageTable(pc.pageTable).pages[record.meshletIndex & TASK_RECORD_PAGE_MASK];
         MeshletHeaders headers = MeshletHeaders(pc.meshletHeaders);
-        uint count = min(uint(page.meshletCount), MAX_TASK_MESHLETS);
+        uint first = (record.meshletIndex >> TASK_RECORD_PAGE_BITS) * MESHLETS_PER_TASK;
+        uint count = uint(max(page.meshletCount, 0));
+        count = count > first ? min(count - first, MESHLETS_PER_TASK) : 0u;
         // A page out of view is dropped whole before any of its meshlets is read. A section's mesh
         // may reach a little past its sixteen blocks, so its box is tested with a margin.
         vec3 sectionLow = vec3(ivec3(page.sectionX, page.sectionY, page.sectionZ) * 16 - pc.cameraBlock.xyz) - pc.cameraOffset.xyz;
         if ((pc.cullFlags & CULL_MESHLETS_OUTSIDE_VIEW) != 0u && outsideView(sectionLow - 2.0, sectionLow + 18.0)) {
             count = 0u;
         }
-        uint kept = 0u;
-        for (uint first = 0u; first < count; first += gl_WorkGroupSize.x) {
-            uint meshlet = uint(page.firstMeshlet) + first + lane;
-            bool keep = first + lane < count && keepMeshlet(headers.headers[meshlet], page);
-            if (lane == 0u) {
-                keptMask = 0u;
-            }
-            barrier();
-            if (keep) {
-                atomicOr(keptMask, 1u << lane);
-            }
-            barrier();
-            uint mask = keptMask;
-            if (keep) {
-                taskPayload.meshlets[kept + bitCount(mask & ((1u << lane) - 1u))] = meshlet;
-            }
-            kept += uint(bitCount(mask));
-            barrier();
+        uint meshlet = uint(page.firstMeshlet) + first + lane;
+        bool keep = lane < count && keepMeshlet(headers.headers[meshlet], page);
+        if (lane == 0u) {
+            keptMask = 0u;
         }
+        barrier();
+        if (keep) {
+            atomicOr(keptMask, 1u << lane);
+        }
+        barrier();
+        uint mask = keptMask;
+        if (keep) {
+            taskPayload.meshlets[bitCount(mask & ((1u << lane) - 1u))] = meshlet;
+        }
+        uint kept = uint(bitCount(mask));
         if (lane == 0u) {
             taskPayload.meshletCount = kept;
             taskPayload.meshletVisibility = clamp(record.visibility, 0.0, 1.0);

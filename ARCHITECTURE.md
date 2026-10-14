@@ -124,8 +124,12 @@ renderer code does not drift back into a catch-all root package.
 - A frame uploads one short list per layer: the page slot and fade-in of every
   section layer Minecraft collected for it, in Minecraft's order, nearest
   first. By default (`vim.taskStagePageCulling`) that list is the draw: one
-  task per page, so the draw keeps Minecraft's order and the GPU rejects hidden
-  terrain by depth as early as it does for vanilla. Nothing runs before it.
+  task per 32 of a page's meshlets (`TerrainGpuLayout.MESHLETS_PER_TASK`), its
+  record naming the page and which 32, so the draw keeps Minecraft's order and
+  the GPU rejects hidden terrain by depth as early as it does for vanilla.
+  Nothing runs before it. A task hands the mesh stage at most 32 meshlets, so
+  what it passes on stays small and a large page is spread over many
+  workgroups.
   Otherwise the visibility pass (`mesh_task_command.comp.glsl`) first drops
   pages out of view and compacts the rest into the mesh-task command that
   draws them; all layers' passes are recorded into one command buffer behind
@@ -133,9 +137,9 @@ renderer code does not drift back into a catch-all root package.
 - A captured section layer's quads are grouped by the way they face
   (`TerrainQuadMeshlets`): the six axis directions, and one group for faces
   that do not lie across an axis. Each meshlet holds quads of one group and
-  the box around them. The task stage drops a page out of view whole, then
-  tests its meshlets 32 at a time and hands the mesh stage, in their order,
-  those that may be seen: a group whose faces all point away from the camera
+  the box around them. A task drops its share whole when the page is out of
+  view, else tests its meshlets one per invocation and hands the mesh stage,
+  in their order, those that may be seen: a group whose faces all point away from the camera
   is dropped when the pipeline culls back faces, and a meshlet out of view
   always (`vim.cullMeshlets`).
 - `TerrainMeshTaskDispatch` records where a dispatch's tasks come from. The

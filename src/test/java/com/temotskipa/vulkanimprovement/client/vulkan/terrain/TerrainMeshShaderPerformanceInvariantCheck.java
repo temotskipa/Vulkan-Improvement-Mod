@@ -17,6 +17,22 @@ public final class TerrainMeshShaderPerformanceInvariantCheck {
         String shader = Files.readString(MESH_SHADER);
         checkMeshletEmissionIsParallel(shader);
         checkMeshletGranularityReducesDispatchCount(shader);
+        checkPagesAreSpreadOverSmallTasks();
+    }
+
+    /**
+     * A page is drawn by one task per 32 of its meshlets. One task for a whole page handed the mesh
+     * stage up to a thousand meshlets through a payload of several kilobytes, which cost the GPU
+     * more than vanilla's draws of the same terrain.
+     */
+    private static void checkPagesAreSpreadOverSmallTasks() {
+        require(TerrainGpuLayout.MESHLETS_PER_TASK == TerrainGpuLayout.TASK_WORKGROUP_SIZE, "a task must test its meshlets one per invocation");
+        require(new SectionMeshletStore.PageRef(0, 1, 1.0F).tasks() == 1, "a page with one meshlet must be drawn by one task");
+        require(new SectionMeshletStore.PageRef(0, TerrainGpuLayout.MESHLETS_PER_TASK, 1.0F).tasks() == 1, "a page with a task's worth of meshlets must be drawn by one task");
+        require(new SectionMeshletStore.PageRef(0, TerrainGpuLayout.MESHLETS_PER_TASK + 1, 1.0F).tasks() == 2, "a page with one meshlet more than a task's worth must be drawn by two tasks");
+        int lastTask = new SectionMeshletStore.PageRef(0, TerrainGpuLayout.MAX_PAGE_MESHLETS, 1.0F).tasks() - 1;
+        require(lastTask < 1 << Integer.SIZE - TerrainGpuLayout.TASK_RECORD_PAGE_BITS, "a task record must be able to name the last task of the largest page");
+        require(new SectionMeshletStore.PageRef(0, TerrainGpuLayout.MAX_PAGE_MESHLETS + 1, 1.0F).tasks() - 1 >= 1 << Integer.SIZE - TerrainGpuLayout.TASK_RECORD_PAGE_BITS, "the largest page must be as large as task records allow");
     }
     
     private static void checkMeshletEmissionIsParallel(String shader) {

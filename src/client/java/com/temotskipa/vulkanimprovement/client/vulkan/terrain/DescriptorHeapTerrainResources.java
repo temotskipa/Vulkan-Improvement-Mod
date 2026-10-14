@@ -663,12 +663,16 @@ public final class DescriptorHeapTerrainResources {
     }
 
     /**
-     * Uploads the pages a layer may draw this frame, and reserves as much room again behind them
-     * for the list of those the GPU keeps. This short list is all a frame uploads for a layer.
+     * Uploads the pages a layer may draw this frame, one record for each of a page's tasks, and
+     * reserves as much room again behind them for the list of those the GPU keeps. This short list
+     * is all a frame uploads for a layer.
      */
     public synchronized VisiblePageUpload writeVisiblePageList(List<SectionMeshletStore.PageRef> pages) {
         TerrainGpuBuffer ring = this.resources.visibleMeshlets();
-        int count = pages.size();
+        int count = 0;
+        for (SectionMeshletStore.PageRef page : pages) {
+            count += page.tasks();
+        }
         if (count <= 0 || ring == null || ring.deviceAddress() == 0L || !ring.hostVisible()) {
             return VisiblePageUpload.unavailable();
         }
@@ -695,8 +699,11 @@ public final class DescriptorHeapTerrainResources {
         ByteBuffer records = ring.mappedByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
         records.position(allocation.offset() * TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE);
         for (SectionMeshletStore.PageRef page : pages) {
-            records.putInt(page.slot());
-            records.putFloat(Math.clamp(page.visibility(), 0.0F, 1.0F));
+            float visibility = Math.clamp(page.visibility(), 0.0F, 1.0F);
+            for (int task = 0; task < page.tasks(); task++) {
+                records.putInt(page.slot() | task << TerrainGpuLayout.TASK_RECORD_PAGE_BITS);
+                records.putFloat(visibility);
+            }
         }
         ring.flush();
         this.visiblePageListUploads.increment();
@@ -1206,7 +1213,7 @@ public final class DescriptorHeapTerrainResources {
                 }
             }
             
-            int sectionCapacity = TerrainRendererDebugConfig.initialSectionCapacity();
+            int sectionCapacity = Math.min(TerrainGpuLayout.MAX_PAGES, TerrainRendererDebugConfig.initialSectionCapacity());
             int meshletCapacity = TerrainRendererDebugConfig.initialMeshletCapacity();
             long vertexPayloadBytes = TerrainRendererDebugConfig.initialVertexPayloadBytes();
             long indexPayloadBytes = TerrainRendererDebugConfig.initialIndexPayloadBytes();
@@ -1269,7 +1276,7 @@ public final class DescriptorHeapTerrainResources {
          * whole capacity, not from what it holds.
          */
         Layout growFor(ResidentTerrainPages.Shortage shortage) {
-            int grownSectionCapacity = shortage.pages() > 0 ? growIntCapacity(this.sectionCapacity, Math.addExact(this.sectionCapacity, shortage.pages())) : this.sectionCapacity;
+            int grownSectionCapacity = shortage.pages() > 0 ? Math.min(TerrainGpuLayout.MAX_PAGES, growIntCapacity(this.sectionCapacity, Math.addExact(this.sectionCapacity, shortage.pages()))) : this.sectionCapacity;
             int grownMeshletCapacity = shortage.meshlets() > 0L ? growIntCapacity(this.meshletCapacity, Math.toIntExact(this.meshletCapacity + shortage.meshlets())) : this.meshletCapacity;
             long grownVertexPayloadBytes = shortage.vertexBytes() > 0L ? growLongCapacity(this.vertexPayloadBytes, this.vertexPayloadBytes + shortage.vertexBytes()) : this.vertexPayloadBytes;
             long grownIndexPayloadBytes = shortage.indexBytes() > 0L ? growLongCapacity(this.indexPayloadBytes, this.indexPayloadBytes + shortage.indexBytes()) : this.indexPayloadBytes;

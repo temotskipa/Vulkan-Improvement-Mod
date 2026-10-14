@@ -153,7 +153,7 @@ public final class SectionMeshletStore {
         }
         PageBinding binding = capturedSection.binding(layer.ordinal());
         ResidentTerrainPages.Page page = binding.page;
-        if (page == null || page.meshletCount() <= 0 || page.meshletCount() > TerrainGpuLayout.MAX_TASK_MESHLETS) {
+        if (page == null || page.meshletCount() <= 0 || page.meshletCount() > TerrainGpuLayout.MAX_PAGE_MESHLETS) {
             return false;
         }
         float visibility = TerrainRendererDebugConfig.vanillaChunkVisibilityFadeEnabled() ? Math.clamp(section.getVisibility(now, fadeDuration), 0.0F, 1.0F) : 1.0F;
@@ -623,10 +623,16 @@ public final class SectionMeshletStore {
     }
     
     /**
-     * A page as a frame refers to it: its slot in the GPU page table and how far its section has
-     * faded in.
+     * A page as a frame refers to it: its slot in the GPU page table, how many meshlets it has, and
+     * how far its section has faded in.
      */
-    public record PageRef(int slot, float visibility) {
+    public record PageRef(int slot, int meshletCount, float visibility) {
+        /**
+         * How many tasks draw the page, one per {@link TerrainGpuLayout#MESHLETS_PER_TASK} of its meshlets.
+         */
+        public int tasks() {
+            return (this.meshletCount + TerrainGpuLayout.MESHLETS_PER_TASK - 1) / TerrainGpuLayout.MESHLETS_PER_TASK;
+        }
     }
     
     /**
@@ -769,7 +775,7 @@ public final class SectionMeshletStore {
                     }
                     return null;
                 }
-                pages.add(new PageRef(page.slot(), entries.visibility[i]));
+                pages.add(new PageRef(page.slot(), page.meshletCount(), entries.visibility[i]));
             }
             return pages;
         }

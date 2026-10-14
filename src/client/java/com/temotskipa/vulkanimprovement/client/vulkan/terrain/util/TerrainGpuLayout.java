@@ -58,12 +58,28 @@ public final class TerrainGpuLayout {
     public static final int BLOCK_VERTEX_STRIDE = 28;
     public static final int INDEXED_TRIANGLES_FLAG = 1;
     /**
-     * How many meshlets one task of the task stage can hand on: a page's, which for one section
-     * layer of whole block faces is at most 24,576 quads, 768 meshlets and a few partial ones.
+     * How many of a page's meshlets one task looks at and hands on. A page is drawn by one task per
+     * this many of its meshlets: what a task hands the mesh stage stays small, and a large page is
+     * spread over many workgroups instead of one.
      */
-    public static final int MAX_TASK_MESHLETS = 1024;
+    public static final int MESHLETS_PER_TASK = 32;
     /**
-     * The task stage's workgroup: the meshlets of a page are tested this many at a time.
+     * A task's record names its page in this many low bits and, above them, which of the page's
+     * tasks it is.
+     */
+    public static final int TASK_RECORD_PAGE_BITS = 27;
+    /**
+     * The most pages the page table may hold, as many as a task record can name.
+     */
+    public static final int MAX_PAGES = 1 << TASK_RECORD_PAGE_BITS;
+    /**
+     * The most meshlets a page may have: as many tasks as the bits above a task record's page can
+     * count. A page for one section layer of whole block faces has at most 24,576 quads, 768
+     * meshlets and a few partial ones.
+     */
+    public static final int MAX_PAGE_MESHLETS = 1024;
+    /**
+     * The task stage's workgroup: one invocation tests one of the task's meshlets.
      */
     public static final int TASK_WORKGROUP_SIZE = 32;
     /**

@@ -108,14 +108,14 @@ layout(push_constant, scalar) uniform TerrainPushConstants {
     vec4 projection;
 } pc;
 
-const uint MAX_TASK_MESHLETS = 1024u;
+const uint MESHLETS_PER_TASK = 32u;
 const uint CULL_MESHLET_FRUSTUM_IN_MESH_STAGE = 1u;
 
 // The meshlets the task stage handed on, in the order they are to be drawn.
 struct TaskPayload {
     float meshletVisibility;
     uint meshletCount;
-    uint meshlets[MAX_TASK_MESHLETS];
+    uint meshlets[MESHLETS_PER_TASK];
 };
 
 taskPayloadSharedEXT TaskPayload taskPayload;

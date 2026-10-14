@@ -147,6 +147,20 @@ explained yet. Handing the listed pages straight to the task stage, in
 Minecraft's order, instead of compacting them in a compute pass first made no
 measurable difference to it, and is simpler, so it is the default.
 
+Then the tasks. One task drew a whole page: it handed the mesh stage up to
+1,024 meshlets through a payload of four kilobytes, and a large page kept one
+workgroup busy while the others had nothing left. A page is now drawn by one
+task per 32 of its meshlets (`MESHLETS_PER_TASK`); the list holds one record
+per task, naming the page and which 32, and a task's payload is 32 meshlet
+indices. The mesh path's GPU time a frame fell below vanilla's in every
+scene, the horizon included. Medians in one session at render distance 32:
+
+| Scene    | Vanilla FPS | Mesh FPS | Change | Render thread, vanilla / mesh | GPU per frame, vanilla / mesh |
+|----------|-------------|----------|--------|-------------------------------|-------------------------------|
+| ground   | 454         | 482      | +6 %   | 2.03 / 1.90 ms                | 1.23 / 1.05 ms                |
+| overlook | 393         | 419      | +7 %   | 2.36 / 2.21 ms                | 1.53 / 1.32 ms                |
+| horizon  | 441         | 466      | +6 %   | 1.64 / 1.51 ms                | 1.66 / 1.50 ms                |
+
 ## Decisions
 
 - Solid terrain's mesh pipeline is specialized without the alpha test, as
@@ -157,8 +171,21 @@ measurable difference to it, and is simpler, so it is the default.
   Minecraft collects the frame, so one section without a page no longer sends
   the whole layer back to Minecraft, and Minecraft does no work for what was
   taken.
+- A page is drawn by one task per 32 of its meshlets, not one task per page.
+  Small payloads and many workgroups are what mesh shaders are fast with.
+- The draw's textures stay in a descriptor buffer. Pushing them with each
+  draw instead, to rule out a stall where the GPU switches between Minecraft's
+  descriptor sets and the mod's descriptor buffer, made no difference in any
+  scene (horizon: 451 against 452 FPS, 1.13 against 1.11 ms of GPU a frame).
 - The render-distance 32 runs of the baseline did not load more sections than
   render distance 16 and are left out until the benchmark waits for the
   server to send the chunks.
 
 ## Follow-Up
+
+- At the horizon a frame takes longer than its render thread or its GPU work
+  (in one session 2.2 ms a frame against 1.2 ms and 1.1 ms), in both modes.
+  What sets that pace is not known yet.
+- Meshlets of 64 vertices instead of 128 have not been measured since tasks
+  became small.
+- Occlusion culling on the GPU (step 5).
