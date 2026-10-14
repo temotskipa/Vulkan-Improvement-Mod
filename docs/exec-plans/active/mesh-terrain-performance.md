@@ -180,6 +180,28 @@ present are outside it, and its GPU timer covers the same span. At the
 horizon a frame spends about 0.75 ms outside that span in both modes, which
 is why less work on either side barely shows there.
 
+The same profile showed the mod's hooks on that lookup costing the render
+thread with the mesh path off too, so the vanilla column above ran slower
+than Minecraft without the mod. The lookup went through a MixinExtras
+`@WrapOperation`, whose operation object cost about a tenth of the render
+thread, and an `@Inject` into the lookup itself, with a callback object per
+call, about a twentieth. One `@Redirect` now does both jobs, calls
+Minecraft's method directly, and returns at once while no frame is collected.
+Mapped buffers are flushed only where their memory is not coherent, and then
+only the range written. With the mod's cost gone from the vanilla column the
+mesh path's lead is smaller, and nearer the truth:
+
+| Scene    | Vanilla FPS | Mesh FPS | Change | Render thread, vanilla / mesh | GPU per frame, vanilla / mesh |
+|----------|-------------|----------|--------|-------------------------------|-------------------------------|
+| ground   | 508         | 532      | +5 %   | 1.80 / 1.71 ms                | 1.22 / 1.05 ms                |
+| overlook | 441         | 468      | +6 %   | 2.09 / 1.96 ms                | 1.53 / 1.31 ms                |
+| horizon  | 431         | 462      | +7 %   | 1.53 / 1.40 ms                | 1.29 / 1.36 ms                |
+
+At the horizon the render thread spends a tenth of its time in
+`D3D12GpuSurface.acquireNextTexture`, waiting on the swapchain's frame
+latency object: there the presentation of frames sets the pace, in both
+modes.
+
 ## Decisions
 
 - Solid terrain's mesh pipeline is specialized without the alpha test, as
@@ -202,9 +224,9 @@ is why less work on either side barely shows there.
 
 ## Follow-Up
 
-- At the horizon a frame spends about 0.75 ms outside Minecraft's frame time
-  (acquire, submit, present), in both modes. What it waits for there is not
-  known yet.
+- At the horizon the render thread waits on the D3D12 swapchain's frame
+  latency object for a tenth of its time, in both modes. Whether the
+  presentation path can be made to let more frames run ahead is open.
 - Meshlets of 64 vertices instead of 128 have not been measured since tasks
   became small.
 - Occlusion culling on the GPU (step 5).

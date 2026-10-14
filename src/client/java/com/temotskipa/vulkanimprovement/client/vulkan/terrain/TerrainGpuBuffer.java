@@ -15,6 +15,7 @@ import org.lwjgl.vulkan.VkBufferCreateInfo;
 import org.lwjgl.vulkan.VkBufferDeviceAddressInfo;
 
 import java.nio.ByteBuffer;
+import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 
 final class TerrainGpuBuffer implements Destroyable, AutoCloseable {
@@ -25,6 +26,9 @@ final class TerrainGpuBuffer implements Destroyable, AutoCloseable {
     private final long size;
     private final long deviceAddress;
     private final long mappedAddress;
+    // Whether the CPU's writes reach the GPU, and the GPU's the CPU, without a flush or an
+    // invalidation. A flush of a whole buffer otherwise costs the render thread every frame.
+    private final boolean coherent;
     private boolean closed;
     private boolean destroyed;
     
@@ -74,6 +78,9 @@ final class TerrainGpuBuffer implements Destroyable, AutoCloseable {
             this.vkBuffer = bufferPtr.get(0);
             this.allocation = allocationPtr.get(0);
             this.mappedAddress = allocationResult.pMappedData();
+            IntBuffer memoryFlags = stack.callocInt(1);
+            Vma.vmaGetAllocationMemoryProperties(device.vma(), this.allocation, memoryFlags);
+            this.coherent = (memoryFlags.get(0) & VK10.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0;
             this.deviceAddress = queryDeviceAddress(stack, device, this.vkBuffer);
             device.instance().debug().setObjectName(device.vkDevice(), VK10.VK_OBJECT_TYPE_BUFFER, this.vkBuffer, label);
         }
@@ -128,13 +135,20 @@ final class TerrainGpuBuffer implements Destroyable, AutoCloseable {
     }
     
     void flush() {
-        if (this.mappedAddress != 0L) {
-            Vma.vmaFlushAllocation(this.device.vma(), this.allocation, 0L, this.size);
+        flush(0L, this.size);
+    }
+    
+    /**
+     * Makes what the CPU wrote to a range visible to the GPU.
+     */
+    void flush(long offset, long length) {
+        if (this.mappedAddress != 0L && !this.coherent && length > 0L) {
+            Vma.vmaFlushAllocation(this.device.vma(), this.allocation, offset, length);
         }
     }
     
     void invalidate() {
-        if (this.mappedAddress != 0L) {
+        if (this.mappedAddress != 0L && !this.coherent) {
             Vma.vmaInvalidateAllocation(this.device.vma(), this.allocation, 0L, this.size);
         }
     }

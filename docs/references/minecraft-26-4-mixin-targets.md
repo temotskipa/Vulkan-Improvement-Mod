@@ -162,25 +162,19 @@ inside a render pass the level renderer has already opened.
   `SectionRenderDispatcher;getRenderSectionSlice(`,
   `method = "invalidateCompiledGeometry"`, `method = "resetLevelRenderData"`,
   `method = "close"`.
-- Purpose: bracket the collection of a frame's section layers, take the
-  section layers the mesh path draws out of it in strict replacement (a
-  MixinExtras `@WrapOperation` of the slice lookup that returns no slice for a
-  taken layer, and in such a frame skips the lookup for a layer the section
-  has nothing in), prepare the mesh path once they are known, and clear VIM
-  terrain-derived caches for geometry
-  invalidation, level reset and renderer close.
-
-### SectionRenderDispatcherMixin
-
-- Target: `net.minecraft.client.renderer.chunk.SectionRenderDispatcher`.
-- mcdev 26.4 surface: method `getRenderSectionSlice` returns
-  `SectionRenderDispatcher.@Nullable RenderSectionBufferSlice`;
-  `extractSectionDrawGroups` calls it once per visible section layer, in draw
-  order.
-- Source tokens: `method = "getRenderSectionSlice"`,
-  `RenderSectionBufferSlice`.
-- Purpose: learn which section layers Minecraft draws this frame, and in which
-  order.
+- Purpose: bracket the collection of a frame's section layers, record them
+  in Minecraft's draw order and, in strict replacement, take the section
+  layers the mesh path draws out of it (a `@Redirect` of the slice lookup
+  that returns no slice for a taken layer, and in such a frame skips the
+  lookup for a layer the section has nothing in), prepare the mesh path once
+  they are known, and clear VIM
+  terrain-derived caches for geometry invalidation, level reset and renderer
+  close. The lookup runs for every layer of every visible section, so the
+  hook calls Minecraft's method directly and returns at once while no frame
+  is collected: a MixinExtras `@WrapOperation` there, through its operation
+  object, cost about a tenth of the render thread at render distance 32 even
+  with the mesh path off, and an `@Inject` into the lookup itself, with its
+  callback object, about a twentieth.
 
 ### SectionRenderDispatcherRenderSectionMixin
 

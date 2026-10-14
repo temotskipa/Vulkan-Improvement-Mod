@@ -705,7 +705,7 @@ public final class DescriptorHeapTerrainResources {
                 records.putFloat(visibility);
             }
         }
-        ring.flush();
+        ring.flush((long) allocation.offset() * TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE, (long) count * TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE);
         this.visiblePageListUploads.increment();
         this.visiblePageRecordsUploaded.add(count);
         return new VisiblePageUpload(allocation.offset(), allocation.offset() + count, count, ring.deviceAddress(), true);

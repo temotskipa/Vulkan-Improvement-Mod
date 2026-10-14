@@ -136,6 +136,15 @@ public final class SectionMeshletStore {
     }
 
     /**
+     * Whether a frame's section layers are being collected, between {@link #beginVisibleFrame} and
+     * {@link #endVisibleFrame}. Minecraft's collection begins one only while the Vulkan backend is
+     * active and terrain capture is on.
+     */
+    public static boolean collectingFrame() {
+        return VISIBLE_FRAME.open;
+    }
+
+    /**
      * Whether a frame is being collected in which the mesh path takes section layers out of
      * Minecraft's draw lists.
      */

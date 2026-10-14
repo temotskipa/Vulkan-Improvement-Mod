@@ -21,8 +21,8 @@ augmenting vanilla terrain rendering through modern Vulkan capabilities.
 6. Each frame Minecraft collects the section layers it will draw. With strict
    replacement, `LevelRendererMixin` takes every solid or cutout section layer
    that has a page on the GPU out of that collection for the mesh path, and
-   Minecraft builds draws only for the rest. Otherwise
-   `SectionRenderDispatcherMixin` records what Minecraft collected.
+   Minecraft builds draws only for the rest. Otherwise it records what
+   Minecraft collected.
    `MeshTerrainRenderer.prepareVisibleFrame` then uploads terrain data and
    prepares mesh-task commands before Minecraft opens a render pass.
 7. Inside Minecraft's terrain render pass, the layer mixins on both of its

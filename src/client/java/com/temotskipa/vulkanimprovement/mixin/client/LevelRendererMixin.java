@@ -1,7 +1,5 @@
 package com.temotskipa.vulkanimprovement.mixin.client;
 
-import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
-import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.sugar.Local;
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.VulkanImprovementRuntime;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.MeshTerrainRenderer;
@@ -22,6 +20,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
@@ -45,16 +44,25 @@ public final class LevelRendererMixin {
     }
 
     /**
-     * In strict replacement a section layer the mesh path draws is never looked up by Minecraft,
-     * and so gets no draw of its own. Nor is a layer the section has nothing in: Minecraft ignores
-     * its slice, and the lookup costs a hash probe or two for every section and layer.
+     * Records the section layers Minecraft collects for a frame. In strict replacement a section
+     * layer the mesh path draws is never looked up by Minecraft, and so gets no draw of its own.
+     * Nor is a layer the section has nothing in: Minecraft ignores its slice, and the lookup costs
+     * a hash probe or two for every section and layer. This runs for every layer of every visible
+     * section, so it calls Minecraft's lookup directly and does nothing else while no frame is
+     * being collected.
      */
-    @WrapOperation(method = "extractSectionDrawGroups", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/chunk/SectionRenderDispatcher;getRenderSectionSlice(Lnet/minecraft/client/renderer/chunk/SectionMesh;Lnet/minecraft/client/renderer/chunk/ChunkSectionLayer;)Lnet/minecraft/client/renderer/chunk/SectionRenderDispatcher$RenderSectionBufferSlice;"))
-    private SectionRenderDispatcher.RenderSectionBufferSlice vim$takeSectionLayer(SectionRenderDispatcher dispatcher, SectionMesh sectionMesh, ChunkSectionLayer layer, Operation<SectionRenderDispatcher.RenderSectionBufferSlice> original, @Local SectionMesh.SectionDraw draw, @Local SectionRenderDispatcher.RenderSection section, @Local(ordinal = 0) long fadeDuration, @Local(ordinal = 1) long now) {
+    @Redirect(method = "extractSectionDrawGroups", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/chunk/SectionRenderDispatcher;getRenderSectionSlice(Lnet/minecraft/client/renderer/chunk/SectionMesh;Lnet/minecraft/client/renderer/chunk/ChunkSectionLayer;)Lnet/minecraft/client/renderer/chunk/SectionRenderDispatcher$RenderSectionBufferSlice;"))
+    private SectionRenderDispatcher.RenderSectionBufferSlice vim$takeSectionLayer(SectionRenderDispatcher dispatcher, SectionMesh sectionMesh, ChunkSectionLayer layer, @Local SectionMesh.SectionDraw draw, @Local SectionRenderDispatcher.RenderSection section, @Local(ordinal = 0) long fadeDuration, @Local(ordinal = 1) long now) {
+        // A frame is collected only while the Vulkan backend is active and terrain capture is on.
+        if (!SectionMeshletStore.collectingFrame()) {
+            return dispatcher.getRenderSectionSlice(sectionMesh, layer);
+        }
         if (draw == null && SectionMeshletStore.collectingTakeoverFrame() || SectionMeshletStore.takeSectionLayer(sectionMesh, layer, section, now, fadeDuration)) {
             return null;
         }
-        return original.call(dispatcher, sectionMesh, layer);
+        SectionRenderDispatcher.RenderSectionBufferSlice slice = dispatcher.getRenderSectionSlice(sectionMesh, layer);
+        SectionMeshletStore.recordDrawSlice(sectionMesh, layer, slice);
+        return slice;
     }
     
     /**

@@ -13,7 +13,6 @@
     "FrontendRenderPassMixin",
     "GlBackendMixin",
     "LevelRendererMixin",
-    "SectionRenderDispatcherMixin",
     "SectionRenderDispatcherRenderSectionMixin",
     "VideoSettingsScreenMixin",
     "VulkanBackendMixin",

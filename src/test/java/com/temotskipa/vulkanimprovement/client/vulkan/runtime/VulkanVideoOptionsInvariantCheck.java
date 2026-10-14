@@ -13,7 +13,6 @@ public final class VulkanVideoOptionsInvariantCheck {
     private static final Path TERRAIN_CONFIG = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/TerrainRendererDebugConfig.java");
     private static final Path MESH_TERRAIN_RENDERER = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/MeshTerrainRenderer.java");
     private static final Path CHUNK_SECTIONS_TO_RENDER_MIXIN = Path.of("src/client/java/com/temotskipa/vulkanimprovement/mixin/client/ChunkSectionsToRenderMixin.java");
-    private static final Path SECTION_RENDER_DISPATCHER_MIXIN = Path.of("src/client/java/com/temotskipa/vulkanimprovement/mixin/client/SectionRenderDispatcherMixin.java");
     private static final Path RENDER_SECTION_MIXIN = Path.of("src/client/java/com/temotskipa/vulkanimprovement/mixin/client/SectionRenderDispatcherRenderSectionMixin.java");
     private static final Path DRAW_INDIRECT_MIXIN = Path.of("src/client/java/com/temotskipa/vulkanimprovement/mixin/client/ChunkSectionsToRenderDrawIndirectMixin.java");
     private static final Path DRAW_SEPARATE_MIXIN = Path.of("src/client/java/com/temotskipa/vulkanimprovement/mixin/client/ChunkSectionsToRenderDrawSeparateMixin.java");
@@ -30,8 +29,8 @@ public final class VulkanVideoOptionsInvariantCheck {
         checkTerrainCaptureBootstrapIsExplicitOptIn(read(TERRAIN_CONFIG), read(VIDEO_OPTIONS), read(LANG));
         checkStrictTerrainCancellationIsExplicitOptIn(read(TERRAIN_CONFIG), read(VIDEO_SETTINGS_COMPATIBILITY), read(LANG));
         checkTranslucentTerrainFlagIsMetadataOnly(read(TERRAIN_CONFIG), read(VIDEO_SETTINGS_COMPATIBILITY), read(LANG));
-        checkOpenGlActiveSessionsDoNotEnterTerrainServices(read(CHUNK_SECTIONS_TO_RENDER_MIXIN), read(SECTION_RENDER_DISPATCHER_MIXIN), read(RENDER_SECTION_MIXIN), read(LEVEL_RENDERER_MIXIN));
-        checkTerrainMirrorHotPathsRequireCaptureOptIn(read(MESH_TERRAIN_RENDERER), read(CHUNK_SECTIONS_TO_RENDER_MIXIN), read(SECTION_RENDER_DISPATCHER_MIXIN), read(RENDER_SECTION_MIXIN), read(LEVEL_RENDERER_MIXIN));
+        checkOpenGlActiveSessionsDoNotEnterTerrainServices(read(CHUNK_SECTIONS_TO_RENDER_MIXIN), read(RENDER_SECTION_MIXIN), read(LEVEL_RENDERER_MIXIN));
+        checkTerrainMirrorHotPathsRequireCaptureOptIn(read(MESH_TERRAIN_RENDERER), read(CHUNK_SECTIONS_TO_RENDER_MIXIN), read(RENDER_SECTION_MIXIN), read(LEVEL_RENDERER_MIXIN));
     }
     
     private static void checkRuntimeKeepsOptionsVisibleForActiveVulkan(String source) {
@@ -84,9 +83,13 @@ public final class VulkanVideoOptionsInvariantCheck {
         require(!compatibilitySource.contains("\"mesh-experimental\""), "video diagnostics must not claim visible translucent mesh replacement is active");
     }
     
-    private static void checkOpenGlActiveSessionsDoNotEnterTerrainServices(String chunkSectionsSource, String dispatcherSource, String renderSectionSource, String levelRendererSource) {
+    private static void checkOpenGlActiveSessionsDoNotEnterTerrainServices(String chunkSectionsSource, String renderSectionSource, String levelRendererSource) {
         requireCallGuard(methodBody(chunkSectionsSource, "private void vim$observeTerrainGroup"), "MeshTerrainRenderer.get().observeTerrainGroup", "terrain render-group observation must be gated off for OpenGL-active sessions");
-        requireCallGuard(methodBody(dispatcherSource, "private void vim$recordTerrainDrawSlice"), "SectionMeshletStore.recordDrawSlice", "terrain draw-slice recording must be gated off for OpenGL-active sessions");
+        // The slice lookup records and takes section layers only while a frame is collected, and a
+        // frame is begun only behind both gates.
+        String takeSectionLayer = methodBody(levelRendererSource, "private SectionRenderDispatcher.RenderSectionBufferSlice vim$takeSectionLayer");
+        requireCallGuard(takeSectionLayer, "SectionMeshletStore.recordDrawSlice", "terrain draw-slice recording must happen only while a frame is collected", "if (!SectionMeshletStore.collectingFrame())");
+        requireCallGuard(takeSectionLayer, "SectionMeshletStore.takeSectionLayer", "taking section layers must happen only while a frame is collected", "if (!SectionMeshletStore.collectingFrame())");
         requireCallGuard(methodBody(renderSectionSource, "private void vim$captureSectionMeshletInput"), "SectionMeshletStore.capture", "terrain section capture must be gated off for OpenGL-active sessions");
         requireCallGuard(methodBody(levelRendererSource, "private void vim$beginVisibleFrame"), "SectionMeshletStore.beginVisibleFrame", "terrain visibility-frame reset must be gated off for OpenGL-active sessions");
         requireCallGuard(methodBody(levelRendererSource, "private void vim$endVisibleFrame"), "MeshTerrainRenderer.get().prepareVisibleFrame(", "terrain frame preparation must be gated off for OpenGL-active sessions");
@@ -98,10 +101,9 @@ public final class VulkanVideoOptionsInvariantCheck {
         requireCallGuard(methodBody(levelRendererSource, "private void vim$clearMeshletCacheForRendererClose"), "SectionMeshletStore.clearAll", "renderer-close cache clears must be gated off for OpenGL-active sessions");
     }
     
-    private static void checkTerrainMirrorHotPathsRequireCaptureOptIn(String meshRendererSource, String chunkSectionsSource, String dispatcherSource, String renderSectionSource, String levelRendererSource) {
+    private static void checkTerrainMirrorHotPathsRequireCaptureOptIn(String meshRendererSource, String chunkSectionsSource, String renderSectionSource, String levelRendererSource) {
         requireCallGuard(methodBody(meshRendererSource, "public void prepareVisibleFrame"), "DescriptorHeapTerrainResources.get().uploadDirtyTerrainData", "terrain metadata uploads must be skipped unless capture/bootstrap or mesh replacement is enabled", "TerrainRendererDebugConfig.terrainCaptureEnabled()");
         requireCallGuard(methodBody(chunkSectionsSource, "private void vim$observeTerrainGroup"), "MeshTerrainRenderer.get().observeTerrainGroup", "terrain render-group observation must be skipped unless capture/bootstrap or mesh replacement is enabled", "TerrainRendererDebugConfig.terrainCaptureEnabled()");
-        requireCallGuard(methodBody(dispatcherSource, "private void vim$recordTerrainDrawSlice"), "SectionMeshletStore.recordDrawSlice", "terrain draw-slice recording must be skipped unless capture/bootstrap or mesh replacement is enabled", "TerrainRendererDebugConfig.terrainCaptureEnabled()");
         requireCallGuard(methodBody(renderSectionSource, "private void vim$captureSectionMeshletInput"), "SectionMeshletStore.capture", "terrain section capture must be skipped unless capture/bootstrap or mesh replacement is enabled", "TerrainRendererDebugConfig.terrainCaptureEnabled()");
         requireCallGuard(methodBody(levelRendererSource, "private void vim$beginVisibleFrame"), "SectionMeshletStore.beginVisibleFrame", "terrain visibility resets must be skipped unless capture/bootstrap or mesh replacement is enabled", "TerrainRendererDebugConfig.terrainCaptureEnabled()");
         requireCallGuard(methodBody(levelRendererSource, "private void vim$clearMeshletCacheForGeometryInvalidation"), "SectionMeshletStore.clearAll", "geometry invalidation cache clears must be skipped unless capture/bootstrap or mesh replacement is enabled", "TerrainRendererDebugConfig.terrainCaptureEnabled()");
