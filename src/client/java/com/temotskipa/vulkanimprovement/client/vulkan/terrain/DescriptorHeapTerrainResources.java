@@ -900,9 +900,21 @@ public final class DescriptorHeapTerrainResources {
         return upload;
     }
     
+    /**
+     * Reserves a command for the GPU visibility pass to fill and writes its starting value, no tasks
+     * in one row of one layer, which the pass counts up. Written here rather than by a copy in the
+     * frame's commands, the command needs no barrier before the pass.
+     */
     public synchronized TerrainMeshTaskCommandUpload reserveMeshTaskCommand(int taskCount) {
         TerrainMeshTaskCommandUpload upload = allocateMeshTaskCommand(taskCount, true);
         if (upload.ready()) {
+            TerrainGpuBuffer meshTaskCommands = this.resources.meshTaskCommands();
+            ByteBuffer commands = meshTaskCommands.mappedByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
+            int offset = (int) upload.offsetBytes();
+            commands.putInt(offset, 0);
+            commands.putInt(offset + Integer.BYTES, 1);
+            commands.putInt(offset + 2 * Integer.BYTES, 1);
+            meshTaskCommands.flush();
             this.terrainMeshTaskCommandReservations.increment();
         }
         return upload;

@@ -129,6 +129,24 @@ Without the timer: ground 832 -> 855 FPS, overlook 761 -> 758, horizon
 785 -> 769. The mesh path is level with vanilla here: its render thread does
 a little less, and its opaque layers cost the GPU what vanilla's do.
 
+At render distance 32 (which needs `Options.broadcastOptions()` after the
+option is set, or the integrated server keeps sending the old distance) the
+mesh path pulls ahead where the CPU sets the pace and stays slightly behind
+where the GPU does. Medians in one session, whole-frame GPU time from
+Minecraft's own GPU utilization timer:
+
+| Scene    | Vanilla FPS | Mesh FPS | Change | Render thread, vanilla / mesh | GPU per frame, vanilla / mesh |
+|----------|-------------|----------|--------|-------------------------------|-------------------------------|
+| ground   | 427         | 453      | +6 %   | 2.11 / 1.98 ms                | 1.36 / 1.38 ms                |
+| overlook | 370         | 393      | +6 %   | 2.47 / 2.28 ms                | 1.69 / 1.72 ms                |
+| horizon  | 448         | 436      | -3 %   | 1.62 / 1.46 ms                | 1.87 / 1.98 ms                |
+
+The opaque layers cost the GPU the same in both modes at the horizon (0.81
+ms); the extra tenth of a millisecond there lies outside them and is not
+explained yet. Handing the listed pages straight to the task stage, in
+Minecraft's order, instead of compacting them in a compute pass first made no
+measurable difference to it, and is simpler, so it is the default.
+
 ## Decisions
 
 - Solid terrain's mesh pipeline is specialized without the alpha test, as

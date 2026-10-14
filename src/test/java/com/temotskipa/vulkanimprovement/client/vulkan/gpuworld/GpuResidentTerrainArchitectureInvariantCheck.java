@@ -60,7 +60,7 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
         requireContains(resources, "\"VIM Terrain Debug Counters\", TerrainGpuLayout.DEBUG_COUNTER_BYTES, storageUsage, TerrainGpuBuffer.Placement.DEVICE_MAPPED)", "the counters the GPU counts up must live in device memory");
         requireContains(resources, "growTerrainResourcesIfNeeded(SectionMeshletStore.takePageShortage());", "a page that does not fit must grow the buffer that was short");
         requireContains(renderer, "SectionMeshletStore.visiblePages(layerOrdinal)", "a frame must list a layer's visible pages, not its meshlets");
-        requireContains(renderer, "MeshShaderTerrainProgram.get().prepareVisiblePageCommand(preparedDispatch, upload)", "a layer's mesh-task command must be written by the GPU visibility pass");
+        requireContains(renderer, "MeshShaderTerrainProgram.get().prepareVisiblePageCommands(prepared)", "a layer's mesh-task command must be written by the GPU visibility pass");
         requireContains(renderer, "GpuWorldDatabase.get().recordVisibilityCommandPass(", "the visibility pass must be reported in the GPU world diagnostics");
         requireContains(visibilityPass, "if (outsideFrustum(ivec3(page.sectionX, page.sectionY, page.sectionZ))) {", "the visibility pass must cull pages against the view");
         requireContains(visibilityPass, "uint drawn = atomicAdd(commands.commands[pc.commandIndex].groupCountX, 1u);", "the visibility pass must count up the mesh-task command itself");

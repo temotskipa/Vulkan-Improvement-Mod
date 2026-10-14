@@ -178,6 +178,12 @@ void main() {
         ResidentPage page = PageTable(pc.pageTable).pages[record.meshletIndex];
         MeshletHeaders headers = MeshletHeaders(pc.meshletHeaders);
         uint count = min(uint(page.meshletCount), MAX_TASK_MESHLETS);
+        // A page out of view is dropped whole before any of its meshlets is read. A section's mesh
+        // may reach a little past its sixteen blocks, so its box is tested with a margin.
+        vec3 sectionLow = vec3(ivec3(page.sectionX, page.sectionY, page.sectionZ) * 16 - pc.cameraBlock.xyz) - pc.cameraOffset.xyz;
+        if ((pc.cullFlags & CULL_MESHLETS_OUTSIDE_VIEW) != 0u && outsideView(sectionLow - 2.0, sectionLow + 18.0)) {
+            count = 0u;
+        }
         uint kept = 0u;
         for (uint first = 0u; first < count; first += gl_WorkGroupSize.x) {
             uint meshlet = uint(page.firstMeshlet) + first + lane;

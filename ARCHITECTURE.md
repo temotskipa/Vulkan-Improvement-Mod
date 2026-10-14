@@ -122,22 +122,25 @@ renderer code does not drift back into a catch-all root package.
   When a page does not fit, the buffer that was short is grown and the pages
   are uploaded again from the copies `SectionMeshletStore` keeps.
 - A frame uploads one short list per layer: the page slot and fade-in of every
-  section layer Minecraft collected for it. The visibility pass
-  (`mesh_task_command.comp.glsl`) reads that list and the page table on the
-  GPU, drops pages whose section is outside the view, appends the rest to the
-  layer's draw list, and counts up the mesh-task command that draws them. The
-  task stage then draws one page per task and emits a mesh task per meshlet.
-  The CPU never learns the count and does not need it.
+  section layer Minecraft collected for it, in Minecraft's order, nearest
+  first. By default (`vim.taskStagePageCulling`) that list is the draw: one
+  task per page, so the draw keeps Minecraft's order and the GPU rejects hidden
+  terrain by depth as early as it does for vanilla. Nothing runs before it.
+  Otherwise the visibility pass (`mesh_task_command.comp.glsl`) first drops
+  pages out of view and compacts the rest into the mesh-task command that
+  draws them; all layers' passes are recorded into one command buffer behind
+  one barrier, and the command's starting value is written by the CPU.
 - A captured section layer's quads are grouped by the way they face
   (`TerrainQuadMeshlets`): the six axis directions, and one group for faces
   that do not lie across an axis. Each meshlet holds quads of one group and
-  the box around them. The task stage tests a page's meshlets 32 at a time and
-  hands the mesh stage, in their order, those that may be seen: a group whose
-  faces all point away from the camera is dropped when the pipeline culls back
-  faces, and a meshlet out of view always (`vim.cullMeshlets`).
+  the box around them. The task stage drops a page out of view whole, then
+  tests its meshlets 32 at a time and hands the mesh stage, in their order,
+  those that may be seen: a group whose faces all point away from the camera
+  is dropped when the pipeline culls back faces, and a meshlet out of view
+  always (`vim.cullMeshlets`).
 - `TerrainMeshTaskDispatch` records where a dispatch's tasks come from. The
-  path above is `gpu-visible-pages`. The older sources remain as fallback and
-  diagnostics: a CPU-written work queue with one record per visible meshlet
+  default path above is `listed-pages`, the visibility pass's is
+  `gpu-visible-pages`. The older sources remain as fallback and diagnostics: a CPU-written work queue with one record per visible meshlet
   (`cpu-work-queue`, used when `vim.enableGpuGeneratedMeshTaskCommands=false`
   or a frame's command could not be prepared), the visible meshlet ring, and
   direct per-page draws for `vim.drawAllCapturedTerrainLayers`.

@@ -79,7 +79,7 @@ public final class TerrainRenderPassStateInvariantCheck {
         require(observe.contains("TerrainRenderContext.setReplacementAllowed(!wireframe);") && observe.contains("TerrainRenderContext.setImprovedFog(improvedFog);"), "wireframe terrain must be left to Minecraft, and a group's kind of fog must be known to its draws");
         require(levelRendererMixin.contains("method = \"extractSectionDrawGroups\""), "the frame's sections must be taken from the method both Minecraft terrain paths share");
         
-        String prepareCommand = methodBody(meshProgram, "public synchronized boolean prepareVisiblePageCommand");
+        String prepareCommand = methodBody(meshProgram, "public synchronized boolean prepareVisiblePageCommands");
         int guard = prepareCommand.indexOf("TerrainRenderPassAccess.insideRenderPass(encoder)");
         int execute = prepareCommand.indexOf("encoder.execute(commandBuffer)");
         require(guard >= 0 && execute > guard, "command generation must refuse to execute a command buffer inside a render pass");

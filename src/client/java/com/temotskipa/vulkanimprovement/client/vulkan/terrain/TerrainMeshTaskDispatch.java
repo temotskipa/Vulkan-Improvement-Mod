@@ -84,6 +84,17 @@ public record TerrainMeshTaskDispatch(int meshletOffset, int layerOrdinal, int r
      * which is at most as many as were listed for it. The pass writes the command that says how
      * many, so this dispatch is only drawn with that command.
      */
+    /**
+     * The pages of a layer's section layers as Minecraft listed them, one task each, in Minecraft's
+     * order; the task stage drops what is out of view.
+     */
+    static TerrainMeshTaskDispatch listedPages(DescriptorHeapTerrainResources.VisiblePageUpload upload, int layerOrdinal) {
+        if (upload == null || !upload.ready()) {
+            return unavailable("listed pages unavailable");
+        }
+        return new TerrainMeshTaskDispatch(upload.inputOffset(), layerOrdinal, upload.count(), Math.min(upload.count(), MAX_DIRECT_TASKS), upload.address(), 0L, 0L, 0L, 0, 0L, false, Source.LISTED_PAGES, "");
+    }
+
     static TerrainMeshTaskDispatch gpuVisiblePages(DescriptorHeapTerrainResources.VisiblePageUpload upload, int layerOrdinal) {
         if (upload == null || !upload.ready()) {
             return unavailable("visible page upload unavailable");
@@ -147,7 +158,7 @@ public record TerrainMeshTaskDispatch(int meshletOffset, int layerOrdinal, int r
     }
     
     public enum Source {
-        UNAVAILABLE("unavailable", false, false), DIRECT_LAYER("direct-layer", false, false), CPU_VISIBLE_LIST("cpu-visible-list", true, false), CPU_WORK_QUEUE("cpu-work-queue", false, true), GPU_VISIBLE_PAGES("gpu-visible-pages", true, false);
+        UNAVAILABLE("unavailable", false, false), DIRECT_LAYER("direct-layer", false, false), CPU_VISIBLE_LIST("cpu-visible-list", true, false), CPU_WORK_QUEUE("cpu-work-queue", false, true), GPU_VISIBLE_PAGES("gpu-visible-pages", true, false), LISTED_PAGES("listed-pages", true, false);
         
         private final String id;
         private final boolean requiresVisibleMeshletList;

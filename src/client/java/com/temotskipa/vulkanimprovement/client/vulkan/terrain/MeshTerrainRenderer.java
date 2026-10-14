@@ -12,6 +12,7 @@ import net.minecraft.client.renderer.chunk.ChunkSectionLayerGroup;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldDatabase;
 import org.jspecify.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -328,6 +329,11 @@ public final class MeshTerrainRenderer {
      * section layer that has no page yet is left to Minecraft for the frame.
      */
     private void prepareVisibleTerrainCommands(DescriptorHeapTerrainResources terrainResources) {
+        if (TerrainRendererDebugConfig.taskStagePageCullingEnabled()) {
+            prepareListedPages(terrainResources);
+            return;
+        }
+        List<MeshShaderTerrainProgram.PreparedPages> prepared = new ArrayList<>();
         for (ChunkSectionLayer layer : ChunkSectionLayer.values()) {
             if (!TerrainLayerReplacementPolicy.canReplaceLayer(layer)) {
                 continue;
@@ -346,11 +352,56 @@ public final class MeshTerrainRenderer {
                 TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.gpuVisiblePages(upload, layerOrdinal);
                 DescriptorHeapTerrainResources.TerrainMeshTaskCommandUpload commandUpload = terrainResources.reserveMeshTaskCommand(dispatch.taskCount());
                 TerrainMeshTaskDispatch preparedDispatch = dispatch.withIndirectCommand(commandUpload);
-                if (preparedDispatch.ready() && preparedDispatch.usesIndirectCommand() && MeshShaderTerrainProgram.get().prepareVisiblePageCommand(preparedDispatch, upload)) {
-                    TerrainRenderContext.enqueuePreparedLayerDispatch(layerOrdinal, preparedDispatch);
-                    this.meshReplacementPreparedGpuCommands.increment();
+                if (preparedDispatch.ready() && preparedDispatch.usesIndirectCommand()) {
+                    prepared.add(new MeshShaderTerrainProgram.PreparedPages(preparedDispatch, upload));
+                }
+                else {
+                    this.meshReplacementPreparedGpuCommandRefusals.increment();
+                    this.visibilityFallbackLayers.increment();
+                }
+            }
+        }
+        if (prepared.isEmpty()) {
+            return;
+        }
+        // Every layer's pass goes into one command buffer, with one barrier behind them all.
+        if (!MeshShaderTerrainProgram.get().prepareVisiblePageCommands(prepared)) {
+            this.meshReplacementPreparedGpuCommandRefusals.add(prepared.size());
+            this.visibilityFallbackLayers.add(prepared.size());
+            return;
+        }
+        for (MeshShaderTerrainProgram.PreparedPages layer : prepared) {
+            TerrainRenderContext.enqueuePreparedLayerDispatch(layer.dispatch().layerOrdinal(), layer.dispatch());
+            this.meshReplacementPreparedGpuCommands.increment();
+            this.meshReplacementPreparedVisibleGpuCommands.increment();
+            this.visibilityCommandsEmitted.increment();
+        }
+    }
+
+    /**
+     * Hands each layer's listed pages straight to the task stage, one task a page in the order
+     * Minecraft collected them, nearest first. Nothing runs before the draw: the task stage drops
+     * pages and meshlets out of view or seen from behind, and the draw keeps Minecraft's order,
+     * which lets the GPU reject hidden terrain by depth as early as vanilla does.
+     */
+    private void prepareListedPages(DescriptorHeapTerrainResources terrainResources) {
+        for (ChunkSectionLayer layer : ChunkSectionLayer.values()) {
+            if (!TerrainLayerReplacementPolicy.canReplaceLayer(layer)) {
+                continue;
+            }
+            int layerOrdinal = layer.ordinal();
+            List<SectionMeshletStore.PageRef> pages = SectionMeshletStore.visiblePages(layerOrdinal);
+            if (pages == null) {
+                this.meshReplacementPreparedGpuCommandRefusals.increment();
+                this.visibilityFallbackLayers.increment();
+                continue;
+            }
+            for (int first = 0; first < pages.size(); first += TerrainMeshTaskDispatch.MAX_DIRECT_TASKS) {
+                List<SectionMeshletStore.PageRef> batch = pages.subList(first, Math.min(pages.size(), first + TerrainMeshTaskDispatch.MAX_DIRECT_TASKS));
+                TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.listedPages(terrainResources.writeVisiblePageList(batch), layerOrdinal);
+                if (dispatch.ready()) {
+                    TerrainRenderContext.enqueuePreparedLayerDispatch(layerOrdinal, dispatch);
                     this.meshReplacementPreparedVisibleGpuCommands.increment();
-                    this.visibilityCommandsEmitted.increment();
                 }
                 else {
                     this.meshReplacementPreparedGpuCommandRefusals.increment();
