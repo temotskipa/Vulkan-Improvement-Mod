@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 public final class RendererDomainInvariantCheck {
     private static final Path DOMAIN_OWNERS = Path.of("docs/references/minecraft-26-4-renderer-domain-owners.md");
@@ -18,7 +19,7 @@ public final class RendererDomainInvariantCheck {
     }
     
     
-    static void main(String[] args) {
+    static void main() {
         checkPlanRequiredDomainNames();
         checkEveryDomainExposesContractDiagnostics();
         checkPostProcessingContractUsesMinecraft26Owner();
@@ -115,10 +116,17 @@ public final class RendererDomainInvariantCheck {
         for (RendererDomain domain : RendererDomain.values()) {
             Object owner = contract(domains, domain).get("vanillaOwner");
             if (owner instanceof String name && name.startsWith("net.minecraft.")) {
-                require(owners.contains("| " + domain.diagnosticName() + " | `" + name + "` |"), domain.diagnosticName() + " owner must be recorded as mcdev-confirmed in " + DOMAIN_OWNERS + ": " + name);
+                require(recordsOwner(owners, domain.diagnosticName(), name), domain.diagnosticName() + " owner must be recorded as mcdev-confirmed in " + DOMAIN_OWNERS + ": " + name);
             }
         }
         require("net.minecraft.client.renderer.FirstPersonHandsAndItemsRenderer".equals(contract(domains, RendererDomain.ITEMS).get("vanillaOwner")), "the item contract must name the class that replaced ItemInHandRenderer");
+    }
+    
+    /**
+     * Whether a row of the owners table gives the domain that owner, however its cells are padded.
+     */
+    private static boolean recordsOwner(String owners, String domain, String owner) {
+        return Pattern.compile("^\\|\\s*" + Pattern.quote(domain) + "\\s*\\|\\s*" + Pattern.quote("`" + owner + "`") + "\\s*\\|", Pattern.MULTILINE).matcher(owners).find();
     }
     
     /**

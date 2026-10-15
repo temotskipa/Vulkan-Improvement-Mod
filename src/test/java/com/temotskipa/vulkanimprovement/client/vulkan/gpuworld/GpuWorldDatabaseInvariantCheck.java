@@ -14,7 +14,7 @@ public final class GpuWorldDatabaseInvariantCheck {
     }
     
     
-    static void main(String[] args) {
+    static void main() {
         checkSectionIdentity();
         checkRevisionRollover();
         checkMaterialTableContract();

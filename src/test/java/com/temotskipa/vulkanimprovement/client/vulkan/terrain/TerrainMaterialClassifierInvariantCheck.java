@@ -14,20 +14,20 @@ public final class TerrainMaterialClassifierInvariantCheck {
     }
     
     
-    static void main(String[] args) {
+    static void main() {
         checkMaterialIdsFitTableAndAreStable();
         checkLayerAlphaClassification();
         checkTerrainLayerRecords();
         checkDiagnostics();
     }
     
-    @SuppressWarnings("ConstantValue")
     private static void checkMaterialIdsFitTableAndAreStable() {
+        ChunkSectionLayer[] layers = ChunkSectionLayer.values();
+        require(layers.length <= TerrainGpuLayout.MATERIAL_TABLE_CAPACITY, "every render layer's material ID must fit the terrain material table");
         Set<Integer> materialIds = new HashSet<>();
-        for (ChunkSectionLayer layer : ChunkSectionLayer.values()) {
+        for (ChunkSectionLayer layer : layers) {
             int materialId = TerrainMaterialClassifier.materialIdForLayer(layer);
             require(materialId == layer.ordinal(), layer.label() + " material ID must match render-layer ordinal");
-            require(materialId >= 0 && materialId < TerrainGpuLayout.MATERIAL_TABLE_CAPACITY, layer.label() + " material ID must fit the terrain material table");
             require(materialIds.add(materialId), layer.label() + " material ID must be unique");
         }
     }

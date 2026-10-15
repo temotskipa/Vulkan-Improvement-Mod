@@ -23,7 +23,7 @@ public final class TerrainShaderCompileCheck {
     }
     
     
-    static void main(String[] args) throws InterruptedException {
+    static void main() throws InterruptedException {
         AtomicReference<Throwable> failure = new AtomicReference<>();
         Thread compileThread = new Thread(null, () -> {
             try {

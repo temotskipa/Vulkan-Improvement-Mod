@@ -16,9 +16,6 @@ final class TerrainMaterialClassifier {
         if (layer == null) {
             return GpuMaterialRecord.DEFAULT_TERRAIN_MATERIAL_ID;
         }
-        if (layer.ordinal() >= TerrainGpuLayout.MATERIAL_TABLE_CAPACITY) {
-            throw new IllegalStateException("ChunkSectionLayer ordinal exceeds terrain material table capacity: " + layer);
-        }
         return layer.ordinal();
     }
     

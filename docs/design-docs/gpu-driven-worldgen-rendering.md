@@ -285,24 +285,24 @@ worldgen acceleration.
 
 ## Feasibility Matrix
 
-| Capability                                          | Feasibility | Default Path             | Notes                                                                                                  |
-|-----------------------------------------------------|-------------|--------------------------|--------------------------------------------------------------------------------------------------------|
-| GPU-driven frustum/occlusion culling                | High        | Yes                      | Use section, meshlet, entity, and particle work lists.                                                 |
-| GPU-driven terrain draw dispatch                    | High        | Yes                      | Mesh/task shader and indirect dispatch are a natural fit.                                              |
-| GPU mesh generation from CPU chunk sections         | High        | Yes, after parity checks | CPU chunks remain authoritative; GPU owns render mesh data.                                            |
-| GPU material and descriptor binding                 | High        | Yes                      | Descriptor buffers fit a renderer-wide bindless-style material system.                                 |
-| Minecraft texture/model compatibility               | High        | Yes                      | Use Minecraft baked assets as the source of truth and translate them into shared GPU material records. |
-| GPU LOD terrain from CPU-ingested chunks            | High        | Yes                      | Use clipmaps or paged LOD regions.                                                                     |
-| GPU-assisted render-only distant terrain generation | Medium-high | Optional                 | Useful for visual fill beyond generated chunks; must be labeled approximate.                           |
-| GPU lighting for render probes/AO                   | Medium      | Optional                 | Good for visuals; not a replacement for gameplay light engine.                                         |
-| GPU section data transcoding                        | High        | Yes                      | CPU uploads compact dirty input; GPU builds render pages and counters.                                 |
-| GPU authoritative vanilla noise terrain via external provider | Medium      | Optional only            | Feasible as explicit accelerated-worldgen integration for supported stages; requires backups, driver-risk warnings, and compatibility gates. |
-| Native GPU authoritative vanilla noise terrain      | Low         | No                       | Exact `ChunkAccess` mutation, heightmaps, fluids, structures, and mods make this hard without delegating authority to a dedicated worldgen mod. |
-| GPU authoritative structures/features               | Very low    | No                       | Datapacks, registries, random streams, and mod hooks are CPU/object-heavy.                             |
-| GPU authoritative custom world type                 | Medium      | Experimental only        | Feasible if the world type is explicitly designed around GPU kernels.                                  |
-| GPU-driven entities and particles                   | Medium-high | Incremental              | Requires material, animation, sorting, and modded model boundaries.                                    |
-| GPU-driven shader-pack compatibility                | Medium-low  | Later                    | Existing shader-pack formats assume a different pipeline.                                              |
-| RT-derived gameplay lighting                        | Medium      | Experimental only        | Needs server authority, stable quantization, and explicit world/server opt-in.                         |
+| Capability                                                    | Feasibility | Default Path             | Notes                                                                                                                                           |
+|---------------------------------------------------------------|-------------|--------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|
+| GPU-driven frustum/occlusion culling                          | High        | Yes                      | Use section, meshlet, entity, and particle work lists.                                                                                          |
+| GPU-driven terrain draw dispatch                              | High        | Yes                      | Mesh/task shader and indirect dispatch are a natural fit.                                                                                       |
+| GPU mesh generation from CPU chunk sections                   | High        | Yes, after parity checks | CPU chunks remain authoritative; GPU owns render mesh data.                                                                                     |
+| GPU material and descriptor binding                           | High        | Yes                      | Descriptor buffers fit a renderer-wide bindless-style material system.                                                                          |
+| Minecraft texture/model compatibility                         | High        | Yes                      | Use Minecraft baked assets as the source of truth and translate them into shared GPU material records.                                          |
+| GPU LOD terrain from CPU-ingested chunks                      | High        | Yes                      | Use clipmaps or paged LOD regions.                                                                                                              |
+| GPU-assisted render-only distant terrain generation           | Medium-high | Optional                 | Useful for visual fill beyond generated chunks; must be labeled approximate.                                                                    |
+| GPU lighting for render probes/AO                             | Medium      | Optional                 | Good for visuals; not a replacement for gameplay light engine.                                                                                  |
+| GPU section data transcoding                                  | High        | Yes                      | CPU uploads compact dirty input; GPU builds render pages and counters.                                                                          |
+| GPU authoritative vanilla noise terrain via external provider | Medium      | Optional only            | Feasible as explicit accelerated-worldgen integration for supported stages; requires backups, driver-risk warnings, and compatibility gates.    |
+| Native GPU authoritative vanilla noise terrain                | Low         | No                       | Exact `ChunkAccess` mutation, heightmaps, fluids, structures, and mods make this hard without delegating authority to a dedicated worldgen mod. |
+| GPU authoritative structures/features                         | Very low    | No                       | Datapacks, registries, random streams, and mod hooks are CPU/object-heavy.                                                                      |
+| GPU authoritative custom world type                           | Medium      | Experimental only        | Feasible if the world type is explicitly designed around GPU kernels.                                                                           |
+| GPU-driven entities and particles                             | Medium-high | Incremental              | Requires material, animation, sorting, and modded model boundaries.                                                                             |
+| GPU-driven shader-pack compatibility                          | Medium-low  | Later                    | Existing shader-pack formats assume a different pipeline.                                                                                       |
+| RT-derived gameplay lighting                                  | Medium      | Experimental only        | Needs server authority, stable quantization, and explicit world/server opt-in.                                                                  |
 
 ## Proposed Unified Vulkan Architecture
 

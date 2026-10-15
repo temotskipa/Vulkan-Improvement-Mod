@@ -83,7 +83,8 @@ renderer code does not drift back into a catch-all root package.
 - `VulkanRuntimeProfile` groups captured capabilities into hard requirements,
   preferred acceleration features, RT/PT-readiness features, and selected paths.
 - `RendererLifecycleState` records whether the renderer is unconfigured,
-  configuring, ready, failed, shutting down, or device-lost.
+  configuring, ready, failed, or shutting down. Minecraft crashes when the
+  Vulkan device is lost, so there is no state for that.
 - `RendererDomainRegistry` records the selected path and CPU/GPU work split for
   terrain and non-terrain renderer domains.
 - The mod extends Minecraft's terrain drawing and does not replace how a
@@ -231,7 +232,7 @@ renderer code does not drift back into a catch-all root package.
   operational controls and keep docs synchronized when adding flags.
 - `vulkanimprovement.client.mixins.json` must list every active client mixin
   class by simple name.
-- `MeshTerrainRenderer.shutdown()` must release renderer resources when the
+- `MeshTerrainRenderer.shutdownNow()` must release renderer resources when the
   Vulkan device closes.
 
 ## Build
@@ -244,5 +245,5 @@ direction.
 `.\gradlew.bat checkTerrainShaders` validates terrain GLSL when
 `glslangValidator` is available. `.\gradlew.bat checkTerrainLayoutManifest`
 validates CPU/shader terrain layout assumptions, including the default terrain
-material record and material-table push constant. The Gradle build targets Java
-25.
+material record and material-table push constant. The Gradle build targets
+Java 25.

@@ -20,7 +20,7 @@ public final class AcceleratedWorldgenProviderCompatibilityInvariantCheck {
     }
     
     
-    static void main(String[] args) throws IOException {
+    static void main() throws IOException {
         checkAbsentProviderDiagnostics();
         checkPresentProviderStillDoesNotOwnRendererAuthority();
         checkSourceWiring(read(RENDERER_DIAGNOSTICS), read(PROVIDER_COMPATIBILITY), read(TERRAIN_CONFIG), read(VIDEO_OPTIONS), read(VIDEO_SETTINGS_COMPATIBILITY), read(FABRIC_MOD_JSON), read(LANG));

@@ -48,9 +48,9 @@ public final class GpuWorldResidencyStats {
         return map;
     }
     
-    private static void requireNonNegative(long value, String name) {
-        if (value < 0L) {
-            throw new IllegalArgumentException(name + " must be non-negative: " + value);
+    private static void requireNonNegativeResidentBytes(long residentBytes) {
+        if (residentBytes < 0L) {
+            throw new IllegalArgumentException("residentBytes must be non-negative: " + residentBytes);
         }
     }
     
@@ -63,7 +63,7 @@ public final class GpuWorldResidencyStats {
     }
     
     public synchronized boolean tryReservePage(GpuWorldPageKind pageKind, long residentBytes) {
-        requireNonNegative(residentBytes, "residentBytes");
+        requireNonNegativeResidentBytes(residentBytes);
         GpuWorldPageKind kind = Objects.requireNonNull(pageKind, "pageKind");
         if (wouldExceedKindBudget(kind, residentBytes) || wouldExceedResidentBudget(residentBytes)) {
             this.overBudgetRefusals = checkedAdd(this.overBudgetRefusals, 1L);
@@ -78,7 +78,7 @@ public final class GpuWorldResidencyStats {
     }
     
     public synchronized void releasePage(GpuWorldPageKind pageKind, long residentBytes) {
-        requireNonNegative(residentBytes, "residentBytes");
+        requireNonNegativeResidentBytes(residentBytes);
         GpuWorldPageKind kind = Objects.requireNonNull(pageKind, "pageKind");
         long livePageCount = this.livePageCountsByKind.get(kind);
         long usedBytes = this.usedBytesByKind.get(kind);

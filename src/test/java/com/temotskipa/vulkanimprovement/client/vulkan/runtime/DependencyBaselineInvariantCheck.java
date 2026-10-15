@@ -14,7 +14,7 @@ public final class DependencyBaselineInvariantCheck {
     }
     
     
-    static void main(String[] args) throws IOException {
+    static void main() throws IOException {
         Properties gradleProperties = new Properties();
         try (var input = Files.newInputStream(GRADLE_PROPERTIES)) {
             gradleProperties.load(input);
@@ -32,7 +32,7 @@ public final class DependencyBaselineInvariantCheck {
         require("26.4-alpha.3".equals(requiredProperty(gradleProperties, "minecraft_dependency")), "the metadata must ask for the name Fabric Loader gives that snapshot");
         require("0.19.5".equals(loaderVersion), "Fabric Loader baseline must be the one the mod was checked with");
         require("0.162.2+26.4".equals(fabricVersion), "Fabric API baseline must be the one the mod was checked with");
-        requireContains(buildGradle, "vmArg \"-XX:StackShadowPages=32\"", "run configurations must pass the stack setting the 26.4 launcher metadata starts the game with");
+        requireContains(buildGradle, "jvmArguments.add(\"-XX:StackShadowPages=32\")", "run configurations must pass the stack setting the 26.4 launcher metadata starts the game with");
         requireContains(buildGradle, "id 'net.fabricmc.fabric-loom' version '1.18-SNAPSHOT'", "Loom plugin version must match the checked dependency audit");
         requireContains(wrapperProperties, "gradle-9.8.1-bin.zip", "Gradle wrapper must match the checked dependency audit");
     }

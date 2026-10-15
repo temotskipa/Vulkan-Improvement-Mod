@@ -9,7 +9,7 @@ public final class GpuWorldTerrainLayerDirectoryInvariantCheck {
     }
     
     
-    static void main(String[] args) {
+    static void main() {
         checkDirectoryPublishesResidentSectionLayerRecords();
         checkDirectoryReplacesLayerRecords();
         checkReleaseAndClearRemoveResidentRecords();

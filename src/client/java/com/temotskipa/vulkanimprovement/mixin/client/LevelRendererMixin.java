@@ -84,7 +84,7 @@ public final class LevelRendererMixin {
      * being collected.
      */
     @Redirect(method = "extractSectionDrawGroups", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/chunk/SectionRenderDispatcher;getRenderSectionSlice(Lnet/minecraft/client/renderer/chunk/SectionMesh;Lnet/minecraft/client/renderer/chunk/ChunkSectionLayer;)Lnet/minecraft/client/renderer/chunk/SectionRenderDispatcher$RenderSectionBufferSlice;"))
-    private SectionRenderDispatcher.RenderSectionBufferSlice vim$takeSectionLayer(SectionRenderDispatcher dispatcher, SectionMesh sectionMesh, ChunkSectionLayer layer, @Local SectionMesh.SectionDraw draw, @Local SectionRenderDispatcher.RenderSection section, @Local(ordinal = 0) long fadeDuration, @Local(ordinal = 1) long now) {
+    private SectionRenderDispatcher.RenderSectionBufferSlice vim$takeSectionLayer(SectionRenderDispatcher dispatcher, SectionMesh sectionMesh, ChunkSectionLayer layer, @Local(name = "draw") SectionMesh.SectionDraw draw, @Local(name = "section") SectionRenderDispatcher.RenderSection section, @Local(name = "fadeDuration") long fadeDuration, @Local(name = "now") long now) {
         // A frame is collected only while the Vulkan backend is active and terrain capture is on.
         if (!SectionMeshletStore.collectingFrame()) {
             return dispatcher.getRenderSectionSlice(sectionMesh, layer);

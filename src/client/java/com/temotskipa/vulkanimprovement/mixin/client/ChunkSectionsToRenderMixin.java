@@ -45,7 +45,7 @@ public abstract class ChunkSectionsToRenderMixin {
             resources.recordImageBinding(DescriptorHeapTerrainResources.CLOUDS_IMAGE, improvedFogTextures.cloudsView());
             resources.recordImageBinding(DescriptorHeapTerrainResources.CLOUDS_DEPTH_IMAGE, improvedFogTextures.cloudsDepthView());
         }
-        MeshTerrainRenderer.get().observeTerrainGroup(group, renderWireframeTerrain, improvedFogTextures != null);
+        MeshTerrainRenderer.get().observeTerrainGroup(renderWireframeTerrain, improvedFogTextures != null);
     }
     
     @Inject(method = "renderGroup", at = @At("RETURN"))

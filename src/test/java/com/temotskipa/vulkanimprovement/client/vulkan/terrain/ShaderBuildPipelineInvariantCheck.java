@@ -11,7 +11,7 @@ public final class ShaderBuildPipelineInvariantCheck {
     }
     
     
-    static void main(String[] args) throws IOException {
+    static void main() throws IOException {
         String build = Files.readString(BUILD_GRADLE);
         checkReleaseBuildRequiresShaderValidator(build);
         checkBothShaderTasksUseReleaseRequirement(build);

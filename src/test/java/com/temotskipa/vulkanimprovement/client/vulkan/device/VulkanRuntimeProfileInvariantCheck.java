@@ -10,7 +10,7 @@ public final class VulkanRuntimeProfileInvariantCheck {
     }
     
     
-    static void main(String[] args) {
+    static void main() {
         TerrainRendererDebugConfig.setFragmentShadingRateEnabled(true);
         checkEmptySnapshotRuntimeProfile();
         checkSupportedSnapshotRuntimeProfile();

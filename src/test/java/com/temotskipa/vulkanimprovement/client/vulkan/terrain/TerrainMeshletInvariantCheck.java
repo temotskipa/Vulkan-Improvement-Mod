@@ -15,7 +15,7 @@ public final class TerrainMeshletInvariantCheck {
     }
     
     
-    static void main(String[] args) {
+    static void main() {
         checkNonIndexedMeshletsPartitionVertices();
         checkIndexedMeshletsPartitionTriangles();
         checkLayerMaterialId();

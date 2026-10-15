@@ -7,7 +7,6 @@
   "authors": [],
   "contact": {},
   "license": "unlicense",
-  "icon": "assets/vulkanimprovement/icon.png",
   "environment": "client",
   "entrypoints": {
     "client": [

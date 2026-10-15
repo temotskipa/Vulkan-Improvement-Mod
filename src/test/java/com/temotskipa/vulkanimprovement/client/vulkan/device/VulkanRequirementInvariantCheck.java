@@ -13,7 +13,7 @@ public final class VulkanRequirementInvariantCheck {
     }
     
     
-    static void main(String[] args) {
+    static void main() {
         checkVersionString();
         checkRequirementGroups();
         checkRequiredFeatureSets();

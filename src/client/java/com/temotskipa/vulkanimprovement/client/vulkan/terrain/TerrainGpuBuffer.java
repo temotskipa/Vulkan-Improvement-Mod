@@ -19,7 +19,7 @@ import java.lang.foreign.MemorySegment;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 
-final class TerrainGpuBuffer implements Destroyable, AutoCloseable {
+final class TerrainGpuBuffer implements Destroyable {
     private final VulkanDevice device;
     private final String label;
     private final long vkBuffer;
@@ -95,7 +95,7 @@ final class TerrainGpuBuffer implements Destroyable, AutoCloseable {
             Vma.vmaGetAllocationMemoryProperties(device.vma(), this.allocation, memoryFlags);
             this.coherent = (memoryFlags.get(0) & VK10.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0;
             this.deviceAddress = queryDeviceAddress(stack, device, this.vkBuffer);
-            device.instance().debug().setObjectName(device.vkDevice(), VK10.VK_OBJECT_TYPE_BUFFER, this.vkBuffer, label);
+            VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_BUFFER, this.vkBuffer, label);
         }
     }
     
@@ -181,8 +181,7 @@ final class TerrainGpuBuffer implements Destroyable, AutoCloseable {
      * Gives the buffer back. The CPU is done with it from here on, though the GPU may still read it
      * until Minecraft destroys it.
      */
-    @Override
-    public synchronized void close() {
+    synchronized void close() {
         if (!this.closed) {
             this.closed = true;
             endMappedAccess();

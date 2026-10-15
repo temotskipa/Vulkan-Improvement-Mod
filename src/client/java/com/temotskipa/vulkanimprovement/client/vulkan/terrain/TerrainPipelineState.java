@@ -5,7 +5,7 @@ import com.mojang.renderpearl.api.pipeline.ColorTargetState;
 import com.mojang.renderpearl.api.pipeline.CompiledRenderPipeline;
 import com.mojang.renderpearl.api.pipeline.DepthStencilState;
 import com.mojang.renderpearl.api.pipeline.PolygonMode;
-import com.mojang.renderpearl.backend.vulkan.VulkanRenderPipeline;
+import com.mojang.renderpearl.backend.api.BackendRenderPipeline;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -26,9 +26,20 @@ public record TerrainPipelineState(String name, PolygonMode polygonMode, boolean
         return new TerrainPipelineState(info.name(), info.polygonMode(), info.cull(), info.depthStencilState(), info.depthStencilFormat(), info.colorTargetStates());
     }
     
-    public static @Nullable TerrainPipelineState of(@Nullable VulkanRenderPipeline pipeline) {
-        // The pipeline class is final, so the interface a mixin adds to it is only visible through Object.
-        return (Object) pipeline instanceof Holder holder ? holder.vim$terrainPipelineState() : null;
+    /**
+     * The state a pipeline was compiled with, if it is a Vulkan pipeline, on which a mixin keeps it.
+     */
+    public static @Nullable TerrainPipelineState of(@Nullable BackendRenderPipeline pipeline) {
+        return pipeline instanceof Holder holder ? holder.vim$terrainPipelineState() : null;
+    }
+    
+    /**
+     * Keeps the state a pipeline was compiled with on the pipeline.
+     */
+    public static void remember(BackendRenderPipeline pipeline, TerrainPipelineState state) {
+        if (pipeline instanceof Holder holder) {
+            holder.vim$rememberTerrainPipelineState(state);
+        }
     }
     
     public boolean hasDepth() {

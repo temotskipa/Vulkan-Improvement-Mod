@@ -18,7 +18,7 @@ public final class TerrainRenderPassStateInvariantCheck {
     }
     
     
-    static void main(String[] args) throws IOException {
+    static void main() throws IOException {
         checkRenderPassRestoresVanillaPipelineState(read(RENDER_PASS_MIXIN), read(MESH_TERRAIN_RENDERER));
         checkLayerHooksDrawAfterMinecraftBindsThePipeline();
         checkFramePreparationStaysOutsideTheRenderPass(read(MESH_TERRAIN_RENDERER), read(MESH_SHADER_PROGRAM), read(LEVEL_RENDERER_MIXIN));

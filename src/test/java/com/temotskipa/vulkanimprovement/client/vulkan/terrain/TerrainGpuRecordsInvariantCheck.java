@@ -10,7 +10,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -20,10 +19,7 @@ import java.util.stream.Stream;
  * the same order, each as large, and as large as the strides the buffers are laid out with.
  */
 public final class TerrainGpuRecordsInvariantCheck {
-    private static final Path SHADERS = Path.of("src/client/resources/assets/vulkanimprovement/shaders/terrain");
     private static final Pattern STRUCT = Pattern.compile("struct\\s+(\\w+)\\s*\\{([^}]*)}");
-    private static final Pattern MEMBER = Pattern.compile("(\\w+)\\s+(\\w+)\\s*;");
-    private static final Map<String, Long> GLSL_BYTES = Map.of("int", 4L, "uint", 4L, "float", 4L, "vec2", 8L, "vec3", 12L, "vec4", 16L, "uint64_t", 8L);
     
     private TerrainGpuRecordsInvariantCheck() {
     }
@@ -32,7 +28,7 @@ public final class TerrainGpuRecordsInvariantCheck {
     static void main() throws IOException {
         checkStrides();
         List<String> shaders = new ArrayList<>();
-        try (Stream<Path> files = Files.list(SHADERS)) {
+        try (Stream<Path> files = Files.list(GlslSource.SHADERS)) {
             for (Path file : files.filter(path -> path.toString().endsWith(".glsl")).sorted().toList()) {
                 shaders.add(Files.readString(file));
             }
@@ -75,18 +71,15 @@ public final class TerrainGpuRecordsInvariantCheck {
     
     private static void checkMembers(StructLayout layout, String body) {
         String name = layout.name().orElseThrow();
-        List<MemoryLayout> members = layout.memberLayouts();
-        Matcher member = MEMBER.matcher(body);
-        int index = 0;
-        while (member.find()) {
-            require(index < members.size(), name + " declares more members in a shader than in Java: " + member.group(2));
-            MemoryLayout expected = members.get(index);
-            require(expected.name().orElseThrow().equals(member.group(2)), name + " member " + index + " is " + member.group(2) + " in a shader but " + expected.name().orElseThrow() + " in Java");
-            Long shaderBytes = GLSL_BYTES.get(member.group(1));
-            require(shaderBytes != null && shaderBytes == expected.byteSize(), name + "." + member.group(2) + " has " + shaderBytes + " bytes in a shader but " + expected.byteSize() + " in Java");
-            index++;
+        List<MemoryLayout> expected = layout.memberLayouts();
+        List<GlslSource.Member> declared = GlslSource.members(body);
+        require(declared.size() == expected.size(), name + " declares " + declared.size() + " members in a shader but " + expected.size() + " in Java");
+        for (int index = 0; index < declared.size(); index++) {
+            GlslSource.Member member = declared.get(index);
+            MemoryLayout java = expected.get(index);
+            require(java.name().orElseThrow().equals(member.name()), name + " member " + index + " is " + member.name() + " in a shader but " + java.name().orElseThrow() + " in Java");
+            require(member.bytes() == java.byteSize(), name + "." + member.name() + " has " + member.bytes() + " bytes in a shader but " + java.byteSize() + " in Java");
         }
-        require(index == members.size(), name + " declares " + index + " members in a shader but " + members.size() + " in Java");
     }
     
     private static void require(boolean condition, String message) {

@@ -24,7 +24,7 @@ public final class GpuWorldDatabase {
     private GpuWorldSectionUpdate lastUpdate;
     private String lastClearReason = "not cleared";
     private ResidentTerrainUsage residentTerrain = new ResidentTerrainUsage(0L, 0L, 0L, 0L);
-
+    
     private GpuWorldDatabase() {
     }
     
@@ -113,12 +113,6 @@ public final class GpuWorldDatabase {
     }
     
     
-    synchronized GpuWorldMaterialTableContract advanceMaterialTableRevision() {
-        this.materialTable = this.materialTable.nextRevision();
-        this.updateSequence.incrementAndGet();
-        return this.materialTable;
-    }
-    
     /**
      * What the resident terrain pages occupy on the GPU, as their allocators count it.
      *
@@ -127,7 +121,7 @@ public final class GpuWorldDatabase {
     public synchronized void recordResidentTerrainUsage(long livePages, long usedBytes, long capacityBytes, long allocationRefusals) {
         this.residentTerrain = new ResidentTerrainUsage(livePages, usedBytes, capacityBytes, allocationRefusals);
     }
-
+    
     public synchronized Map<String, Object> asMap() {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("authority", "cpu-chunk-state");
@@ -162,7 +156,7 @@ public final class GpuWorldDatabase {
             return map;
         }
     }
-
+    
     private Map<String, Object> sampleSections() {
         Map<String, Object> map = new LinkedHashMap<>();
         int count = 0;

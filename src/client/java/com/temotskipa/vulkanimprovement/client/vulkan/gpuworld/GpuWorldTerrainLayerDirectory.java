@@ -1,6 +1,5 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.gpuworld;
 
-import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -31,14 +30,6 @@ public final class GpuWorldTerrainLayerDirectory {
         GpuWorldTerrainLayerRecord record = GpuWorldTerrainLayerRecord.from(update, meshletOffset, meshletCount, visibility);
         publish(record);
         return record;
-    }
-    
-    public synchronized void replaceSnapshot(Collection<GpuWorldTerrainLayerRecord> snapshot, String reason) {
-        this.records.clear();
-        this.lastClearReason = normalizedReason(reason);
-        for (GpuWorldTerrainLayerRecord record : snapshot) {
-            publish(record);
-        }
     }
     
     public synchronized Optional<GpuWorldTerrainLayerRecord> recordFor(long sectionNode, int layerOrdinal) {

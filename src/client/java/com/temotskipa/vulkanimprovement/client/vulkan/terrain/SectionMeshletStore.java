@@ -225,7 +225,7 @@ public final class SectionMeshletStore {
             return;
         }
         SectionMesh.SectionDraw draw = compiledSectionMesh.getSectionDraw(layer);
-        if (draw == null || draw.hasCustomIndexBuffer() && slice.indexBuffer() == null) {
+        if (draw == null || draw.hasCustomIndexBuffer() && Objects.isNull(slice.indexBuffer())) {
             return;
         }
         CapturedSection capturedSection = (Object) compiledSectionMesh instanceof CaptureHolder holder ? (CapturedSection) holder.vim$capturedSection() : SECTIONS.get(compiledSectionMesh);
@@ -509,22 +509,6 @@ public final class SectionMeshletStore {
         map.put("rejectedCaptures", REJECTED_CAPTURES.get());
         map.put("lastRejectedCapture", lastRejectedCapture);
         return map;
-    }
-    
-    
-    public static List<Map<String, Object>> sampleMeshlets(int limit) {
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (CapturedSection section : SECTIONS.values()) {
-            for (LayerCapture layer : section.layers.values()) {
-                for (TerrainMeshlet meshlet : layer.meshlets) {
-                    result.add(meshlet.asMap());
-                    if (result.size() >= limit) {
-                        return result;
-                    }
-                }
-            }
-        }
-        return result;
     }
     
     private static int bytes(@Nullable MemorySegment segment) {

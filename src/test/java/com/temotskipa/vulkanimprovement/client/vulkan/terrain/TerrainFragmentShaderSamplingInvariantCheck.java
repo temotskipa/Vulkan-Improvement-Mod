@@ -18,7 +18,7 @@ public final class TerrainFragmentShaderSamplingInvariantCheck {
     }
     
     
-    static void main(String[] args) throws IOException {
+    static void main() throws IOException {
         String shader = Files.readString(FRAGMENT_SHADER);
         checkBlockAtlasSamplingIsCrispAndMipAware(shader);
         checkCutoutAlphaUsesVanillaMask(shader);
@@ -81,17 +81,18 @@ public final class TerrainFragmentShaderSamplingInvariantCheck {
         String meshBlock = pushConstantBlock(meshShader);
         require(meshBlock.equals(pushConstantBlock(taskShader)), "the task and mesh stages must declare the same push constants");
         require(meshBlock.contains("ivec4 cameraBlock;") && meshBlock.contains("vec4 cameraOffset;"), "the camera position must be split into a block and an offset");
-        int addresses = 8 * Long.BYTES;
-        int counters = 4 * Integer.BYTES;
-        int vectors = 6 * 4 * Float.BYTES;
-        require(TerrainGpuLayout.TERRAIN_PUSH_CONSTANT_BYTES == addresses + counters + vectors, "the task and mesh push-constant size must match the shader block");
+        int stageBytes = GlslSource.bytes(GlslSource.body(meshShader, "uniform TerrainPushConstants {"));
+        require(TerrainGpuLayout.TERRAIN_PUSH_CONSTANT_BYTES == stageBytes, "the task and mesh push-constant size must match the shader block");
         int vectorAlignment = 4 * Float.BYTES;
-        require(TerrainGpuLayout.TERRAIN_FOG_PUSH_CONSTANT_OFFSET == (TerrainGpuLayout.TERRAIN_PUSH_CONSTANT_BYTES + vectorAlignment - 1) / vectorAlignment * vectorAlignment, "the fog push constants must start at the first vector-aligned offset after the other stages'");
-        require(TerrainGpuLayout.TERRAIN_FOG_PUSH_CONSTANT_BYTES == 3 * vectorAlignment, "the fog push constants are a colour, four distances and a mode");
+        String fogBlock = GlslSource.body(shader, "uniform TerrainFogConstants {");
+        int fogOffset = GlslSource.layoutValue(fogBlock, "offset");
+        int fogBytes = GlslSource.bytes(fogBlock);
+        require(fogOffset + fogBytes <= TerrainGpuLayout.VULKAN_1_4_MIN_PUSH_CONSTANT_BYTES, "terrain push constants must fit the size every Vulkan 1.4 device accepts");
+        require(fogOffset == (stageBytes + vectorAlignment - 1) / vectorAlignment * vectorAlignment, "the fog push constants must start at the first vector-aligned offset after the other stages'");
+        require(fogBytes == TerrainGpuLayout.TERRAIN_FOG_PUSH_CONSTANT_BYTES, "the fog push constants are a colour, four distances and a mode");
         require(shader.contains("layout(offset = " + (TerrainGpuLayout.TERRAIN_FOG_PUSH_CONSTANT_OFFSET + 2 * vectorAlignment) + ") ivec4 fogMode;"), "the fragment stage must read the fog mode where the program writes it");
-        require(TerrainGpuLayout.TERRAIN_FOG_PUSH_CONSTANT_OFFSET + TerrainGpuLayout.TERRAIN_FOG_PUSH_CONSTANT_BYTES <= TerrainGpuLayout.VULKAN_1_4_MIN_PUSH_CONSTANT_BYTES, "terrain push constants must fit the size every Vulkan 1.4 device accepts");
         require(shader.contains("layout(offset = " + TerrainGpuLayout.TERRAIN_FOG_PUSH_CONSTANT_OFFSET + ") vec4 fogColor;") && shader.contains("layout(offset = " + (TerrainGpuLayout.TERRAIN_FOG_PUSH_CONSTANT_OFFSET + vectorAlignment) + ") vec4 fogRange;"), "the fragment stage must read the fog where the program writes it");
-        require(program.contains("pushConstantRanges.get(1).stageFlags(VK10.VK_SHADER_STAGE_FRAGMENT_BIT).offset(TerrainGpuLayout.TERRAIN_FOG_PUSH_CONSTANT_OFFSET).size(TerrainGpuLayout.TERRAIN_FOG_PUSH_CONSTANT_BYTES);"), "the pipeline layout must give the fragment stage its own push-constant range");
+        require(program.contains("pushConstantRanges.apply(1, range -> range.stageFlags(VK10.VK_SHADER_STAGE_FRAGMENT_BIT).offset(TerrainGpuLayout.TERRAIN_FOG_PUSH_CONSTANT_OFFSET).size(TerrainGpuLayout.TERRAIN_FOG_PUSH_CONSTANT_BYTES));"), "the pipeline layout must give the fragment stage its own push-constant range");
         require(program.contains("VK10.VK_SHADER_STAGE_FRAGMENT_BIT, TerrainGpuLayout.TERRAIN_FOG_PUSH_CONSTANT_OFFSET, fogConstants);"), "the frame's fog must be pushed for every terrain draw");
     }
     

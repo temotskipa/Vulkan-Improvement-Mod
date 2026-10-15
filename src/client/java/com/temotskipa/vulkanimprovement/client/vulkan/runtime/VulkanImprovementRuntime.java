@@ -11,7 +11,7 @@ public final class VulkanImprovementRuntime {
     }
     
     private static volatile Backend backend = new Backend(null, false);
-
+    
     /**
      * Whether Minecraft renders through Vulkan. Asked once per section layer and frame, so the
      * answer is kept for as long as the device is the same.
@@ -28,7 +28,7 @@ public final class VulkanImprovementRuntime {
         }
         return known.vulkan();
     }
-
+    
     private record Backend(@Nullable GpuDevice device, boolean vulkan) {
     }
     
@@ -37,7 +37,7 @@ public final class VulkanImprovementRuntime {
             return false;
         }
         RendererLifecycleState state = RendererCoreServices.get().currentLifecycleState();
-        return state == RendererLifecycleState.READY || state == RendererLifecycleState.FAILED || state == RendererLifecycleState.DEVICE_LOST;
+        return state == RendererLifecycleState.READY || state == RendererLifecycleState.FAILED;
     }
     
     public static boolean shouldShowVideoOptions(Minecraft minecraft) {

@@ -18,7 +18,7 @@ public final class RtPtAccelerationDataInvariantCheck {
     }
     
     
-    static void main(String[] args) throws IOException {
+    static void main() throws IOException {
         checkRuntimeProfileKeepsRtPtOptional();
         checkAccelerationPageDiagnostics();
         checkRegistryLifecycleDiagnostics();
@@ -86,20 +86,23 @@ public final class RtPtAccelerationDataInvariantCheck {
         RtPtAccelerationPage page = samplePage();
         registry.registerPage(page);
         registry.markPendingRebuild(page, "source revision changed");
+        registry.markPendingRebuild(page, "material changed");
         registry.retirePage(page, "source page retired");
+        registry.retirePage(page, "section unloaded");
         registry.clearForDeviceLost("device lost");
+        registry.clearForDeviceLost("driver reset");
         
         Map<String, Object> map = registry.asMap();
         require(Long.valueOf(1L).equals(map.get("registeredPageCount")), "registry must count registered pages");
-        require(Long.valueOf(1L).equals(map.get("retiredPageCount")), "registry must count retired pages");
-        require(Long.valueOf(1L).equals(map.get("pendingRebuildCount")), "registry must count pending rebuilds");
-        require(Long.valueOf(1L).equals(map.get("deviceLostClearCount")), "registry must count device-lost clears");
+        require(Long.valueOf(2L).equals(map.get("retiredPageCount")), "registry must count retired pages");
+        require(Long.valueOf(2L).equals(map.get("pendingRebuildCount")), "registry must count pending rebuilds");
+        require(Long.valueOf(2L).equals(map.get("deviceLostClearCount")), "registry must count device-lost clears");
         require(Long.valueOf(0L).equals(map.get("livePageCount")), "device-lost clear must leave no live pages");
         
         Map<?, ?> fallbackReasons = child(map, "fallbackReasonCounts");
-        require(Long.valueOf(1L).equals(fallbackReasons.get("source revision changed")), "registry must count rebuild fallback reasons");
-        require(Long.valueOf(1L).equals(fallbackReasons.get("source page retired")), "registry must count retirement fallback reasons");
-        require(Long.valueOf(1L).equals(fallbackReasons.get("device lost")), "registry must count device-lost fallback reasons");
+        for (String reason : new String[]{"source revision changed", "material changed", "source page retired", "section unloaded", "device lost", "driver reset"}) {
+            require(Long.valueOf(1L).equals(fallbackReasons.get(reason)), "registry must count each fallback reason apart: " + reason);
+        }
         
         registry.reset();
     }

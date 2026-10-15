@@ -37,7 +37,7 @@ public final class TerrainPerformanceMonitor {
     private static final int GROUPS = ChunkSectionLayerGroup.values().length;
     // Created after the constants above: the arrays an instance allocates are sized by GROUPS.
     private static final TerrainPerformanceMonitor INSTANCE = new TerrainPerformanceMonitor();
-
+    
     private final long[] frameIntervals = new long[FRAME_SAMPLES];
     private final long[] cpuFrameTimes = new long[FRAME_SAMPLES];
     private final long[] slotWritten = new long[SLOTS];
@@ -219,11 +219,13 @@ public final class TerrainPerformanceMonitor {
             if ((written & (3L << start)) != 3L << start) {
                 continue;
             }
-            if (results[start].isEmpty() || results[start + 1].isEmpty()) {
+            OptionalLong begin = results[start];
+            OptionalLong end = results[start + 1];
+            if (begin.isEmpty() || end.isEmpty()) {
                 this.gpuReadMisses++;
                 continue;
             }
-            long nanos = Math.round((results[start + 1].getAsLong() - results[start].getAsLong()) * this.nanosPerTick);
+            long nanos = Math.round((end.getAsLong() - begin.getAsLong()) * this.nanosPerTick);
             if (nanos < 0L) {
                 continue;
             }

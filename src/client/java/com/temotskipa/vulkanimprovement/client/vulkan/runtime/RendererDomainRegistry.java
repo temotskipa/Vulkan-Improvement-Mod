@@ -44,11 +44,6 @@ public final class RendererDomainRegistry {
             return new DomainState("vanilla", reason, true, false, false, false);
         }
         
-        
-        static DomainState meshTerrain(String reason) {
-            return new DomainState("mesh-shader-terrain", reason, true, false, false, true);
-        }
-        
         static DomainState meshTerrainGpu(String reason) {
             return new DomainState("mesh-shader-terrain", reason, true, true, false, true);
         }

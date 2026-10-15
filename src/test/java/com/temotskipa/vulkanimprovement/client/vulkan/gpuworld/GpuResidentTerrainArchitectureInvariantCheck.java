@@ -20,7 +20,7 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
     }
     
     
-    static void main(String[] args) throws IOException {
+    static void main() throws IOException {
         String fabricModJson = read(FABRIC_MOD_JSON);
         String gitignore = read(GITIGNORE);
         String databaseSource = read(DATABASE_SOURCE);
@@ -48,7 +48,7 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
         String store = read(Path.of(terrain + "SectionMeshletStore.java"));
         String config = read(Path.of(terrain + "TerrainRendererDebugConfig.java"));
         String visibilityPass = read(Path.of("src/client/resources/assets/vulkanimprovement/shaders/terrain/mesh_task_command.comp.glsl"));
-
+        
         requireContains(store, "PAGES.markPending(new SectionLayerKey(mesh, sectionNode, layer.ordinal()));", "a captured section layer must wait for a page of its own");
         require(!store.contains("writeMetadataSnapshot"), "terrain must not be rewritten as a whole when one section changes");
         requireContains(resources, "SectionMeshletStore.collectPageUploads(PAGE_UPLOAD_BYTES_PER_FRAME, PAGE_UPLOADS_PER_FRAME)", "a frame must upload changed pages only, within a budget");
@@ -67,7 +67,7 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
         requireContains(config, "booleanProperty(\"vim.enableGpuGeneratedMeshTaskCommands\", true)", "mesh replacement must use the GPU visibility pass unless it is switched off");
         requireContains(config, "booleanProperty(\"vim.strictMeshTerrainReplacement\", false)", "strict replacement must stay opt-in");
     }
-
+    
     private static void checkLocalOnlyExternalReferenceBoundary(String gitignore, String fabricModJson) {
         requireContains(gitignore, "docs/local/", "external mod source references must stay in ignored local notes");
         require(!fabricModJson.contains("\"suggests\"") && !fabricModJson.contains("\"recommends\""), "fabric metadata must not add optional external worldgen provider relationships before a dedicated integration plan");

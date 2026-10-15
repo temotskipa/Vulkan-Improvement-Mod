@@ -142,7 +142,7 @@ public final class MeshShaderTerrainProgram {
     }
     
     private static int meshletFrustumCullingPushConstant() {
-        return TerrainRendererDebugConfig.meshletFrustumCullingEnabled() ? 1 : 0;
+        return TerrainRendererDebugConfig.meshletFrustumCullingEnabled() ? TerrainGpuLayout.CULL_MESHLET_FRUSTUM_IN_MESH_STAGE : 0;
     }
     
     private static void putVec4(ByteBuffer target, float x, float y, float z, float w) {
@@ -190,11 +190,11 @@ public final class MeshShaderTerrainProgram {
             this.commandPipeline = createComputePipeline(device, this.commandModule, TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_PUSH_CONSTANT_BYTES, "VIM Terrain Mesh Task Command");
             this.sectionPagesPipeline = createComputePipeline(device, this.sectionPagesModule, TerrainGpuLayout.SECTION_PAGES_PUSH_CONSTANT_BYTES, "VIM Terrain Visible Section Pages");
             this.lastError = "";
-            device.instance().debug().setObjectName(device.vkDevice(), VK10.VK_OBJECT_TYPE_SHADER_MODULE, this.taskModule, "VIM Terrain Task Shader");
-            device.instance().debug().setObjectName(device.vkDevice(), VK10.VK_OBJECT_TYPE_SHADER_MODULE, this.meshModule, "VIM Terrain Mesh Shader");
-            device.instance().debug().setObjectName(device.vkDevice(), VK10.VK_OBJECT_TYPE_SHADER_MODULE, this.fragmentModule, "VIM Terrain Fragment Shader");
-            device.instance().debug().setObjectName(device.vkDevice(), VK10.VK_OBJECT_TYPE_SHADER_MODULE, this.commandModule, "VIM Terrain Mesh Task Command Shader");
-            device.instance().debug().setObjectName(device.vkDevice(), VK10.VK_OBJECT_TYPE_SHADER_MODULE, this.sectionPagesModule, "VIM Terrain Visible Section Pages Shader");
+            VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_SHADER_MODULE, this.taskModule, "VIM Terrain Task Shader");
+            VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_SHADER_MODULE, this.meshModule, "VIM Terrain Mesh Shader");
+            VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_SHADER_MODULE, this.fragmentModule, "VIM Terrain Fragment Shader");
+            VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_SHADER_MODULE, this.commandModule, "VIM Terrain Mesh Task Command Shader");
+            VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_SHADER_MODULE, this.sectionPagesModule, "VIM Terrain Visible Section Pages Shader");
         } catch (RuntimeException ex) {
             shutdown();
             this.lastError = ex.getMessage();
@@ -308,7 +308,7 @@ public final class MeshShaderTerrainProgram {
         
         try (MemoryStack stack = MemoryStack.stackPush()) {
             VkDescriptorBufferBindingInfoEXT.Buffer bindings = VkDescriptorBufferBindingInfoEXT.calloc(1, stack);
-            bindings.get(0).sType$Default().address$(descriptorBufferAddress).usage(EXTDescriptorBuffer.VK_BUFFER_USAGE_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT | EXTDescriptorBuffer.VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT);
+            bindings.apply(0, binding -> binding.sType$Default().address$(descriptorBufferAddress).usage(EXTDescriptorBuffer.VK_BUFFER_USAGE_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT | EXTDescriptorBuffer.VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT));
             EXTDescriptorBuffer.vkCmdBindDescriptorBuffersEXT(commandBuffer, bindings);
             EXTDescriptorBuffer.vkCmdSetDescriptorBufferOffsetsEXT(commandBuffer, VK10.VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline.layout(), 0, stack.ints(0), stack.longs(0L));
             this.textureDescriptorBufferBinds.increment();
@@ -519,14 +519,14 @@ public final class MeshShaderTerrainProgram {
     private MeshPipeline createPipeline(VulkanDevice device, TerrainPipelineState pipelineInfo, boolean alphaTest) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             VkDescriptorSetLayoutBinding.Buffer textureBindings = VkDescriptorSetLayoutBinding.calloc(7, stack);
-            textureBindings.get(0).binding(0).descriptorType(VK10.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE).descriptorCount(1).stageFlags(VK10.VK_SHADER_STAGE_FRAGMENT_BIT);
-            textureBindings.get(1).binding(1).descriptorType(VK10.VK_DESCRIPTOR_TYPE_SAMPLER).descriptorCount(1).stageFlags(VK10.VK_SHADER_STAGE_FRAGMENT_BIT);
+            describeBinding(textureBindings, 0, VK10.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VK10.VK_SHADER_STAGE_FRAGMENT_BIT);
+            describeBinding(textureBindings, 1, VK10.VK_DESCRIPTOR_TYPE_SAMPLER, VK10.VK_SHADER_STAGE_FRAGMENT_BIT);
             // The lightmap is read per vertex by the mesh stage.
-            textureBindings.get(2).binding(2).descriptorType(VK10.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE).descriptorCount(1).stageFlags(EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT);
-            textureBindings.get(3).binding(3).descriptorType(VK10.VK_DESCRIPTOR_TYPE_SAMPLER).descriptorCount(1).stageFlags(EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT);
+            describeBinding(textureBindings, 2, VK10.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT);
+            describeBinding(textureBindings, 3, VK10.VK_DESCRIPTOR_TYPE_SAMPLER, EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT);
             // The sky, cloud and cloud-depth images of improved fog, read texel by texel.
             for (int binding = 4; binding < 7; binding++) {
-                textureBindings.get(binding).binding(binding).descriptorType(VK10.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE).descriptorCount(1).stageFlags(VK10.VK_SHADER_STAGE_FRAGMENT_BIT);
+                describeBinding(textureBindings, binding, VK10.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VK10.VK_SHADER_STAGE_FRAGMENT_BIT);
             }
             VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = VkDescriptorSetLayoutCreateInfo.calloc(stack).sType$Default().flags(EXTDescriptorBuffer.VK_DESCRIPTOR_SET_LAYOUT_CREATE_DESCRIPTOR_BUFFER_BIT_EXT).pBindings(textureBindings);
             LongBuffer descriptorSetLayoutHandle = stack.callocLong(1);
@@ -535,8 +535,8 @@ public final class MeshShaderTerrainProgram {
             DescriptorHeapTerrainResources.TextureDescriptorLayout textureDescriptorLayout = queryTextureDescriptorLayout(device, textureDescriptorSetLayout);
             
             VkPushConstantRange.Buffer pushConstantRanges = VkPushConstantRange.calloc(2, stack);
-            pushConstantRanges.get(0).stageFlags(EXTMeshShader.VK_SHADER_STAGE_TASK_BIT_EXT | EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT).offset(0).size(TerrainGpuLayout.TERRAIN_PUSH_CONSTANT_BYTES);
-            pushConstantRanges.get(1).stageFlags(VK10.VK_SHADER_STAGE_FRAGMENT_BIT).offset(TerrainGpuLayout.TERRAIN_FOG_PUSH_CONSTANT_OFFSET).size(TerrainGpuLayout.TERRAIN_FOG_PUSH_CONSTANT_BYTES);
+            pushConstantRanges.apply(0, range -> range.stageFlags(EXTMeshShader.VK_SHADER_STAGE_TASK_BIT_EXT | EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT).offset(0).size(TerrainGpuLayout.TERRAIN_PUSH_CONSTANT_BYTES));
+            pushConstantRanges.apply(1, range -> range.stageFlags(VK10.VK_SHADER_STAGE_FRAGMENT_BIT).offset(TerrainGpuLayout.TERRAIN_FOG_PUSH_CONSTANT_OFFSET).size(TerrainGpuLayout.TERRAIN_FOG_PUSH_CONSTANT_BYTES));
             VkPipelineLayoutCreateInfo layoutCreateInfo = VkPipelineLayoutCreateInfo.calloc(stack).sType$Default().pSetLayouts(stack.longs(textureDescriptorSetLayout)).pPushConstantRanges(pushConstantRanges);
             LongBuffer layoutHandle = stack.callocLong(1);
             VulkanUtils.crashIfFailure(device, VK12.vkCreatePipelineLayout(device.vkDevice(), layoutCreateInfo, null, layoutHandle), "Failed to create VIM terrain mesh pipeline layout for " + pipelineInfo.name());
@@ -544,14 +544,13 @@ public final class MeshShaderTerrainProgram {
             
             VkPipelineShaderStageCreateInfo.Buffer shaderStages = VkPipelineShaderStageCreateInfo.calloc(3, stack);
             ByteBuffer entryPoint = stack.UTF8("main");
-            shaderStages.get(0).sType$Default().stage(EXTMeshShader.VK_SHADER_STAGE_TASK_BIT_EXT).module(this.taskModule).pName(entryPoint);
-            shaderStages.get(1).sType$Default().stage(EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT).module(this.meshModule).pName(entryPoint);
-            VkSpecializationMapEntry.Buffer alphaTestEntry = VkSpecializationMapEntry.calloc(1, stack);
-            alphaTestEntry.get(0).constantID(0).offset(0).size(Integer.BYTES);
+            shaderStages.apply(0, stage -> stage.sType$Default().stage(EXTMeshShader.VK_SHADER_STAGE_TASK_BIT_EXT).module(this.taskModule).pName(entryPoint));
+            shaderStages.apply(1, stage -> stage.sType$Default().stage(EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT).module(this.meshModule).pName(entryPoint));
+            VkSpecializationMapEntry.Buffer alphaTestEntry = VkSpecializationMapEntry.calloc(1, stack).apply(0, entry -> entry.constantID(0).offset(0).size(Integer.BYTES));
             ByteBuffer alphaTestValue = stack.malloc(Integer.BYTES);
             alphaTestValue.putInt(0, alphaTest ? VK10.VK_TRUE : VK10.VK_FALSE);
             VkSpecializationInfo fragmentSpecialization = VkSpecializationInfo.calloc(stack).pMapEntries(alphaTestEntry).pData(alphaTestValue);
-            shaderStages.get(2).sType$Default().stage(VK10.VK_SHADER_STAGE_FRAGMENT_BIT).module(this.fragmentModule).pName(entryPoint).pSpecializationInfo(fragmentSpecialization);
+            shaderStages.apply(2, stage -> stage.sType$Default().stage(VK10.VK_SHADER_STAGE_FRAGMENT_BIT).module(this.fragmentModule).pName(entryPoint).pSpecializationInfo(fragmentSpecialization));
             
             VkPipelineRasterizationStateCreateInfo rasterizationState = VkPipelineRasterizationStateCreateInfo.calloc(stack).sType$Default().polygonMode(VulkanConst.toVk(pipelineInfo.polygonMode())).cullMode(pipelineInfo.cull() ? VK10.VK_CULL_MODE_BACK_BIT : VK10.VK_CULL_MODE_NONE).frontFace(VK10.VK_FRONT_FACE_CLOCKWISE).lineWidth(1.0F);
             
@@ -588,9 +587,9 @@ public final class MeshShaderTerrainProgram {
             LongBuffer pipelineHandle = stack.callocLong(1);
             VulkanUtils.crashIfFailure(device, VK12.vkCreateGraphicsPipelines(device.vkDevice(), 0L, pipelineCreateInfo, null, pipelineHandle), "Failed to create VIM terrain mesh pipeline for " + pipelineInfo.name());
             long pipeline = pipelineHandle.get(0);
-            device.instance().debug().setObjectName(device.vkDevice(), VK10.VK_OBJECT_TYPE_PIPELINE_LAYOUT, pipelineLayout, "VIM Terrain Mesh Pipeline Layout");
-            device.instance().debug().setObjectName(device.vkDevice(), VK10.VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, textureDescriptorSetLayout, "VIM Terrain Texture Descriptor-Buffer Layout");
-            device.instance().debug().setObjectName(device.vkDevice(), VK10.VK_OBJECT_TYPE_PIPELINE, pipeline, "VIM Terrain Mesh Pipeline " + pipelineInfo.name());
+            VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_PIPELINE_LAYOUT, pipelineLayout, "VIM Terrain Mesh Pipeline Layout");
+            VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, textureDescriptorSetLayout, "VIM Terrain Texture Descriptor-Buffer Layout");
+            VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_PIPELINE, pipeline, "VIM Terrain Mesh Pipeline " + pipelineInfo.name());
             this.pipelineCompiles.increment();
             this.lastError = "";
             return new MeshPipeline(pipeline, pipelineLayout, textureDescriptorSetLayout, textureDescriptorLayout);
@@ -598,6 +597,10 @@ public final class MeshShaderTerrainProgram {
             this.lastError = ex.getMessage();
             throw ex;
         }
+    }
+    
+    private static void describeBinding(VkDescriptorSetLayoutBinding.Buffer bindings, int index, int descriptorType, int stages) {
+        bindings.apply(index, binding -> binding.binding(index).descriptorType(descriptorType).descriptorCount(1).stageFlags(stages));
     }
     
     private CommandPipeline createComputePipeline(VulkanDevice device, long module, int pushConstantBytes, String name) {
@@ -615,8 +618,8 @@ public final class MeshShaderTerrainProgram {
             LongBuffer pipelineHandle = stack.callocLong(1);
             VulkanUtils.crashIfFailure(device, VK12.vkCreateComputePipelines(device.vkDevice(), 0L, pipelineCreateInfo, null, pipelineHandle), "Failed to create " + name + " compute pipeline");
             long pipeline = pipelineHandle.get(0);
-            device.instance().debug().setObjectName(device.vkDevice(), VK10.VK_OBJECT_TYPE_PIPELINE_LAYOUT, pipelineLayout, name + " Pipeline Layout");
-            device.instance().debug().setObjectName(device.vkDevice(), VK10.VK_OBJECT_TYPE_PIPELINE, pipeline, name + " Pipeline");
+            VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_PIPELINE_LAYOUT, pipelineLayout, name + " Pipeline Layout");
+            VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_PIPELINE, pipeline, name + " Pipeline");
             this.pipelineCompiles.increment();
             return new CommandPipeline(pipeline, pipelineLayout);
         }

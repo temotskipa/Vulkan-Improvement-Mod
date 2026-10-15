@@ -21,9 +21,7 @@ public abstract class VulkanRenderPipelineMixin implements TerrainPipelineState.
     
     @Inject(method = "compile", at = @At("RETURN"))
     private static void vim$rememberPipelineState(VulkanDevice device, CompiledRenderPipeline.CreateInfo pipelineCreateInfo, CallbackInfoReturnable<VulkanRenderPipeline> cir) {
-        if ((Object) cir.getReturnValue() instanceof TerrainPipelineState.Holder holder) {
-            holder.vim$rememberTerrainPipelineState(TerrainPipelineState.from(pipelineCreateInfo));
-        }
+        TerrainPipelineState.remember(cir.getReturnValue(), TerrainPipelineState.from(pipelineCreateInfo));
     }
     
     @Override

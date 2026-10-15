@@ -23,7 +23,7 @@ public final class VulkanVideoOptionsInvariantCheck {
     }
     
     
-    static void main(String[] args) throws IOException {
+    static void main() throws IOException {
         checkRuntimeKeepsOptionsVisibleForActiveVulkan(read(RUNTIME));
         checkVideoSettingsUsesRuntimeVisibilityGate(read(VIDEO_OPTIONS), read(VIDEO_SETTINGS_MIXIN));
         checkTerrainCaptureBootstrapIsExplicitOptIn(read(TERRAIN_CONFIG), read(VIDEO_OPTIONS), read(LANG));

@@ -1,18 +1,15 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
-import net.minecraft.client.renderer.chunk.ChunkSectionLayerGroup;
 import org.jspecify.annotations.Nullable;
 
 import java.util.*;
 
 public final class TerrainRenderContext {
     private static final ThreadLocal<Integer> DEPTH = ThreadLocal.withInitial(() -> 0);
-    private static final ThreadLocal<Integer> CURRENT_LAYER_ORDINAL = ThreadLocal.withInitial(() -> -1);
     private static final ThreadLocal<boolean[]> DISPATCHED_LAYERS = new ThreadLocal<>();
     private static final ThreadLocal<Boolean> DISPATCHED_WHOLE_SET = ThreadLocal.withInitial(() -> false);
     private static final ThreadLocal<Boolean> REPLACEMENT_ALLOWED = ThreadLocal.withInitial(() -> true);
-    private static final ThreadLocal<Boolean> MESH_PIPELINE_BOUND = ThreadLocal.withInitial(() -> false);
     private static final ThreadLocal<Boolean> IMPROVED_FOG = ThreadLocal.withInitial(() -> false);
     /**
      * The mesh-task dispatches prepared for the frame, per layer. They are prepared before
@@ -20,7 +17,6 @@ public final class TerrainRenderContext {
      * they belong to the frame and not to one group. Render thread only.
      */
     private static final List<ArrayDeque<TerrainMeshTaskDispatch>> PREPARED_LAYER_DISPATCHES = createPreparedLayerDispatches();
-    private static final ThreadLocal<ChunkSectionLayerGroup> CURRENT_GROUP = new ThreadLocal<>();
     
     private TerrainRenderContext() {
     }
@@ -29,13 +25,10 @@ public final class TerrainRenderContext {
         int depth = DEPTH.get();
         DEPTH.set(depth + 1);
         if (depth == 0) {
-            CURRENT_LAYER_ORDINAL.set(-1);
             DISPATCHED_LAYERS.set(new boolean[ChunkSectionLayer.values().length]);
             DISPATCHED_WHOLE_SET.set(false);
             REPLACEMENT_ALLOWED.set(true);
-            MESH_PIPELINE_BOUND.set(false);
             IMPROVED_FOG.set(false);
-            CURRENT_GROUP.remove();
         }
     }
     
@@ -43,13 +36,10 @@ public final class TerrainRenderContext {
         int depth = DEPTH.get() - 1;
         if (depth <= 0) {
             DEPTH.remove();
-            CURRENT_LAYER_ORDINAL.remove();
             DISPATCHED_LAYERS.remove();
             DISPATCHED_WHOLE_SET.remove();
             REPLACEMENT_ALLOWED.remove();
-            MESH_PIPELINE_BOUND.remove();
             IMPROVED_FOG.remove();
-            CURRENT_GROUP.remove();
         }
         else {
             DEPTH.set(depth);
@@ -58,24 +48,6 @@ public final class TerrainRenderContext {
     
     public static boolean isTerrainPass() {
         return DEPTH.get() > 0;
-    }
-    
-    public static void setCurrentLayer(ChunkSectionLayer layer) {
-        MESH_PIPELINE_BOUND.set(false);
-        CURRENT_LAYER_ORDINAL.set(layer.ordinal());
-    }
-    
-    public static int currentLayerOrdinal() {
-        return CURRENT_LAYER_ORDINAL.get();
-    }
-    
-    public static void setCurrentTerrainGroup(ChunkSectionLayerGroup group) {
-        CURRENT_GROUP.set(group);
-    }
-    
-    
-    public static @Nullable ChunkSectionLayerGroup currentGroup() {
-        return CURRENT_GROUP.get();
     }
     
     public static void setReplacementAllowed(boolean allowed) {
@@ -96,16 +68,6 @@ public final class TerrainRenderContext {
     
     public static boolean improvedFog() {
         return IMPROVED_FOG.get();
-    }
-    
-    
-    public static void markMeshPipelineBound() {
-        MESH_PIPELINE_BOUND.set(true);
-    }
-    
-    
-    public static boolean meshPipelineBound() {
-        return MESH_PIPELINE_BOUND.get();
     }
     
     private static List<ArrayDeque<TerrainMeshTaskDispatch>> createPreparedLayerDispatches() {
@@ -136,11 +98,6 @@ public final class TerrainRenderContext {
             return null;
         }
         return PREPARED_LAYER_DISPATCHES.get(layerOrdinal).pollFirst();
-    }
-    
-    
-    public static void clearMeshPipelineBound() {
-        MESH_PIPELINE_BOUND.set(false);
     }
     
     public static Map<String, Object> preparedDispatchQueueDepths() {

@@ -21,9 +21,8 @@ public final class RendererCoreServices {
         return INSTANCE;
     }
     
-    @SuppressWarnings("SameParameterValue")
-    public synchronized void beginConfiguration(String reason) {
-        setLifecycleState(RendererLifecycleState.CONFIGURING, reason);
+    public synchronized void beginConfiguration() {
+        setLifecycleState(RendererLifecycleState.CONFIGURING, "configuring Vulkan renderer services");
         RendererDomainRegistry.get().reset();
     }
     
@@ -32,17 +31,12 @@ public final class RendererCoreServices {
         FragmentShadingRateController.get().configure(capabilities);
     }
     
-    @SuppressWarnings("SameParameterValue")
-    public synchronized void markReady(String reason) {
-        setLifecycleState(RendererLifecycleState.READY, reason);
+    public synchronized void markReady() {
+        setLifecycleState(RendererLifecycleState.READY, "renderer services configured");
     }
     
     public synchronized void markFailed(String reason) {
         setLifecycleState(RendererLifecycleState.FAILED, reason);
-    }
-    
-    public synchronized void markDeviceLost(String reason) {
-        setLifecycleState(RendererLifecycleState.DEVICE_LOST, reason == null || reason.isBlank() ? "Vulkan device lost" : reason);
     }
     
     public synchronized void beginShutdown(String reason) {

@@ -15,7 +15,7 @@ public final class RendererCoreServiceInvariantCheck {
     }
     
     
-    static void main(String[] args) throws IOException {
+    static void main() throws IOException {
         String core = read(CORE_SERVICES);
         String terrain = read(MESH_TERRAIN_RENDERER);
         checkCoreOwnsLifecycleAndRendererWideControllers(core);
@@ -37,7 +37,7 @@ public final class RendererCoreServiceInvariantCheck {
         require(!source.contains("private volatile String lifecycleReason"), "terrain renderer must not own renderer-wide lifecycle reason");
         require(source.contains("RendererCoreServices.get().beginConfiguration"), "terrain renderer configuration must enter renderer core lifecycle");
         require(source.contains("RendererCoreServices.get().markReady"), "terrain renderer configuration must mark renderer core services ready");
-        require(source.contains("RendererCoreServices.get().markDeviceLost"), "terrain renderer device-loss reporting must delegate to renderer core services");
+        require(source.contains("RendererCoreServices.get().beginShutdown"), "terrain renderer shutdown must go through renderer core lifecycle");
     }
     
     private static void checkRuntimeAndDiagnosticsUseCoreServices(String runtimeSource, String diagnosticsSource) {

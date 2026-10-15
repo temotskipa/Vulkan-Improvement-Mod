@@ -14,13 +14,17 @@ base {
     archivesName = project.archives_base_name
 }
 
+// As Minecraft's launcher starts the game: native access, which the mod needs to reach mapped GPU
+// memory, and the export LWJGL's memory backend uses.
+List<String> gameJvmArguments = ["--enable-native-access=ALL-UNNAMED", "--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED"]
+
 loom {
     splitEnvironmentSourceSets()
 
     mods {
         "vulkanimprovement" {
-            sourceSet sourceSets.main
-            sourceSet sourceSets.client
+            sourceSet "main"
+            sourceSet "client"
         }
     }
 
@@ -29,11 +33,8 @@ loom {
             // The 26.4 launcher metadata starts the game with this and Loom does not pass it
             // on. Without it shaderc overflows the stack of the thread that compiles a shader
             // and the client dies at startup with an access violation and no JVM error file.
-            vmArg "-XX:StackShadowPages=32"
-            // As Minecraft's launcher starts the game: native access, which the mod needs to reach
-            // mapped GPU memory, and the export LWJGL's memory backend uses.
-            vmArg "--enable-native-access=ALL-UNNAMED"
-            vmArg "--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED"
+            jvmArguments.add("-XX:StackShadowPages=32")
+            jvmArguments.addAll(gameJvmArguments)
         }
     }
 }
@@ -124,8 +125,9 @@ tasks.register("checkRepoDocs") {
             lines.each { line ->
                 def matcher = line =~ linkPattern
                 matcher.each { match ->
-                    def target = match[1]
-                    def externalLink = target.startsWith("http://") || target.startsWith("https://") || target.startsWith("mailto:") || target.startsWith("#")
+                    String target = match[1]
+                    // A link with a scheme, such as a web or mail address, or to a heading of the same file.
+                    def externalLink = target ==~ /[a-z]+:.*/ || target.startsWith("#")
                     if (!externalLink) {
                         def pathOnly = target.split("#", 2)[0]
                         if (!pathOnly.isEmpty()) {
@@ -332,7 +334,7 @@ tasks.register("compileTerrainSpirv") {
 }
 
 static def findGlslangValidator() {
-    def candidates = []
+    List<String> candidates = []
     def vulkanSdk = System.getenv("VULKAN_SDK")
     if (vulkanSdk != null && !vulkanSdk.isBlank()) {
         candidates.add(new File(vulkanSdk, "Bin/glslangValidator.exe").absolutePath)
@@ -340,7 +342,7 @@ static def findGlslangValidator() {
     }
     candidates.add("glslangValidator")
     candidates.add("glslangValidator.exe")
-    return candidates.find { candidate ->
+    return candidates.find { String candidate ->
         try {
             def process = new ProcessBuilder(candidate, "--version")
                     .redirectErrorStream(true)
@@ -419,9 +421,9 @@ tasks.register("checkTerrainLayoutManifest") {
 
     doLast {
         def layoutSource = terrainGpuLayoutSource.asFile.getText("UTF-8")
-        def constants = [:]
+        Map<String, Integer> constants = [:]
         def matcher = layoutSource =~ /(?:static\s+final\s+)?int\s+([A-Z0-9_]+)\s*=\s*(Integer\.BYTES|\d+);/
-        matcher.each { match -> constants[match[1]] = match[2] == "Integer.BYTES" ? Integer.BYTES : match[2].toInteger()
+        matcher.each { List<String> match -> constants[match[1]] = match[2] == "Integer.BYTES" ? Integer.BYTES : match[2].toInteger()
         }
 
         def requiredConstants = ["SECTION_METADATA_STRIDE",
@@ -618,6 +620,13 @@ tasks.register("checkTerrainLayoutManifest") {
         if (constants.TERRAIN_PUSH_CONSTANT_BYTES < minimumPushConstantBytes || constants.TERRAIN_PUSH_CONSTANT_BYTES % Long.BYTES != 0) {
             throw new GradleException("TerrainGpuLayout.TERRAIN_PUSH_CONSTANT_BYTES must cover the terrain push constant block and stay ${Long.BYTES}-byte aligned.")
         }
+    }
+}
+
+// Some checks load LWJGL, which the game's JVM arguments let use its current memory backend.
+tasks.withType(JavaExec).configureEach { JavaExec task ->
+    if (task.name.startsWith("check")) {
+        task.jvmArgs(gameJvmArguments)
     }
 }
 
@@ -945,9 +954,10 @@ jar {
 // configure the maven publication
 publishing {
     publications {
-        create("mavenJava", MavenPublication) {
-            artifactId = project.archives_base_name
-            from components.java
+        create("mavenJava", MavenPublication) { MavenPublication publication ->
+            SoftwareComponent javaComponent = project.components.getByName("java")
+            publication.artifactId = project.archives_base_name
+            publication.from(javaComponent)
         }
     }
 

@@ -10,7 +10,7 @@ public final class TerrainMeshTaskDispatchInvariantCheck {
     }
     
     
-    static void main(String[] args) {
+    static void main() {
         checkUnavailableDispatch();
         checkFullLayerDispatch();
         checkFullLayerDispatchClampsToDirectTaskLimit();
@@ -94,7 +94,6 @@ public final class TerrainMeshTaskDispatchInvariantCheck {
         require(TerrainLayerReplacementPolicy.canReplaceLayer(ChunkSectionLayer.SOLID), "solid layer object must remain mesh-replaceable");
         require(TerrainLayerReplacementPolicy.canReplaceLayer(ChunkSectionLayer.CUTOUT), "cutout layer object must remain mesh-replaceable");
         require(!TerrainLayerReplacementPolicy.canReplaceLayer(ChunkSectionLayer.TRANSLUCENT), "translucent layer object must fall back to vanilla");
-        require(!TerrainLayerReplacementPolicy.canReplaceLayer(null), "missing layer object must fall back to vanilla");
         require(!TerrainLayerReplacementPolicy.canReplaceLayer(-1), "unknown layer must fall back to vanilla");
     }
     

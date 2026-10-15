@@ -7,7 +7,7 @@ public final class GpuResourceRetirementStatsInvariantCheck {
     }
     
     
-    static void main(String[] args) {
+    static void main() {
         checkEmptyStats();
         checkSingleSetStats();
         checkMergedStats();

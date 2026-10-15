@@ -96,21 +96,18 @@ public final class RtPtAccelerationDataRegistry {
         countReason(fallbackReason);
     }
     
-    @SuppressWarnings("SameParameterValue")
     synchronized void markPendingRebuild(RtPtAccelerationPage page, String fallbackReason) {
         this.livePages.remove(key(page));
         this.pendingRebuildCount++;
         countReason(fallbackReason);
     }
     
-    @SuppressWarnings("SameParameterValue")
     synchronized void retirePage(RtPtAccelerationPage page, String fallbackReason) {
         this.livePages.remove(key(page));
         this.retiredPageCount++;
         countReason(fallbackReason);
     }
     
-    @SuppressWarnings("SameParameterValue")
     synchronized void clearForDeviceLost(String fallbackReason) {
         this.livePages.clear();
         this.deviceLostClearCount++;

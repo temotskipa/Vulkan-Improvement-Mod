@@ -10,7 +10,7 @@ public final class GpuMaterialRecordInvariantCheck {
     }
     
     
-    static void main(String[] args) {
+    static void main() {
         checkRecordSizeMatchesTerrainLayout();
         checkLayoutDiagnostics();
         checkUnavailableTerrainMaterialEncoding();

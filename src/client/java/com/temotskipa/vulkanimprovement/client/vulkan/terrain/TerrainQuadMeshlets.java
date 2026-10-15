@@ -83,9 +83,9 @@ final class TerrainQuadMeshlets {
      * out of the face they are seen from, or of its second when the first has no area.
      */
     static int facingOf(MemorySegment vertices, long quadOffset) {
-        float[] normal = normal(vertices, quadOffset, 0, 1, 2);
+        float[] normal = normal(vertices, quadOffset, 1, 2);
         if (normal == null) {
-            normal = normal(vertices, quadOffset, 0, 2, 3);
+            normal = normal(vertices, quadOffset, 2, 3);
         }
         if (normal == null) {
             return FACING_ANY;
@@ -107,13 +107,15 @@ final class TerrainQuadMeshlets {
         return FACING_ANY;
     }
     
-    private static float @Nullable [] normal(MemorySegment vertices, long quadOffset, int a, int b, int c) {
-        long first = quadOffset + (long) a * TerrainGpuLayout.BLOCK_VERTEX_STRIDE;
+    /**
+     * The normal of the triangle of a quad's first corner and two others.
+     */
+    private static float @Nullable [] normal(MemorySegment vertices, long quadOffset, int b, int c) {
         long second = quadOffset + (long) b * TerrainGpuLayout.BLOCK_VERTEX_STRIDE;
         long third = quadOffset + (long) c * TerrainGpuLayout.BLOCK_VERTEX_STRIDE;
-        float ax = vertices.get(TerrainGpuRecords.FLOAT, first);
-        float ay = vertices.get(TerrainGpuRecords.FLOAT, first + Float.BYTES);
-        float az = vertices.get(TerrainGpuRecords.FLOAT, first + 2 * Float.BYTES);
+        float ax = vertices.get(TerrainGpuRecords.FLOAT, quadOffset);
+        float ay = vertices.get(TerrainGpuRecords.FLOAT, quadOffset + Float.BYTES);
+        float az = vertices.get(TerrainGpuRecords.FLOAT, quadOffset + 2 * Float.BYTES);
         float ux = vertices.get(TerrainGpuRecords.FLOAT, second) - ax;
         float uy = vertices.get(TerrainGpuRecords.FLOAT, second + Float.BYTES) - ay;
         float uz = vertices.get(TerrainGpuRecords.FLOAT, second + 2 * Float.BYTES) - az;

@@ -7,7 +7,7 @@ public final class TerrainVisibleMeshletRingInvariantCheck {
     }
     
     
-    static void main(String[] args) {
+    static void main() {
         checkLinearAllocation();
         checkWrapBlockedUntilFenceAllowsReuse();
         checkWrapAllocation();

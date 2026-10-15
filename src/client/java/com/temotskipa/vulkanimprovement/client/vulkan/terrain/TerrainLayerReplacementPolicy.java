@@ -15,7 +15,7 @@ final class TerrainLayerReplacementPolicy {
     }
     
     static boolean canReplaceLayer(ChunkSectionLayer layer) {
-        return layer != null && !layer.translucent();
+        return !layer.translucent();
     }
     
     /**

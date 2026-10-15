@@ -19,7 +19,7 @@ public final class Minecraft26MixinTargetManifestInvariantCheck {
     }
     
     
-    static void main(String[] args) throws IOException {
+    static void main() throws IOException {
         String config = read(MIXIN_CONFIG);
         require(Files.isRegularFile(MANIFEST), "missing mcdev-verified 26.4 mixin target manifest: " + MANIFEST);
         String manifest = read(MANIFEST);

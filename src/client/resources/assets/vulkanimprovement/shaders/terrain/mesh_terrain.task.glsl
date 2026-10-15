@@ -154,8 +154,8 @@ bool facesAway(int facing, vec3 low, vec3 high) {
         case FACING_DOWN: return high.y < 0.0;
         case FACING_SOUTH: return low.z > 0.0;
         case FACING_NORTH: return high.z < 0.0;
-        default: return false;
     }
+    return false;
 }
 
 bool keepMeshlet(MeshletHeader header, ResidentPage page) {

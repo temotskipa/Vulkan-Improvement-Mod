@@ -1,7 +1,9 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuRecords;
 
+import java.io.IOException;
 import java.util.Map;
 
 public final class TerrainMeshTaskCommandLayoutInvariantCheck {
@@ -9,20 +11,18 @@ public final class TerrainMeshTaskCommandLayoutInvariantCheck {
     }
     
     
-    static void main(String[] args) {
-        checkCommandLayout();
+    static void main() throws IOException {
+        checkCommandLayout(GlslSource.read("mesh_task_command.comp.glsl"), GlslSource.read("mesh_terrain.mesh.glsl"));
         checkCapacityBytes();
         checkDiagnostics();
         checkInvalidInputsRejected();
     }
     
-    @SuppressWarnings("ConstantValue")
-    private static void checkCommandLayout() {
-        require(TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_STRIDE == Integer.BYTES * 3, "mesh-task indirect command must stay three uints");
-        require(TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_CAPACITY > 0, "mesh-task command capacity must be positive");
-        require(TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_PUSH_CONSTANT_BYTES == Long.BYTES * 4 + Integer.BYTES * 8 + Float.BYTES * 4 * 6, "visibility pass push constants must cover four addresses, eight uints and the camera");
-        require(TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET + 3 * Integer.BYTES <= TerrainGpuLayout.DEBUG_COUNTER_BYTES, "the visibility counters must fit behind the mesh stage's in the debug counters");
-        require(TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_STRIDE % Integer.BYTES == 0, "mesh-task command stride must be int-aligned");
+    private static void checkCommandLayout(String commandShader, String meshShader) {
+        require(TerrainGpuRecords.MeshTaskCommand.LAYOUT.byteSize() == TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_STRIDE, "mesh-task indirect command must stay three uints");
+        require(GlslSource.bytes(GlslSource.body(commandShader, "uniform CommandPushConstants {")) == TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_PUSH_CONSTANT_BYTES, "visibility pass push constants must cover four addresses, eight uints and the camera");
+        require(GlslSource.bytes(GlslSource.body(meshShader, "buffer TerrainDebugCounters {")) <= TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET, "the mesh stage's counters must end before the visibility counters begin");
+        require(TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET + GlslSource.bytes(GlslSource.body(commandShader, "buffer VisibilityCounters {")) <= TerrainGpuLayout.DEBUG_COUNTER_BYTES, "the visibility counters must fit behind the mesh stage's in the debug counters");
     }
     
     private static void checkCapacityBytes() {
