@@ -44,7 +44,7 @@ the mod is idle (see `LevelRendererMixin` in
    `VulkanBackendMixin` adds the Vulkan 1.4 API requirement, before device
    selection completes.
 4. `VulkanDeviceMixin` captures physical-device capabilities and configures the
-   singleton `MeshTerrainRenderer`.
+   singletons `MeshTerrainRenderer` and `ModelGpuVertices`.
 5. Chunk-section mixins mirror vanilla chunk geometry into `SectionMeshletStore`
    and related GPU buffers.
 6. Each frame Minecraft collects the section layers it will draw. With strict
@@ -58,6 +58,15 @@ the mod is idle (see `LevelRendererMixin` in
    draw strategies call `MeshTerrainRenderer` once the layer's pipeline is
    bound, to draw mesh terrain when configured and safe; Minecraft's own draws
    for the layer then run, holding whatever the mesh path did not take.
+8. With `vim.gpuModelVertices`, while Minecraft prepares the level's features,
+   `ModelFeatureRendererMixin` offers each model submit to `ModelGpuVertices`,
+   which takes those whose vertices it writes exactly as Minecraft would. The
+   model's parts then hand their cubes to it instead of `Cube.compile`. A
+   cube's faces are stored on the GPU once; a frame records a pose, colour and
+   light per part and a record per cube, for draws it adds to Minecraft's draw
+   group. Once Minecraft has uploaded its own vertices, one compute pass on
+   Minecraft's command encoder writes the model vertices into a Minecraft
+   vertex buffer, and Minecraft draws them with its render types.
 
 ## Source Sets
 
@@ -84,6 +93,9 @@ the mod is idle (see `LevelRendererMixin` in
   names for Vulkan objects, and the mod's extensions of Minecraft's: the
   shader-storage buffer usage and buffer device addresses (`ShaderStorage`),
   and compute dispatch on Minecraft's command encoder (`ComputeCommands`).
+- `client.vulkan.model`: Owns the GPU model path: model cubes' faces kept on
+  the GPU, the records a frame's model submits make, the draws they go into in
+  Minecraft's draw groups, and the compute pass that writes their vertices.
 - `client.vulkan.gpuworld`: Owns the CPU-authoritative GPU-world mirror,
   section identity, revisions, page-kind metadata, residency-budget diagnostics,
   pipeline-stage contracts, and dirty-update contracts.
@@ -259,9 +271,15 @@ renderer code does not drift back into a catch-all root package.
   the sky and cloud images Minecraft binds for the group. A change to any of
   these is checked against same-camera vanilla screenshots, as described under
   Vanilla Parity Check in `docs/RELIABILITY.md`.
-- `checkTerrainShadersCompile` compiles the terrain shaders with the compiler
-  the game uses at startup, so a development build without the Vulkan SDK still
-  fails on a shader that does not compile.
+- `checkTerrainShadersCompile` and `checkModelShadersCompile` compile the
+  mod's shaders with the compiler the game uses at startup, so a development
+  build without the Vulkan SDK still fails on a shader that does not compile.
+- The model vertex pass writes Minecraft's own vertices to the byte: positions
+  are computed as JOML computes them, with `precise` arithmetic, and
+  everything else is worked out on the CPU as Minecraft works it out.
+  `checkModelVertexInvariants` runs the pass's arithmetic over its records and
+  compares the result with Minecraft's `Cube.compile` for a range of cubes and
+  poses.
 - `TerrainRendererDebugConfig` exposes JVM system-property flags. Treat these as
   operational controls and keep docs synchronized when adding flags.
 - `vulkanimprovement.client.mixins.json` must list every active client mixin
@@ -276,7 +294,7 @@ for repository-organization checks, `.\gradlew.bat checkClientMixinConfig` for
 client mixin config/source synchronization, and
 `.\gradlew.bat checkVulkanPackageBoundaries` for renderer package layout and
 direction.
-`.\gradlew.bat checkTerrainShaders` validates terrain GLSL when
+`.\gradlew.bat checkShaders` validates the mod's GLSL when
 `glslangValidator` is available. `.\gradlew.bat checkTerrainLayoutManifest`
 validates CPU/shader terrain layout assumptions, including the default terrain
 material record and material-table push constant. The Gradle build targets

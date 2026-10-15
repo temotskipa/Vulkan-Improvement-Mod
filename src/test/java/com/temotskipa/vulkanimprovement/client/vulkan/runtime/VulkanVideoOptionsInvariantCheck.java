@@ -1,7 +1,6 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.runtime;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -145,7 +144,7 @@ public final class VulkanVideoOptionsInvariantCheck {
     }
     
     private static String read(Path path) throws IOException {
-        return Files.readString(path);
+        return JavaSources.read(path);
     }
     
     private static String readUnchecked(Path path) {

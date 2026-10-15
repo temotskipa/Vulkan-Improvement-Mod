@@ -12,14 +12,14 @@ validation on real Vulkan hardware.
 - `.\gradlew.bat checkVulkanPackageBoundaries` validates that renderer code
   stays in the allowed `client.vulkan.*` domain packages and does not depend
   back on `mixin.client`.
-- `.\gradlew.bat checkTerrainShaders` validates terrain GLSL with
+- `.\gradlew.bat checkShaders` validates the mod's GLSL with
   `glslangValidator` when it is available. Use
   `"-Pvim.requireShaderValidator=true"` to fail when the validator is missing,
   or `"-Pvim.releaseBuild=true"` for release builds. In PowerShell, quote the
   Gradle property exactly as shown so `-Pvim.releaseBuild=true` is not parsed
   as a PowerShell parameter.
-- `.\gradlew.bat compileTerrainSpirv` compiles packaged terrain SPIR-V when
-  `glslangValidator` is available. It remains best-effort for local
+- `.\gradlew.bat compileShaderSpirv` compiles packaged SPIR-V for every shader
+  when `glslangValidator` is available. It remains best-effort for local
   development builds, but fails without the validator when
   `"-Pvim.releaseBuild=true"` or `"-Pvim.requireShaderValidator=true"` is set.
 - `.\gradlew.bat checkTerrainLayoutManifest` validates that terrain Java layout
@@ -79,9 +79,13 @@ validation on real Vulkan hardware.
   projection.
 - `.\gradlew.bat checkResidentTerrainPagesInvariants` runs pure Java checks
   for the range allocator and page bookkeeping behind resident terrain pages.
-- `.\gradlew.bat checkTerrainShadersCompile` compiles the terrain shaders with
-  the compiler the game uses at startup, so a build without the Vulkan SDK
-  still fails on a shader that does not compile.
+- `.\gradlew.bat checkTerrainShadersCompile` and
+  `.\gradlew.bat checkModelShadersCompile` compile the terrain and model
+  shaders with the compiler the game uses at startup, so a build without the
+  Vulkan SDK still fails on a shader that does not compile.
+- `.\gradlew.bat checkModelVertexInvariants` checks the model vertex shader's
+  word counts against its records, and that its arithmetic over the records
+  gives the vertices Minecraft's `Cube.compile` writes, byte for byte.
 - `.\gradlew.bat checkVulkanVideoOptionsInvariants` runs pure Java source
   checks that the Video Settings integration keeps VIM options visible for an
   active Vulkan session even if the pending restart preference is OpenGL, and
@@ -201,6 +205,7 @@ validation on real Vulkan hardware.
 | `vim.allowCpuVisibleMeshletFallback`               | `false`     | Allow the legacy CPU visible-meshlet ring when work-queue upload is unavailable.                                                                                                                                                                                                                  |
 | `vim.taskStagePageCulling`                         | `true`      | Hand each layer's listed pages straight to the task stage in Minecraft's order, one task per 32 of a page's meshlets; the task stage drops what is out of view. Off runs the GPU visibility pass first, which culls and compacts the pages.                                                       |
 | `vim.gpuDrivenTerrain`                             | `true`      | In strict replacement, let the GPU draw the solid/cutout terrain of every section in view from its own page table, told only which sections are in view; Minecraft collects only the sections that draw something else. Off lists the pages of the section layers Minecraft collects every frame. |
+| `vim.gpuModelVertices`                             | `false`     | Let the GPU write the vertices of Minecraft's entity models into Minecraft's own draws (`client.vulkan.model`), for the model submits it writes exactly as Minecraft would. Off while another mod's mixins target a class it replaces. Can be switched between frames.                            |
 | `vim.cullMeshlets`                                 | `true`      | Let the task stage drop a page's meshlets that face away from the camera or are out of view. Off draws every meshlet of every page the visibility pass kept.                                                                                                                                      |
 | `vim.terrainGpuTimer`                              | `false`     | Write GPU timestamps around the mod's per-frame prepared work and each group of terrain layers, for `terrainRenderer.performance.gpu`. Measures vanilla terrain and the mesh path alike.                                                                                                          |
 

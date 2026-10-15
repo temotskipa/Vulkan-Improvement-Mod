@@ -91,6 +91,36 @@ and 32), plus an entity scene: a few hundred animals in view, ticks frozen.
 Parity screenshots of the same scenes, entities included. A render-thread
 profile before and after each step.
 
+## Progress
+
+2026-10-15, steps 1 and 2. The entity scene: 400 animals and golems in view
+above the overlook, 4,380 cubes in 3,790 posed parts a frame, render distance
+12, ticks frozen; Minecraft's path and the GPU path (`vim.gpuModelVertices`) in
+turn in one session, three times each, medians:
+
+| Path      | FPS | Frame    | Render thread | 99th percentile frame |
+|-----------|-----|----------|---------------|-----------------------|
+| Minecraft | 404 | 2.47 ms  | 2.28 ms       | 4.02 ms               |
+| GPU       | 778 | 1.29 ms  | 1.09 ms       | 2.10 ms               |
+
+The render thread does half the work per frame: Minecraft still poses every
+part, and the mod writes a 96-byte record per posed part and a 16-byte record
+per cube where Minecraft wrote 24 vertices of 36 bytes. The compute pass that
+writes the vertices is not timed yet; the frame rate nearly doubled, so the
+frame does not wait on it here.
+
+Parity: a dozen mobs, one in armour, and an armor stand side by side at close
+range, ticks frozen, vignette and chat off. Frames with the path on and off are
+identical wherever the models are; only water, which animates on its own,
+differs. `checkModelVertexInvariants` compares the pass's arithmetic with
+Minecraft's `Cube.compile` byte for byte on every build.
+
+In these scenes every model submit took the GPU path. What stays on
+Minecraft's: decals and remapped textures, render types in another vertex
+format, translucent quads Minecraft sorts as it uploads them, subclasses of
+`ModelPart.Cube`, and every model while another mod's mixins target a class
+the path replaces.
+
 ## Decisions
 
 - The mod extends Minecraft's renderer instead of running its own beside it

@@ -1,21 +1,28 @@
 package com.temotskipa.vulkanimprovement.mixin.client;
 
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.sugar.Local;
+import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelGpuVertices;
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.VulkanImprovementRuntime;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.MeshTerrainRenderer;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.SectionMeshletStore;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainPerformanceMonitor;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectListIterator;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Options;
 import net.minecraft.client.color.block.BlockColors;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.client.renderer.SubmitNodeStorage;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.chunk.SectionMesh;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectListIterator;
 import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
+import net.minecraft.client.renderer.feature.FeatureRenderDispatcher;
+import net.minecraft.client.renderer.chunk.SectionRenderDispatcher.RenderSection;
+import net.minecraft.client.renderer.chunk.SectionRenderDispatcher.RenderSectionBufferSlice;
 import net.minecraft.client.renderer.state.OptionsRenderState;
 import net.minecraft.client.renderer.state.level.LevelRenderState;
 import net.minecraft.util.Util;
@@ -39,13 +46,13 @@ public final class LevelRendererMixin {
     private LevelRenderState levelRenderState;
     @Shadow
     @Final
-    private ObjectArrayList<SectionRenderDispatcher.RenderSection> visibleSections;
+    private ObjectArrayList<RenderSection> visibleSections;
     @Shadow
     @Final
     private OptionsRenderState optionsRenderState;
     // The visible sections Minecraft collects in a GPU-driven frame, in its order.
     @Unique
-    private final ObjectArrayList<SectionRenderDispatcher.RenderSection> vim$collectedSections = new ObjectArrayList<>();
+    private final ObjectArrayList<RenderSection> vim$collectedSections = new ObjectArrayList<>();
     @Unique
     private boolean vim$gpuDrivenFrame;
     
@@ -71,7 +78,7 @@ public final class LevelRendererMixin {
      * does not, and leaves out the rest, which the GPU draws whole.
      */
     @Redirect(method = "extractSectionDrawGroups", at = @At(value = "INVOKE", target = "Lit/unimi/dsi/fastutil/objects/ObjectArrayList;iterator()Lit/unimi/dsi/fastutil/objects/ObjectListIterator;"))
-    private ObjectListIterator<SectionRenderDispatcher.RenderSection> vim$collectSections(ObjectArrayList<SectionRenderDispatcher.RenderSection> sections) {
+    private ObjectListIterator<RenderSection> vim$collectSections(ObjectArrayList<SectionRenderDispatcher.RenderSection> sections) {
         return this.vim$gpuDrivenFrame ? this.vim$collectedSections.iterator() : sections.iterator();
     }
     
@@ -84,7 +91,7 @@ public final class LevelRendererMixin {
      * being collected.
      */
     @Redirect(method = "extractSectionDrawGroups", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/chunk/SectionRenderDispatcher;getRenderSectionSlice(Lnet/minecraft/client/renderer/chunk/SectionMesh;Lnet/minecraft/client/renderer/chunk/ChunkSectionLayer;)Lnet/minecraft/client/renderer/chunk/SectionRenderDispatcher$RenderSectionBufferSlice;"))
-    private SectionRenderDispatcher.RenderSectionBufferSlice vim$takeSectionLayer(SectionRenderDispatcher dispatcher, SectionMesh sectionMesh, ChunkSectionLayer layer, @Local(name = "draw") SectionMesh.SectionDraw draw, @Local(name = "section") SectionRenderDispatcher.RenderSection section, @Local(name = "fadeDuration") long fadeDuration, @Local(name = "now") long now) {
+    private RenderSectionBufferSlice vim$takeSectionLayer(SectionRenderDispatcher dispatcher, SectionMesh sectionMesh, ChunkSectionLayer layer, @Local(name = "draw") SectionMesh.SectionDraw draw, @Local(name = "section") SectionRenderDispatcher.RenderSection section, @Local(name = "fadeDuration") long fadeDuration, @Local(name = "now") long now) {
         // A frame is collected only while the Vulkan backend is active and terrain capture is on.
         if (!SectionMeshletStore.collectingFrame()) {
             return dispatcher.getRenderSectionSlice(sectionMesh, layer);
@@ -92,7 +99,7 @@ public final class LevelRendererMixin {
         if (draw == null && SectionMeshletStore.collectingTakeoverFrame() || SectionMeshletStore.takeSectionLayer(sectionMesh, layer, section, now, fadeDuration)) {
             return null;
         }
-        SectionRenderDispatcher.RenderSectionBufferSlice slice = dispatcher.getRenderSectionSlice(sectionMesh, layer);
+        RenderSectionBufferSlice slice = dispatcher.getRenderSectionSlice(sectionMesh, layer);
         SectionMeshletStore.recordDrawSlice(sectionMesh, layer, slice);
         return slice;
     }
@@ -110,6 +117,21 @@ public final class LevelRendererMixin {
         if (this.vim$gpuDrivenFrame) {
             this.vim$gpuDrivenFrame = false;
             this.vim$collectedSections.clear();
+        }
+    }
+    
+    /**
+     * The GPU model path takes model submits only while Minecraft prepares the level's features,
+     * which it does before the frame graph opens a render pass.
+     */
+    @WrapOperation(method = "render", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher;prepareFrame(Lnet/minecraft/client/renderer/SubmitNodeStorage;)Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher$PreparedFrame;"))
+    private FeatureRenderDispatcher.PreparedFrame vim$prepareLevelFeatures(FeatureRenderDispatcher dispatcher, SubmitNodeStorage submitNodeStorage, Operation<FeatureRenderDispatcher.PreparedFrame> original) {
+        ModelGpuVertices models = ModelGpuVertices.get();
+        models.beginLevelPrepare();
+        try {
+            return original.call(dispatcher, submitNodeStorage);
+        } finally {
+            models.endLevelPrepare();
         }
     }
     

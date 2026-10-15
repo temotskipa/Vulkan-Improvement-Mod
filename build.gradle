@@ -58,7 +58,7 @@ dependencies {
 
 sourceSets {
     client {
-        resources.srcDir(layout.buildDirectory.dir("generated/resources/terrain-spirv"))
+        resources.srcDir(layout.buildDirectory.dir("generated/resources/shader-spirv"))
     }
     test {
         compileClasspath += sourceSets.client.output
@@ -159,13 +159,16 @@ def allowedVulkanPackages = [
         vulkanPackageRoot + ".device",
         vulkanPackageRoot + ".gpu",
         vulkanPackageRoot + ".gpuworld",
+        vulkanPackageRoot + ".model",
         vulkanPackageRoot + ".presentation",
         vulkanPackageRoot + ".rtpt",
         vulkanPackageRoot + ".runtime",
         vulkanPackageRoot + ".terrain",
         vulkanPackageRoot + ".terrain.util",
 ]
-def terrainShaderSourceDir = layout.projectDirectory.dir("src/client/resources/assets/vulkanimprovement/shaders/terrain")
+def shaderSourceRoot = layout.projectDirectory.dir("src/client/resources/assets/vulkanimprovement/shaders")
+def terrainShaderSourceDir = shaderSourceRoot.dir("terrain")
+def modelShaderSourceDir = shaderSourceRoot.dir("model")
 def terrainGpuLayoutSource = layout.projectDirectory.file("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/util/TerrainGpuLayout.java")
 def requireShaderValidator = providers.gradleProperty("vim.requireShaderValidator")
         .map { it.toBoolean() }
@@ -173,7 +176,7 @@ def requireShaderValidator = providers.gradleProperty("vim.requireShaderValidato
 def releaseBuild = providers.gradleProperty("vim.releaseBuild")
         .map { it.toBoolean() }
         .orElse(false)
-def requireTerrainShaderValidator = {
+def requireShaderValidatorTool = {
     releaseBuild.get() || requireShaderValidator.get()
 }
 
@@ -285,12 +288,12 @@ tasks.register("checkVulkanPackageBoundaries") {
     }
 }
 
-tasks.register("compileTerrainSpirv") {
+tasks.register("compileShaderSpirv") {
     group = "build"
-    description = "Compiles terrain GLSL to SPIR-V for packaged client resources when glslangValidator is available."
+    description = "Compiles the mod's GLSL shaders to SPIR-V for packaged client resources when glslangValidator is available."
 
-    def shaderFiles = fileTree(dir: terrainShaderSourceDir, include: "*.glsl")
-    def generatedResourceRoot = layout.buildDirectory.dir("generated/resources/terrain-spirv")
+    def shaderFiles = fileTree(dir: shaderSourceRoot, include: "*/*.glsl")
+    def generatedResourceRoot = layout.buildDirectory.dir("generated/resources/shader-spirv")
     inputs.files(shaderFiles)
     inputs.property("releaseBuild", releaseBuild)
     inputs.property("requireShaderValidator", requireShaderValidator)
@@ -299,8 +302,8 @@ tasks.register("compileTerrainSpirv") {
     doLast {
         def validator = findGlslangValidator()
         if (validator == null) {
-            def message = "glslangValidator not found; skipping terrain SPIR-V generation. Runtime shaderc compilation remains available for development builds. Use -Pvim.requireShaderValidator=true or -Pvim.releaseBuild=true to require it."
-            if (requireTerrainShaderValidator()) {
+            def message = "glslangValidator not found; skipping SPIR-V generation. Runtime shaderc compilation remains available for development builds. Use -Pvim.requireShaderValidator=true or -Pvim.releaseBuild=true to require it."
+            if (requireShaderValidatorTool()) {
                 throw new GradleException(message)
             }
             logger.lifecycle(message)
@@ -308,14 +311,12 @@ tasks.register("compileTerrainSpirv") {
         }
 
         def resourceRoot = generatedResourceRoot.get().asFile
-        def spirvDir = new File(resourceRoot, "assets/vulkanimprovement/shaders/terrain/spirv")
-        spirvDir.mkdirs()
-        shaderFiles.files.sort { it.name }.each { shaderFile ->
-            def stage = shaderFile.name.endsWith(".task.glsl") ? "task" : shaderFile.name.endsWith(".mesh.glsl") ? "mesh" : shaderFile.name.endsWith(".frag.glsl") ? "frag" : shaderFile.name.endsWith(".comp.glsl") ? "comp" : null
-            if (stage == null) {
-                throw new GradleException("Unknown terrain shader stage for ${project.relativePath(shaderFile)}")
-            }
-            def outputFile = new File(spirvDir, shaderFile.name + ".spv")
+        shaderFiles.files.sort { it.path }.each { File shaderFile ->
+            def stage = shaderStage(shaderFile)
+            // shaders/<family>/<name>.<stage>.glsl compiles to shaders/<family>/spirv/<name>.<stage>.spv, where the game looks for it.
+            def spirvDir = new File(resourceRoot, "assets/vulkanimprovement/shaders/${shaderFile.parentFile.name}/spirv")
+            spirvDir.mkdirs()
+            def outputFile = new File(spirvDir, shaderFile.name.replaceFirst(/\.glsl$/, ".spv"))
             def process = new ProcessBuilder(validator as String,
                     "-V",
                     "--target-env",
@@ -328,10 +329,18 @@ tasks.register("compileTerrainSpirv") {
             def output = process.inputStream.getText("UTF-8")
             process.waitFor()
             if (process.exitValue() != 0) {
-                throw new GradleException("Terrain SPIR-V generation failed for ${project.relativePath(shaderFile)}:\n${output}")
+                throw new GradleException("SPIR-V generation failed for ${project.relativePath(shaderFile)}:\n${output}")
             }
         }
     }
+}
+
+static def shaderStage(File shaderFile) {
+    def stage = shaderFile.name.endsWith(".task.glsl") ? "task" : shaderFile.name.endsWith(".mesh.glsl") ? "mesh" : shaderFile.name.endsWith(".frag.glsl") ? "frag" : shaderFile.name.endsWith(".comp.glsl") ? "comp" : null
+    if (stage == null) {
+        throw new GradleException("Unknown shader stage for ${shaderFile.name}")
+    }
+    return stage
 }
 
 static def findGlslangValidator() {
@@ -356,29 +365,29 @@ static def findGlslangValidator() {
 }
 
 tasks.named("processClientResources") {
-    dependsOn tasks.named("compileTerrainSpirv")
+    dependsOn tasks.named("compileShaderSpirv")
 }
 
 tasks.named("compileClientJava") {
-    dependsOn tasks.named("compileTerrainSpirv")
+    dependsOn tasks.named("compileShaderSpirv")
 }
 
-tasks.register("checkTerrainShaders") {
+tasks.register("checkShaders") {
     group = "verification"
-    description = "Validates terrain GLSL shaders with glslangValidator when available."
+    description = "Validates the mod's GLSL shaders with glslangValidator when available."
 
-    def shaderFiles = fileTree(dir: terrainShaderSourceDir, include: "*.glsl")
+    def shaderFiles = fileTree(dir: shaderSourceRoot, include: "*/*.glsl")
     inputs.files(shaderFiles)
     inputs.property("requireShaderValidator", requireShaderValidator)
     inputs.property("releaseBuild", releaseBuild)
-    outputs.dir(layout.buildDirectory.dir("validated-shaders/terrain"))
+    outputs.dir(layout.buildDirectory.dir("validated-shaders"))
 
     doLast {
-        def required = requireTerrainShaderValidator()
+        def required = requireShaderValidatorTool()
         def validator = findGlslangValidator()
 
         if (validator == null) {
-            def message = "glslangValidator not found; skipping terrain shader validation. Use -Pvim.requireShaderValidator=true or -Pvim.releaseBuild=true to require it."
+            def message = "glslangValidator not found; skipping shader validation. Use -Pvim.requireShaderValidator=true or -Pvim.releaseBuild=true to require it."
             if (required) {
                 throw new GradleException(message)
             }
@@ -386,27 +395,24 @@ tasks.register("checkTerrainShaders") {
             return
         }
 
-        def outputDir = layout.buildDirectory.dir("validated-shaders/terrain").get().asFile
-        outputDir.mkdirs()
-        shaderFiles.files.sort { it.name }.each { shaderFile ->
-            def stage = shaderFile.name.endsWith(".task.glsl") ? "task" : shaderFile.name.endsWith(".mesh.glsl") ? "mesh" : shaderFile.name.endsWith(".frag.glsl") ? "frag" : shaderFile.name.endsWith(".comp.glsl") ? "comp" : null
-            if (stage == null) {
-                throw new GradleException("Unknown terrain shader stage for ${project.relativePath(shaderFile)}")
-            }
-            def outputFile = new File(outputDir, shaderFile.name + ".spv")
+        def outputRoot = layout.buildDirectory.dir("validated-shaders").get().asFile
+        shaderFiles.files.sort { it.path }.each { File shaderFile ->
+            def outputDir = new File(outputRoot, shaderFile.parentFile.name)
+            outputDir.mkdirs()
+            def outputFile = new File(outputDir, shaderFile.name.replaceFirst(/\.glsl$/, ".spv"))
             def process = new ProcessBuilder(validator as String,
                     "-V",
                     "--target-env",
                     "vulkan1.4",
                     "-S",
-                    stage,
+                    shaderStage(shaderFile),
                     shaderFile.absolutePath,
                     "-o",
                     outputFile.absolutePath).redirectErrorStream(true).start()
             def output = process.inputStream.getText("UTF-8")
             process.waitFor()
             if (process.exitValue() != 0) {
-                throw new GradleException("Terrain shader validation failed for ${project.relativePath(shaderFile)}:\n${output}")
+                throw new GradleException("Shader validation failed for ${project.relativePath(shaderFile)}:\n${output}")
             }
         }
     }
@@ -831,6 +837,26 @@ tasks.register("checkTerrainShadersCompile", JavaExec) {
     inputs.dir(terrainShaderSourceDir)
 }
 
+tasks.register("checkModelShadersCompile", JavaExec) {
+    group = "verification"
+    description = "Compiles the model shaders with the compiler the game uses at startup."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.model.ModelShaderCompileCheck"
+    inputs.dir(modelShaderSourceDir)
+}
+
+tasks.register("checkModelVertexInvariants", JavaExec) {
+    group = "verification"
+    description = "Checks that the model vertex pass reads its records as laid out and writes Minecraft's own model vertices."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.model.ModelVertexInvariantCheck"
+    inputs.dir(modelShaderSourceDir)
+}
+
 tasks.register("checkTerrainRenderPassStateInvariants", JavaExec) {
     group = "verification"
     description = "Runs pure Java terrain render-pass state restoration invariant checks."
@@ -888,7 +914,7 @@ tasks.named("check") {
     dependsOn tasks.named("checkRepoDocs")
     dependsOn tasks.named("checkClientMixinConfig")
     dependsOn tasks.named("checkVulkanPackageBoundaries")
-    dependsOn tasks.named("checkTerrainShaders")
+    dependsOn tasks.named("checkShaders")
     dependsOn tasks.named("checkTerrainLayoutManifest")
     dependsOn tasks.named("checkTerrainMeshletInvariants")
     dependsOn tasks.named("checkRendererDomainInvariants")
@@ -912,6 +938,8 @@ tasks.named("check") {
     dependsOn tasks.named("checkTerrainMeshTaskCommandLayoutInvariants")
     dependsOn tasks.named("checkResidentTerrainPagesInvariants")
     dependsOn tasks.named("checkTerrainShadersCompile")
+    dependsOn tasks.named("checkModelShadersCompile")
+    dependsOn tasks.named("checkModelVertexInvariants")
     dependsOn tasks.named("checkTerrainRenderPassStateInvariants")
     dependsOn tasks.named("checkVulkanVideoOptionsInvariants")
     dependsOn tasks.named("checkAcceleratedWorldgenProviderIntegrationInvariants")
@@ -943,7 +971,7 @@ java {
 }
 
 tasks.named("sourcesJar") {
-    dependsOn tasks.named("compileTerrainSpirv")
+    dependsOn tasks.named("compileShaderSpirv")
 }
 
 jar {

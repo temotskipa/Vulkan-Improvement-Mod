@@ -91,6 +91,19 @@ public final class ShaderCompiler implements AutoCloseable {
         }
     }
     
+    /**
+     * Compiles a GLSL resource as the game does when the build made no SPIR-V for it: the
+     * compiler's errors, or null when it compiles.
+     */
+    public @Nullable String compileErrors(String glslResource, int shaderKind) {
+        long result = Shaderc.shaderc_compile_into_spv(this.compiler, source(glslResource), shaderKind, glslResource, "main", this.options);
+        try {
+            return Shaderc.shaderc_result_get_compilation_status(result) == Shaderc.shaderc_compilation_status_success ? null : Shaderc.shaderc_result_get_error_message(result);
+        } finally {
+            Shaderc.shaderc_result_release(result);
+        }
+    }
+    
     private static long createShaderModule(VulkanDevice device, String filename, ByteBuffer spirv) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             VkShaderModuleCreateInfo moduleCreateInfo = VkShaderModuleCreateInfo.calloc(stack).sType$Default();

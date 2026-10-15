@@ -61,8 +61,8 @@ inside a render pass the level renderer has already opened.
   `FeatureSet enabledFeatureSet`, `VulkanPhysicalDevice;close()V`,
   `method = "close"`.
 - Purpose: capture VIM runtime capabilities before the physical-device wrapper
-  is closed and shut renderer services down before the Vulkan device is
-  destroyed.
+  is closed, set up the GPU model path on the new device, and shut renderer
+  services down before the Vulkan device is destroyed.
 
 ### VulkanGpuSurfaceMixin
 
@@ -213,6 +213,7 @@ inside a render pass the level renderer has already opened.
   `private OptionsRenderState optionsRenderState`,
   `method = "extractSectionDrawGroups"`,
   `SectionRenderDispatcher;getRenderSectionSlice(`, `ObjectArrayList;iterator()`,
+  `FeatureRenderDispatcher;prepareFrame(`,
   `method = "invalidateCompiledGeometry"`, `method = "resetLevelRenderData"`,
   `method = "close"`.
 - Purpose: bracket the collection of a frame's section layers, record them
@@ -230,7 +231,12 @@ inside a render pass the level renderer has already opened.
   callback object, about a twentieth. In a GPU-driven frame a `@Redirect` of
   the iterator call hands Minecraft only the visible sections that draw
   something the GPU does not; the GPU draws the others whole from a grid of
-  the sections in view, built from `visibleSections` before the walk.
+  the sections in view, built from `visibleSections` before the walk. Around
+  the level's one call of `FeatureRenderDispatcher.prepareFrame(SubmitNodeStorage)`
+  in `render`, which fills the feature groups' staged vertex buffer before the
+  frame graph opens a render pass, it opens and closes the window in which the
+  GPU model path takes model submits; Minecraft's other callers, the GUI item
+  atlas, picture-in-picture, the hand and the 3D HUD, are left to Minecraft.
 
 ### SectionRenderDispatcherRenderSectionMixin
 
@@ -321,3 +327,93 @@ inside a render pass the level renderer has already opened.
 - Purpose: release VIM meshlet mappings when vanilla closes a compiled section
   mesh, and carry the mod's record of the mesh in a field, so a frame finds it
   without a map lookup.
+
+## Model Hooks
+
+These hooks let the GPU write the vertices of Minecraft's entity models into
+Minecraft's own draws (see `client.vulkan.model.ModelGpuVertices`). They change
+nothing unless `vim.gpuModelVertices` is on, and nothing while another
+mod's mixins target one of the classes below.
+
+### ModelPartMixin
+
+- Target: `net.minecraft.client.model.geom.ModelPart`.
+- mcdev 26.4 surface: final field `cubes`, the part's `ModelPart.Cube`s;
+  public `render(PoseStack, VertexConsumer, int, int, int)`, which for a visible
+  part that is not `skipDraw` calls private
+  `compile(PoseStack.Pose, VertexConsumer, int, int, int)` once with the posed
+  part, before its children; `compile` calls `Cube.compile` for each cube, in
+  order.
+- Source tokens: `private List<ModelPart.Cube> cubes`,
+  `method = "render(Lcom/mojang/blaze3d/vertex/PoseStack;Lcom/mojang/blaze3d/vertex/VertexConsumer;III)V"`,
+  `ModelPart;compile(`.
+- Purpose: hand a posed part's cubes to the GPU model path when the vertex
+  consumer is the one it handed out, and to Minecraft's `compile` otherwise.
+
+### ModelPartCubeMixin
+
+- Target: `net.minecraft.client.model.geom.ModelPart.Cube`.
+- mcdev 26.4 surface: public final field `polygons`, each a `ModelPart.Polygon`
+  record of four `ModelPart.Vertex` records and a normal, fixed once the cube is
+  built; `compile(PoseStack.Pose, VertexConsumer, int, int, int)` writes each
+  polygon's vertices with `Matrix4f.transformPosition` and the normal with
+  `PoseStack.Pose.transformNormal`.
+- Source tokens: none; the mixin only adds fields.
+- Purpose: remember where the GPU model path stored the cube's faces, so a
+  cube is looked at once.
+
+### ModelFeatureRendererMixin
+
+- Target: `net.minecraft.client.renderer.feature.ModelFeatureRenderer`.
+- mcdev 26.4 surface: private `prepareModel(Submit)`, which sets its pose
+  stack to the submit's pose, gets the vertex consumer with
+  `getVertexBuilder(RenderType)`, wraps it for a sheeted decal or a UV mapping,
+  and has the model render into it.
+- Source tokens: `method = "prepareModel"`,
+  `ModelFeatureRenderer;getVertexBuilder(`.
+- Purpose: offer the submit to the GPU model path while Minecraft asks for its
+  vertex consumer; the path takes only submits whose vertices it writes
+  exactly as Minecraft would.
+
+### RenderTypeFeatureRendererGroupMixin
+
+- Target: `net.minecraft.client.renderer.feature.RenderTypeFeatureRenderer.Group`.
+- mcdev 26.4 surface: final fields `stagedBuffer`, `canReorder`, `draws` and
+  `drawRenderTypes`; field `lastDraw`; public `getVertexBuilder(RenderType)`,
+  which keeps filling `lastDraw` while the render type stays the same and can
+  consolidate consecutive geometry, and otherwise asks private
+  `getOrAddDraw(RenderType)`, which, in a group that can reorder, finds a draw
+  of the same prepared render type with `List.indexOf`, and otherwise appends
+  a draw to the staged buffer.
+- Source tokens: `private StagedVertexBuffer stagedBuffer`,
+  `private boolean canReorder`, `private List<StagedVertexBuffer.Draw> draws`,
+  `private List<PreparedRenderType> drawRenderTypes`,
+  `private StagedVertexBuffer.@Nullable Draw lastDraw`,
+  `method = "getVertexBuilder"`, `method = "getOrAddDraw"`, `List;indexOf(`.
+- Purpose: make GPU model draws draws of the group, in its lists, so Minecraft
+  executes them in order with its render types, and keep Minecraft's own
+  geometry out of them.
+
+### StagedVertexBufferMixin
+
+- Target: `net.minecraft.client.renderer.StagedVertexBuffer`.
+- mcdev 26.4 surface: public `upload()`, which puts the frame's vertices and
+  sorted indices into Minecraft buffers outside a render pass;
+  `getExecuteInfo(Draw)`, which returns null for an empty draw and otherwise
+  the vertex buffer, index buffer and counts to draw it with, using the
+  sequential index buffer for a draw without quad sorting; `endDraw()` and
+  `endFrame()`.
+- Source tokens: `method = "upload"`, `method = "getExecuteInfo"`,
+  `method = "endDraw"`, `method = "endFrame"`.
+- Purpose: write the GPU model vertices once Minecraft has uploaded its own,
+  draw a GPU draw from them, and recycle their buffers with Minecraft's.
+
+### StagedVertexBufferDrawMixin
+
+- Target: `net.minecraft.client.renderer.StagedVertexBuffer.Draw`.
+- mcdev 26.4 surface: fields `vertexCount` and `indexCount`; `isEmpty()` is
+  true while `vertexCount` is 0.
+- Source tokens: `private int vertexCount`, `private int indexCount`.
+- Purpose: mark a draw as a GPU model draw and count the vertices the GPU
+  writes into it, so Minecraft sizes its index buffer for them and does not
+  skip the draw as empty.
