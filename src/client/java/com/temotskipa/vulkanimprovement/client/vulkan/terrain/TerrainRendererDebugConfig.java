@@ -36,6 +36,7 @@ public final class TerrainRendererDebugConfig {
     private static volatile boolean terrainGpuTimer = booleanProperty("vim.terrainGpuTimer", false);
     private static volatile boolean cullMeshlets = booleanProperty("vim.cullMeshlets", true);
     private static volatile boolean taskStagePageCulling = booleanProperty("vim.taskStagePageCulling", true);
+    private static volatile boolean gpuDrivenTerrain = booleanProperty("vim.gpuDrivenTerrain", true);
     
     private TerrainRendererDebugConfig() {
     }
@@ -252,12 +253,12 @@ public final class TerrainRendererDebugConfig {
     public static boolean terrainGpuTimerEnabled() {
         return terrainGpuTimer;
     }
-
+    
     public static void setTerrainGpuTimerEnabled(boolean enabled) {
         terrainGpuTimer = enabled;
         setBooleanProperty("vim.terrainGpuTimer", enabled);
     }
-
+    
     /**
      * Whether the task stage drops a page's meshlets that face away from the camera or are out of
      * view, before the mesh stage reads any of their vertices.
@@ -265,12 +266,12 @@ public final class TerrainRendererDebugConfig {
     public static boolean cullMeshletsEnabled() {
         return cullMeshlets;
     }
-
+    
     public static void setCullMeshletsEnabled(boolean enabled) {
         cullMeshlets = enabled;
         setBooleanProperty("vim.cullMeshlets", enabled);
     }
-
+    
     /**
      * Whether each layer's listed pages go straight to the task stage, in Minecraft's order, the
      * task stage dropping what is out of view; otherwise the GPU visibility pass culls and compacts
@@ -279,12 +280,26 @@ public final class TerrainRendererDebugConfig {
     public static boolean taskStagePageCullingEnabled() {
         return taskStagePageCulling;
     }
-
+    
     public static void setTaskStagePageCullingEnabled(boolean enabled) {
         taskStagePageCulling = enabled;
         setBooleanProperty("vim.taskStagePageCulling", enabled);
     }
-
+    
+    /**
+     * Whether, in strict replacement, the GPU draws the opaque terrain of every section in view
+     * from its own page table, told only which sections are in view; otherwise each frame lists
+     * the pages of the section layers Minecraft collects.
+     */
+    public static boolean gpuDrivenTerrainEnabled() {
+        return gpuDrivenTerrain;
+    }
+    
+    public static void setGpuDrivenTerrainEnabled(boolean enabled) {
+        gpuDrivenTerrain = enabled;
+        setBooleanProperty("vim.gpuDrivenTerrain", enabled);
+    }
+    
     public static boolean drawAllCapturedTerrainLayers() {
         return drawAllCapturedTerrainLayers;
     }
@@ -304,7 +319,7 @@ public final class TerrainRendererDebugConfig {
     }
     
     public static String describe() {
-        return "rendererMode=" + rendererMode() + ", requireVulkanBackend=" + requireVulkanBackend() + ", enableTerrainCaptureBootstrap=" + terrainCaptureBootstrapEnabled() + ", enableMeshTranslucentTerrain=" + meshTranslucentTerrainEnabled() + ", enableMeshletFrustumCulling=" + meshletFrustumCullingEnabled() + ", strictMeshTerrainReplacement=" + strictMeshTerrainReplacement() + ", enableVanillaChunkVisibilityFade=" + vanillaChunkVisibilityFadeEnabled() + ", drawAllCapturedTerrainLayers=" + drawAllCapturedTerrainLayers() + ", terrainGpuTimer=" + terrainGpuTimerEnabled() + ", cullMeshlets=" + cullMeshletsEnabled() + ", taskStagePageCulling=" + taskStagePageCullingEnabled() + ", defaultSolidCutoutLayerMode=" + solidCutoutLayerMode() + ", defaultTranslucentLayerMode=" + translucentLayerMode() + ", dumpCapabilities=" + dumpCapabilities() + ", enableAcceleratedWorldgenProviderIntegration=" + acceleratedWorldgenProviderIntegrationEnabled() + ", disableFragmentShadingRate=" + !fragmentShadingRateEnabled() + ", disablePresentPacing=" + disablePresentPacing() + ", validationDescriptorBufferOnly=" + validationDescriptorBufferOnly() + ", waitIdleBeforeTerrainUpload=" + waitIdleBeforeTerrainUpload() + ", allowCpuVisibleMeshletFallback=" + allowCpuVisibleMeshletFallback() + ", enableGpuGeneratedMeshTaskCommands=" + enableGpuGeneratedMeshTaskCommands() + ", terrainFragmentShadingRate=" + terrainFragmentShadingRate() + ", terrainMirrorStabilizationMillis=" + terrainMirrorStabilizationMillis() + ", initialSectionCapacity=" + initialSectionCapacity() + ", initialMeshletCapacity=" + initialMeshletCapacity() + ", initialVertexPayloadBytes=" + initialVertexPayloadBytes() + ", initialIndexPayloadBytes=" + initialIndexPayloadBytes();
+        return "rendererMode=" + rendererMode() + ", requireVulkanBackend=" + requireVulkanBackend() + ", enableTerrainCaptureBootstrap=" + terrainCaptureBootstrapEnabled() + ", enableMeshTranslucentTerrain=" + meshTranslucentTerrainEnabled() + ", enableMeshletFrustumCulling=" + meshletFrustumCullingEnabled() + ", strictMeshTerrainReplacement=" + strictMeshTerrainReplacement() + ", enableVanillaChunkVisibilityFade=" + vanillaChunkVisibilityFadeEnabled() + ", drawAllCapturedTerrainLayers=" + drawAllCapturedTerrainLayers() + ", terrainGpuTimer=" + terrainGpuTimerEnabled() + ", cullMeshlets=" + cullMeshletsEnabled() + ", taskStagePageCulling=" + taskStagePageCullingEnabled() + ", gpuDrivenTerrain=" + gpuDrivenTerrainEnabled() + ", defaultSolidCutoutLayerMode=" + solidCutoutLayerMode() + ", defaultTranslucentLayerMode=" + translucentLayerMode() + ", dumpCapabilities=" + dumpCapabilities() + ", enableAcceleratedWorldgenProviderIntegration=" + acceleratedWorldgenProviderIntegrationEnabled() + ", disableFragmentShadingRate=" + !fragmentShadingRateEnabled() + ", disablePresentPacing=" + disablePresentPacing() + ", validationDescriptorBufferOnly=" + validationDescriptorBufferOnly() + ", waitIdleBeforeTerrainUpload=" + waitIdleBeforeTerrainUpload() + ", allowCpuVisibleMeshletFallback=" + allowCpuVisibleMeshletFallback() + ", enableGpuGeneratedMeshTaskCommands=" + enableGpuGeneratedMeshTaskCommands() + ", terrainFragmentShadingRate=" + terrainFragmentShadingRate() + ", terrainMirrorStabilizationMillis=" + terrainMirrorStabilizationMillis() + ", initialSectionCapacity=" + initialSectionCapacity() + ", initialMeshletCapacity=" + initialMeshletCapacity() + ", initialVertexPayloadBytes=" + initialVertexPayloadBytes() + ", initialIndexPayloadBytes=" + initialIndexPayloadBytes();
     }
     
     private static String solidCutoutLayerMode() {

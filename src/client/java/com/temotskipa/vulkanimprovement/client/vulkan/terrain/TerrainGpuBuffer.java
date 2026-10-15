@@ -14,6 +14,7 @@ import org.lwjgl.vulkan.VK12;
 import org.lwjgl.vulkan.VkBufferCreateInfo;
 import org.lwjgl.vulkan.VkBufferDeviceAddressInfo;
 
+import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
@@ -132,6 +133,13 @@ final class TerrainGpuBuffer implements Destroyable, AutoCloseable {
             throw new IllegalStateException(this.label + " exceeds ByteBuffer limit (" + this.size + " bytes); use mappedSlice() instead");
         }
         return MemoryUtil.memByteBuffer(this.mappedAddress, (int) this.size);
+    }
+    
+    /**
+     * The mapped memory as a segment: written at offsets, with no position to keep track of.
+     */
+    MemorySegment mappedSegment() {
+        return MemorySegment.ofBuffer(mappedByteBuffer());
     }
     
     void flush() {

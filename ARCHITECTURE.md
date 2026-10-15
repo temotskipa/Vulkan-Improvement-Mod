@@ -121,7 +121,24 @@ renderer code does not drift back into a catch-all root package.
   nothing waits for the GPU and a freed range can be handed out again at once.
   When a page does not fit, the buffer that was short is grown and the pages
   are uploaded again from the copies `SectionMeshletStore` keeps.
-- A frame uploads one short list per layer: the page slot and fade-in of every
+- In strict replacement a frame is GPU-driven by default
+  (`vim.gpuDrivenTerrain`). Before Minecraft collects the frame, the mod walks
+  Minecraft's `visibleSections` once and uploads one bit per section of the
+  box around them, a few kilobytes, and nothing about pages. The GPU-driven
+  pass (`visible_section_pages.comp.glsl`) reads the page table itself: every
+  page of a section in view gets one task per 32 of its meshlets, its fade-in
+  worked out from the time its section was first shown, and each layer's
+  mesh-task command counts them. Three steps sort a layer's tasks by the
+  distance of their section from the camera's, nearest first, so the GPU
+  rejects hidden terrain by depth about as early as in Minecraft's order.
+  Minecraft then walks only the visible sections that draw something the GPU
+  does not, such as translucent terrain or a layer without a page yet: each
+  compiled mesh keeps a role, worked out when its pages change, saying whether
+  the GPU draws its section whole. A mesh's layers get pages only once
+  Minecraft shows the mesh, so a section has the pages of one mesh only.
+  A frame falls back to the listed path below when a layer has more tasks than
+  one draw may launch, the box is too large, or the visible list has no room.
+- Otherwise a frame uploads one short list per layer: the page slot and fade-in of every
   section layer Minecraft collected for it, in Minecraft's order, nearest
   first. By default (`vim.taskStagePageCulling`) that list is the draw: one
   task per 32 of a page's meshlets (`TerrainGpuLayout.MESHLETS_PER_TASK`), its
@@ -143,8 +160,8 @@ renderer code does not drift back into a catch-all root package.
   is dropped when the pipeline culls back faces, and a meshlet out of view
   always (`vim.cullMeshlets`).
 - `TerrainMeshTaskDispatch` records where a dispatch's tasks come from. The
-  default path above is `listed-pages`, the visibility pass's is
-  `gpu-visible-pages`. The older sources remain as fallback and diagnostics: a CPU-written work queue with one record per visible meshlet
+  GPU-driven path is `gpu-driven-pages`, the listed path `listed-pages`, the
+  visibility pass's `gpu-visible-pages`. The older sources remain as fallback and diagnostics: a CPU-written work queue with one record per visible meshlet
   (`cpu-work-queue`, used when `vim.enableGpuGeneratedMeshTaskCommands=false`
   or a frame's command could not be prepared), the visible meshlet ring, and
   direct per-page draws for `vim.drawAllCapturedTerrainLayers`.

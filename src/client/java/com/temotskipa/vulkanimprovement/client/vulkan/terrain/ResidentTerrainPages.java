@@ -1,5 +1,6 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
 import org.jspecify.annotations.Nullable;
 
 import java.util.*;
@@ -12,6 +13,8 @@ import java.util.*;
  *
  * <p>A range that is given back can be handed out again at once. Page data only reaches the GPU
  * through copies recorded in the command stream, which run after every draw recorded before them.
+ * The GPU reads every slot of the page table up to the highest one handed out, so a slot that is
+ * given back has its record cleared there in the same copies, and after a reset the whole table.
  *
  * @param <K> what identifies a section layer
  */
@@ -27,6 +30,10 @@ final class ResidentTerrainPages<K> {
     private long allocationRefusals;
     private long revision;
     private Shortage shortage = Shortage.NONE;
+    private final BitSet freedSlots = new BitSet();
+    private boolean clearTable = true;
+    private int slotHighWater;
+    private final int[] tasksByLayer = new int[16];
     
     /**
      * Drops every page and sizes the allocators for a new set of GPU buffers. Section layers that
@@ -40,6 +47,10 @@ final class ResidentTerrainPages<K> {
         this.vertexBytes.reset(vertexPayloadBytes);
         this.indexBytes.reset(indexPayloadBytes);
         this.shortage = Shortage.NONE;
+        this.freedSlots.clear();
+        this.clearTable = true;
+        this.slotHighWater = 0;
+        Arrays.fill(this.tasksByLayer, 0);
     }
     
     /**
@@ -111,6 +122,10 @@ final class ResidentTerrainPages<K> {
         this.pages.put(key, page);
         this.pending.remove(key);
         this.pagesAllocated++;
+        // The new record takes the slot's place in the copies, so the slot is not cleared.
+        this.freedSlots.clear((int) slot);
+        this.slotHighWater = Math.max(this.slotHighWater, (int) slot + 1);
+        this.tasksByLayer[layerOrdinal] += gpuTasks(meshletCount);
         return page;
     }
     
@@ -149,6 +164,49 @@ final class ResidentTerrainPages<K> {
         this.vertexBytes.free(page.vertexOffset(), page.vertexBytes());
         this.indexBytes.free(page.indexOffset(), page.indexBytes());
         this.pagesFreed++;
+        this.freedSlots.set(page.slot());
+        this.tasksByLayer[page.layerOrdinal()] -= gpuTasks(page.meshletCount());
+    }
+    
+    /**
+     * How many tasks the GPU-driven draw launches for a page: one per
+     * {@link TerrainGpuLayout#MESHLETS_PER_TASK} of its meshlets, none for a page it cannot draw.
+     */
+    private static int gpuTasks(int meshletCount) {
+        return meshletCount > 0 && meshletCount <= TerrainGpuLayout.MAX_PAGE_MESHLETS ? (meshletCount + TerrainGpuLayout.MESHLETS_PER_TASK - 1) / TerrainGpuLayout.MESHLETS_PER_TASK : 0;
+    }
+    
+    /**
+     * What the GPU page table has to be told before it is read again: whether every record is to
+     * be cleared, and the slots given back since it was last told. Taken after the frame's pages
+     * were handed out, so a slot handed out again is not among them.
+     */
+    synchronized TableChanges takeTableChanges() {
+        TableChanges changes = new TableChanges(this.clearTable, this.freedSlots.stream().toArray());
+        this.clearTable = false;
+        this.freedSlots.clear();
+        return changes;
+    }
+    
+    /**
+     * One more than the highest slot handed out since the last reset: the GPU reads the page
+     * table up to here.
+     */
+    synchronized int slotHighWater() {
+        return this.slotHighWater;
+    }
+    
+    /**
+     * How many tasks drawing every page of a layer would launch, at most.
+     */
+    synchronized int tasks(int layerOrdinal) {
+        return this.tasksByLayer[layerOrdinal];
+    }
+    
+    record TableChanges(boolean clearAll, int[] freedSlots) {
+        boolean any() {
+            return this.clearAll || this.freedSlots.length > 0;
+        }
     }
     
     /**
@@ -161,11 +219,11 @@ final class ResidentTerrainPages<K> {
     
     record Shortage(int pages, long meshlets, long vertexBytes, long indexBytes) {
         static final Shortage NONE = new Shortage(0, 0L, 0L, 0L);
-
+        
         boolean any() {
             return this.pages > 0 || this.meshlets > 0L || this.vertexBytes > 0L || this.indexBytes > 0L;
         }
-
+        
         private Shortage plus(int morePages, long moreMeshlets, long moreVertexBytes, long moreIndexBytes) {
             return new Shortage(this.pages + morePages, this.meshlets + moreMeshlets, this.vertexBytes + moreVertexBytes, this.indexBytes + moreIndexBytes);
         }

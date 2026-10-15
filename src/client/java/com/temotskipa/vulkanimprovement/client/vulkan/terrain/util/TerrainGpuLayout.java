@@ -25,6 +25,27 @@ public final class TerrainGpuLayout {
      * How many pages one workgroup of the visibility pass looks at.
      */
     public static final int VISIBILITY_WORKGROUP_SIZE = 64;
+    /**
+     * The GPU-driven pass's push constants: three buffer addresses, two integers, and five rows
+     * of four integers.
+     */
+    public static final int SECTION_PAGES_PUSH_CONSTANT_BYTES = 112;
+    /**
+     * How many page-table slots one workgroup of the GPU-driven pass looks at.
+     */
+    public static final int SECTION_PAGES_WORKGROUP_SIZE = 64;
+    /**
+     * How many layers the GPU-driven pass can draw, and into how many distances from the camera's
+     * section it sorts each layer's tasks: the nearest 63, and everything farther.
+     */
+    public static final int SECTION_PAGES_LAYERS = 4;
+    public static final int SECTION_PAGES_DISTANCES = 64;
+    /**
+     * The counters the GPU-driven pass sorts tasks with, at the start of a frame's data in the
+     * visible list, in that list's records: how many tasks each layer has at each distance, and
+     * where each distance's records go.
+     */
+    public static final int SECTION_PAGES_COUNTER_RECORDS = SECTION_PAGES_LAYERS * SECTION_PAGES_DISTANCES * 2 * Integer.BYTES / VISIBLE_MESHLET_RECORD_STRIDE;
     public static final int DEBUG_COUNTER_BYTES = 64;
     /**
      * Where the visibility pass's counters start in the debug counters, after the mesh stage's four.

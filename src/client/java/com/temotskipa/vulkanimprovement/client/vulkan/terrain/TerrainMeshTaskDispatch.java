@@ -90,7 +90,7 @@ public record TerrainMeshTaskDispatch(int meshletOffset, int layerOrdinal, int r
         }
         return new TerrainMeshTaskDispatch(upload.inputOffset(), layerOrdinal, upload.count(), Math.min(upload.count(), MAX_DIRECT_TASKS), upload.address(), 0L, 0L, 0L, 0, 0L, false, Source.LISTED_PAGES, "");
     }
-
+    
     /**
      * A dispatch whose tasks are those of the pages the GPU visibility pass kept, which is at most as
      * many as were listed for it. The pass writes the command that says how many, so this dispatch
@@ -102,7 +102,20 @@ public record TerrainMeshTaskDispatch(int meshletOffset, int layerOrdinal, int r
         }
         return new TerrainMeshTaskDispatch(upload.outputOffset(), layerOrdinal, upload.count(), Math.min(upload.count(), MAX_DIRECT_TASKS), upload.address(), 0L, 0L, 0L, 0, 0L, false, Source.GPU_VISIBLE_PAGES, "");
     }
-
+    
+    /**
+     * A layer's tasks in a GPU-driven frame, whose records the GPU-driven pass writes from
+     * {@code recordOffset} on, at most {@code maxTasks}. The pass also writes the command that says
+     * how many, so this dispatch is only drawn with that command.
+     */
+    static TerrainMeshTaskDispatch gpuDrivenPages(DescriptorHeapTerrainResources.GpuDrivenFrame frame, int recordOffset, int maxTasks, int layerOrdinal) {
+        if (frame == null || !frame.ready() || maxTasks <= 0) {
+            return unavailable("GPU-driven pages unavailable");
+        }
+        int tasks = Math.min(maxTasks, MAX_DIRECT_TASKS);
+        return new TerrainMeshTaskDispatch(recordOffset, layerOrdinal, tasks, tasks, frame.address(), 0L, 0L, 0L, 0, 0L, false, Source.GPU_DRIVEN_PAGES, "");
+    }
+    
     TerrainMeshTaskDispatch withIndirectCommand(DescriptorHeapTerrainResources.TerrainMeshTaskCommandUpload upload) {
         if (upload == null || !upload.ready()) {
             return this;
@@ -159,7 +172,7 @@ public record TerrainMeshTaskDispatch(int meshletOffset, int layerOrdinal, int r
     }
     
     public enum Source {
-        UNAVAILABLE("unavailable", false, false), DIRECT_LAYER("direct-layer", false, false), CPU_VISIBLE_LIST("cpu-visible-list", true, false), CPU_WORK_QUEUE("cpu-work-queue", false, true), GPU_VISIBLE_PAGES("gpu-visible-pages", true, false), LISTED_PAGES("listed-pages", true, false);
+        UNAVAILABLE("unavailable", false, false), DIRECT_LAYER("direct-layer", false, false), CPU_VISIBLE_LIST("cpu-visible-list", true, false), CPU_WORK_QUEUE("cpu-work-queue", false, true), GPU_VISIBLE_PAGES("gpu-visible-pages", true, false), LISTED_PAGES("listed-pages", true, false), GPU_DRIVEN_PAGES("gpu-driven-pages", true, false);
         
         private final String id;
         private final boolean requiresVisibleMeshletList;

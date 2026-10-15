@@ -106,10 +106,15 @@ inside a render pass the level renderer has already opened.
 
 - Target: `com.mojang.renderpearl.backend.vulkan.VulkanCommandEncoder`.
 - mcdev 26.4 surface: field `currentRenderPass`; `execute(VkCommandBuffer)`
-  throws while it is set.
-- Source tokens: `VulkanRenderPass currentRenderPass`.
+  throws while it is set, and otherwise ends the open command buffers first,
+  the object-init one behind a barrier on all work before it; private
+  `commandBuffer()` returns the command buffer the frame is recorded into,
+  starting one if none is open, and throws while a render pass is open.
+- Source tokens: `VulkanRenderPass currentRenderPass`,
+  `private VkCommandBuffer commandBuffer()`.
 - Purpose: let the terrain path refuse to record compute work while a render
-  pass is open instead of failing the frame.
+  pass is open instead of failing the frame, and record its page uploads and
+  GPU-driven pass into the frame's own command buffer.
 
 ### FrontendRenderPassMixin
 
@@ -145,6 +150,10 @@ inside a render pass the level renderer has already opened.
 - Target: `net.minecraft.client.renderer.LevelRenderer`.
 - mcdev 26.4 surface: final field `levelRenderState`, whose
   `renderWireframeTerrain` says whether the frame's terrain is wireframe;
+  final field `visibleSections`, the `ObjectArrayList` of the
+  `RenderSection`s in view; final field `optionsRenderState`, whose
+  `chunkSectionFadeInTime` is the fade-in in seconds, which
+  `Util.toMillis(double)` turns into the fade duration Minecraft uses;
   private `extractSectionDrawGroups(boolean, List, Map)`, called by
   `prepareChunkRenders` and by `prepareChunkRendersIndirect` before the frame
   graph opens a render pass; public `invalidateCompiledGeometry`,
@@ -156,10 +165,13 @@ inside a render pass the level renderer has already opened.
   `SectionMesh.SectionDraw`, looked up just before, is not null; its locals
   include that draw, the `RenderSection` and, as its first two `long`s, the
   fade duration and the time, which `RenderSection.getVisibility(long, long)`
-  takes.
+  takes. It walks `visibleSections` through the one
+  `ObjectArrayList.iterator()` call in the method.
 - Source tokens: `private LevelRenderState levelRenderState`,
+  `private ObjectArrayList<SectionRenderDispatcher.RenderSection> visibleSections`,
+  `private OptionsRenderState optionsRenderState`,
   `method = "extractSectionDrawGroups"`,
-  `SectionRenderDispatcher;getRenderSectionSlice(`,
+  `SectionRenderDispatcher;getRenderSectionSlice(`, `ObjectArrayList;iterator()`,
   `method = "invalidateCompiledGeometry"`, `method = "resetLevelRenderData"`,
   `method = "close"`.
 - Purpose: bracket the collection of a frame's section layers, record them
@@ -174,18 +186,31 @@ inside a render pass the level renderer has already opened.
   is collected: a MixinExtras `@WrapOperation` there, through its operation
   object, cost about a tenth of the render thread at render distance 32 even
   with the mesh path off, and an `@Inject` into the lookup itself, with its
-  callback object, about a twentieth.
+  callback object, about a twentieth. In a GPU-driven frame a `@Redirect` of
+  the iterator call hands Minecraft only the visible sections that draw
+  something the GPU does not; the GPU draws the others whole from a grid of
+  the sections in view, built from `visibleSections` before the walk.
 
 ### SectionRenderDispatcherRenderSectionMixin
 
 - Target:
   `net.minecraft.client.renderer.chunk.SectionRenderDispatcher.RenderSection`.
 - mcdev 26.4 surface: volatile field `sectionNode`; private method
-  `addSectionBuffersToUberBuffer`.
+  `addSectionBuffersToUberBuffer`; private field `uploadedTime`, the time the
+  section was first shown, set once by `updateUploadTime()` and cleared by
+  `reset()`, which `getVisibility(long, long)` fades in from; private
+  `setSectionMesh(SectionMesh)`, which shows a mesh in the section, notes
+  `uploadedTime` if it was not set, and returns the mesh it replaces, which
+  its caller `checkSectionMesh` then releases. A compiled mesh's buffers are
+  added to the uber-buffers before it is shown.
 - Source tokens: `private long sectionNode`,
-  `method = "addSectionBuffersToUberBuffer"`.
+  `method = "addSectionBuffersToUberBuffer"`, `private long uploadedTime`,
+  `method = "setSectionMesh"`.
 - Purpose: capture terrain vertex and index payloads at the exact point vanilla
-  inserts compiled section buffers into the chunk uber-buffers.
+  inserts compiled section buffers into the chunk uber-buffers, and note when
+  Minecraft shows a mesh, and from when its section fades in: a mesh's layers
+  get pages on the GPU only once it is shown, so a section has the pages of
+  one mesh only.
 
 ### ChunkSectionsToRenderMixin
 

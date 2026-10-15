@@ -14,6 +14,7 @@ import java.util.Set;
 public final class VulkanImprovementCapabilities {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static volatile Snapshot lastSnapshot = Snapshot.empty();
+    private static volatile int maxTaskWorkGroups;
     
     private VulkanImprovementCapabilities() {
     }
@@ -46,6 +47,7 @@ public final class VulkanImprovementCapabilities {
             
             VkPhysicalDeviceProperties2 properties2 = VkPhysicalDeviceProperties2.calloc(stack).sType$Default().pNext(pNext);
             VK12.vkGetPhysicalDeviceProperties2(physicalDevice.vkPhysicalDevice(), properties2);
+            maxTaskWorkGroups = Math.min(meshProperties.maxTaskWorkGroupCount(0), meshProperties.maxTaskWorkGroupTotalCount());
             
             VkPhysicalDeviceMaintenance6FeaturesKHR maintenance6Features = VkPhysicalDeviceMaintenance6FeaturesKHR.calloc(stack).sType$Default();
             VkPhysicalDeviceMaintenance5FeaturesKHR maintenance5Features = VkPhysicalDeviceMaintenance5FeaturesKHR.calloc(stack).sType$Default().pNext(maintenance6Features.address());
@@ -68,6 +70,14 @@ public final class VulkanImprovementCapabilities {
     
     public static Snapshot snapshot() {
         return lastSnapshot;
+    }
+    
+    /**
+     * The most tasks one mesh-task draw may launch in one row, or 0 before a device with mesh
+     * shaders was looked at.
+     */
+    public static int maxTaskWorkGroups() {
+        return maxTaskWorkGroups;
     }
     
     public static Map<String, Object> asMap() {

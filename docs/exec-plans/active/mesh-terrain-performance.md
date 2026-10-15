@@ -234,6 +234,38 @@ The mesh path's opaque layers cost the GPU about 30 % less than vanilla's.
 The timer's translucent group reads zero: Minecraft 26.4 draws translucent
 terrain outside the group the mixin marks, so its share is not measured yet.
 
+In strict replacement a frame is now GPU-driven (`vim.gpuDrivenTerrain`).
+The CPU marks the sections Minecraft found in view in a grid of bits, about
+13 kilobytes at render distance 32, and the GPU reads its own page table to
+write the tasks of every page of those sections and each layer's draw command.
+Minecraft then walks only the visible sections that draw something the GPU
+does not. In a profile at the overlook at render distance 32, Minecraft's
+collection of the frame's sections fell from 24 % to 11 % of the render
+thread, the grid included.
+
+One session, both GPU timers off, three rounds of four seconds per mode, with
+the listed path of the steps before (`vim.gpuDrivenTerrain=false`) alongside:
+
+| RD | Scene    | Vanilla FPS | Listed FPS | GPU-driven FPS | GPU-driven vs vanilla | Render thread, vanilla / listed / GPU-driven |
+|----|----------|-------------|------------|----------------|-----------------------|----------------------------------------------|
+| 32 | ground   | 533         | 555        | 642            | +20 %                 | 1.70 / 1.63 / 1.39 ms                        |
+| 32 | overlook | 493         | 515        | 546            | +11 %                 | 1.86 / 1.77 / 1.66 ms                        |
+| 32 | horizon  | 411         | 421        | 419            | +2 %                  | 1.24 / 1.26 / 1.22 ms                        |
+| 16 | ground   | 881         | 1009       | 908            | +3 %                  | 0.73 / 0.71 / 0.64 ms                        |
+| 16 | overlook | 724         | 752        | 744            | +3 %                  | 0.74 / 0.72 / 0.66 ms                        |
+| 16 | horizon  | 753         | 761        | 756            | 0 %                   | 0.61 / 0.61 / 0.60 ms                        |
+
+The GPU-driven frame takes the least render-thread time in every scene. Its
+opaque terrain costs the GPU what the listed path's does, and its pass costs
+about 0.011 ms of GPU time a frame. At render distance 16 on the ground it is
+still 10 % slower than the listed path: about 0.18 ms more of each frame goes
+outside the render thread's work, to acquiring, submitting and presenting.
+Neither dropping the sort (one step and one barrier instead of three) nor
+recording the pass into Minecraft's own command buffer changed that much.
+With both GPU timers on, the comparison came out differently in some scenes
+(the overlook at render distance 32: 510 GPU-driven against 532 listed), so
+frame rates are compared with the timers off.
+
 ## Decisions
 
 - Solid terrain's mesh pipeline is specialized without the alpha test, as
@@ -252,6 +284,22 @@ terrain outside the group the mixin marks, so its share is not measured yet.
   scene (horizon: 451 against 452 FPS, 1.13 against 1.11 ms of GPU a frame).
 - Meshlets hold 64 vertices. With 128, the mesh stage's outputs are twice as
   large and its GPU time on the same terrain about a twentieth higher.
+- In strict replacement frames are GPU-driven: the CPU says which sections are
+  in view and nothing about pages, and Minecraft walks only the sections that
+  draw something the GPU does not. A frame falls back to listing pages when a
+  layer has more tasks than one draw may launch, the box around the sections
+  in view is too large, or the visible list has no room.
+- A mesh's layers get pages only once Minecraft shows the mesh. The GPU-driven
+  draw takes every page at a section in view, so a section may have the pages
+  of one mesh only; until it is shown, the mesh it replaces is the one drawn.
+- The GPU-driven pass sorts a layer's tasks by the distance of their section
+  from the camera's. Without the sort they follow the page table's slots,
+  which follow the order sections were loaded in only until the camera moves;
+  in the scenes measured both cost the same.
+- The mod's page uploads and its GPU-driven pass are recorded into the command
+  buffer Minecraft records the frame into. Executing a command buffer of the
+  mod's instead ends Minecraft's open ones, the object-init one behind a
+  barrier on all work before it.
 - The render-distance 32 runs of the baseline did not load more sections than
   render distance 16 and are left out until the benchmark waits for the
   server to send the chunks.
@@ -264,4 +312,8 @@ terrain outside the group the mixin marks, so its share is not measured yet.
   the D3D12 queue copies to the swapchain after waiting on a Vulkan semaphore,
   with a frame latency of two. Whether that hand-off can let more of the GPU's
   work overlap is open; it is Minecraft's presentation, not the terrain path.
+- At render distance 16 on the ground the GPU-driven frame spends about
+  0.18 ms more outside the render thread's work than the listed path, though
+  its CPU and GPU times are both lower. A GPU trace of both modes would show
+  what the frame waits on there.
 - Occlusion culling on the GPU (step 5).

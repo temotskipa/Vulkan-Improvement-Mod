@@ -7,12 +7,16 @@ import com.temotskipa.vulkanimprovement.client.vulkan.runtime.RendererCoreServic
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.RendererDomainObserver;
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.RendererDomainRegistry;
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.RendererLifecycleState;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayerGroup;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldDatabase;
+import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +37,8 @@ public final class MeshTerrainRenderer {
     private final LongAdder captureCpuNanos = new LongAdder();
     private final LongAdder estimatedMeshlets = new LongAdder();
     private final LongAdder meshReplacementDrawCalls = new LongAdder();
+    private final LongAdder gpuDrivenFrames = new LongAdder();
+    private final LongAdder gpuDrivenFrameRefusals = new LongAdder();
     private final LongAdder meshReplacementTasks = new LongAdder();
     private final LongAdder meshReplacementVisibleListDrawCalls = new LongAdder();
     private final LongAdder meshReplacementWorkQueueDrawCalls = new LongAdder();
@@ -56,6 +62,13 @@ public final class MeshTerrainRenderer {
     private final LongAdder[] meshReplacementIndexedDrawCallsByLayer = createLayerCounters();
     private final LongAdder[] meshReplacementDrawCallsByLayer = createLayerCounters();
     private volatile TerrainMeshTaskDispatch lastTerrainDispatch = TerrainMeshTaskDispatch.unavailable("not dispatched");
+    // A GPU-driven frame's state, used on the render thread only and reused from frame to frame.
+    private final VisibleSectionGrid visibleSectionGrid = new VisibleSectionGrid();
+    private final int[] gpuDrivenLayerTasks = new int[ChunkSectionLayer.values().length];
+    private final int[] gpuDrivenLayerOutputs = new int[TerrainGpuLayout.SECTION_PAGES_LAYERS];
+    private final int[] gpuDrivenLayerCommands = new int[TerrainGpuLayout.SECTION_PAGES_LAYERS];
+    private final TerrainMeshTaskDispatch[] gpuDrivenDispatches = new TerrainMeshTaskDispatch[ChunkSectionLayer.values().length];
+    private boolean gpuDrivenFrame;
     
     private MeshTerrainRenderer() {
     }
@@ -116,12 +129,40 @@ public final class MeshTerrainRenderer {
         DescriptorHeapTerrainResources terrainResources = DescriptorHeapTerrainResources.get();
         return RendererCoreServices.get().currentLifecycleState().drawable() && terrainResources.hasGpuTerrainData() && MeshShaderTerrainProgram.get().ready() && terrainResources.meshletsUploaded() > 0;
     }
-
+    
+    /**
+     * Called before Minecraft collects a frame's section layers, while no render pass is open.
+     * Uploads the pages that wait for one, so which section layers have pages is settled for the
+     * frame, and decides how the mesh path takes the frame's terrain. In a GPU-driven frame the
+     * GPU then writes the draws of the opaque terrain of every section in view, told only which
+     * sections Minecraft found in view, and Minecraft collects only the sections that draw
+     * something the GPU does not, which this lists in {@code collected} in Minecraft's order.
+     *
+     * @param wireframe  whether Minecraft draws this frame's terrain as wireframe
+     * @param fadeMillis how long Minecraft takes to fade a section in
+     * @return whether the frame is GPU-driven, so that Minecraft collects only {@code collected}
+     */
+    public boolean beginVisibleFrame(boolean wireframe, long fadeMillis, ObjectArrayList<SectionRenderDispatcher.RenderSection> visibleSections, ObjectArrayList<SectionRenderDispatcher.RenderSection> collected) {
+        collected.clear();
+        DescriptorHeapTerrainResources terrainResources = DescriptorHeapTerrainResources.get();
+        terrainResources.uploadDirtyTerrainData();
+        publishVisibilityStats(terrainResources);
+        int unconsumedPreparedDispatches = TerrainRenderContext.beginPreparedFrame();
+        if (unconsumedPreparedDispatches > 0) {
+            this.meshReplacementPreparedDispatchQueueLeaks.add(unconsumedPreparedDispatches);
+        }
+        boolean takeover = takesOverSectionLayers(wireframe);
+        int fade = TerrainRendererDebugConfig.vanillaChunkVisibilityFadeEnabled() ? (int) Math.clamp(fadeMillis, 0L, Integer.MAX_VALUE) : 0;
+        this.gpuDrivenFrame = takeover && prepareGpuDrivenFrame(terrainResources, fade, visibleSections, collected);
+        SectionMeshletStore.beginVisibleFrame(takeover, this.gpuDrivenFrame);
+        return this.gpuDrivenFrame;
+    }
+    
     /**
      * Called once Minecraft has collected the frame's section layers and before it opens a render
-     * pass. Minecraft hands the terrain renderers a pass that is already open, and neither an
-     * upload nor the compute step that writes mesh-task commands can be recorded inside one, so
-     * everything the layers need from the GPU this frame is prepared here.
+     * pass. Minecraft hands the terrain renderers a pass that is already open, and the compute
+     * step that writes mesh-task commands cannot be recorded inside one, so what the layers need
+     * from the GPU this frame and was not prepared before Minecraft collected it is prepared here.
      *
      * @param wireframe whether Minecraft draws this frame's terrain as wireframe
      */
@@ -129,16 +170,84 @@ public final class MeshTerrainRenderer {
         if (!TerrainRendererDebugConfig.terrainCaptureEnabled()) {
             return;
         }
-        DescriptorHeapTerrainResources.get().uploadDirtyTerrainData();
-        publishVisibilityStats(DescriptorHeapTerrainResources.get());
-        int unconsumedPreparedDispatches = TerrainRenderContext.beginPreparedFrame();
-        if (unconsumedPreparedDispatches > 0) {
-            this.meshReplacementPreparedDispatchQueueLeaks.add(unconsumedPreparedDispatches);
-        }
-        // Wireframe terrain is Minecraft's to draw, so commands prepared for it would never be used.
-        if (!wireframe) {
+        // Wireframe terrain is Minecraft's to draw, so commands prepared for it would never be
+        // used; a GPU-driven frame's were prepared before Minecraft collected the frame.
+        if (!wireframe && !this.gpuDrivenFrame) {
             prepareTerrainCommands();
         }
+        this.gpuDrivenFrame = false;
+    }
+    
+    /**
+     * Has the GPU write the draws of the frame's opaque terrain from its own page table, given the
+     * sections Minecraft found in view as a grid of bits, and lists in {@code collected} the
+     * sections Minecraft still has to collect. When this returns false the GPU draws nothing of
+     * the kind and Minecraft collects every section as usual.
+     */
+    private boolean prepareGpuDrivenFrame(DescriptorHeapTerrainResources terrainResources, int fadeMillis, ObjectArrayList<SectionRenderDispatcher.RenderSection> visibleSections, ObjectArrayList<SectionRenderDispatcher.RenderSection> collected) {
+        if (!TerrainRendererDebugConfig.gpuDrivenTerrainEnabled()) {
+            return false;
+        }
+        ChunkSectionLayer[] layers = ChunkSectionLayer.values();
+        int maxTasks = VulkanImprovementCapabilities.maxTaskWorkGroups();
+        int drawnTasks = 0;
+        for (ChunkSectionLayer layer : layers) {
+            int ordinal = layer.ordinal();
+            int tasks = TerrainLayerReplacementPolicy.canReplaceLayer(layer) ? SectionMeshletStore.layerTasks(ordinal) : 0;
+            // One draw launches a layer's tasks, so a layer with more than a draw may launch is
+            // left to the listed path, which splits it. The pass has room for SECTION_PAGES_LAYERS
+            // layers; Minecraft 26.4 has three.
+            if (tasks > maxTasks) {
+                this.gpuDrivenFrameRefusals.increment();
+                return false;
+            }
+            this.gpuDrivenLayerTasks[ordinal] = tasks;
+            drawnTasks += tasks;
+        }
+        if (drawnTasks == 0 || !this.visibleSectionGrid.build(visibleSections, collected)) {
+            collected.clear();
+            return false;
+        }
+        DescriptorHeapTerrainResources.GpuDrivenFrame frame = terrainResources.writeGpuDrivenFrame(this.visibleSectionGrid, this.gpuDrivenLayerTasks);
+        if (!frame.ready()) {
+            return refuseGpuDrivenFrame(collected);
+        }
+        Arrays.fill(this.gpuDrivenLayerCommands, -1);
+        Arrays.fill(this.gpuDrivenDispatches, null);
+        int output = frame.firstTaskRecord();
+        for (ChunkSectionLayer layer : layers) {
+            int ordinal = layer.ordinal();
+            int tasks = this.gpuDrivenLayerTasks[ordinal];
+            if (tasks == 0) {
+                continue;
+            }
+            DescriptorHeapTerrainResources.TerrainMeshTaskCommandUpload command = terrainResources.reserveMeshTaskCommand(tasks);
+            TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.gpuDrivenPages(frame, output, tasks, ordinal).withIndirectCommand(command);
+            if (!dispatch.ready() || !dispatch.usesIndirectCommand()) {
+                return refuseGpuDrivenFrame(collected);
+            }
+            this.gpuDrivenLayerOutputs[ordinal] = output;
+            this.gpuDrivenLayerCommands[ordinal] = command.commandIndex();
+            this.gpuDrivenDispatches[ordinal] = dispatch;
+            output += tasks;
+        }
+        if (!MeshShaderTerrainProgram.get().prepareGpuDrivenPages(frame, this.visibleSectionGrid, SectionMeshletStore.pageSlotHighWater(), this.gpuDrivenLayerOutputs, this.gpuDrivenLayerCommands, fadeMillis)) {
+            return refuseGpuDrivenFrame(collected);
+        }
+        for (TerrainMeshTaskDispatch dispatch : this.gpuDrivenDispatches) {
+            if (dispatch != null) {
+                TerrainRenderContext.enqueuePreparedLayerDispatch(dispatch.layerOrdinal(), dispatch);
+                this.meshReplacementPreparedGpuCommands.increment();
+            }
+        }
+        this.gpuDrivenFrames.increment();
+        return true;
+    }
+    
+    private boolean refuseGpuDrivenFrame(ObjectArrayList<SectionRenderDispatcher.RenderSection> collected) {
+        collected.clear();
+        this.gpuDrivenFrameRefusals.increment();
+        return false;
     }
     
     /**
@@ -345,7 +454,7 @@ public final class MeshTerrainRenderer {
                 this.visibilityFallbackLayers.increment();
                 continue;
             }
-
+            
             for (int first = 0, end; first < pages.size(); first = end) {
                 end = taskBatchEnd(pages, first);
                 DescriptorHeapTerrainResources.VisiblePageUpload upload = terrainResources.writeVisiblePageList(pages, first, end);
@@ -377,7 +486,7 @@ public final class MeshTerrainRenderer {
             this.visibilityCommandsEmitted.increment();
         }
     }
-
+    
     /**
      * Hands each layer's listed pages straight to the task stage in the order Minecraft collected
      * them, nearest first, one task per 32 of a page's meshlets. Nothing runs before the draw: the task stage drops
@@ -410,7 +519,7 @@ public final class MeshTerrainRenderer {
             }
         }
     }
-
+    
     /**
      * Where the run of a layer's pages that starts at {@code first} ends: as many pages, in their
      * order, as one draw can launch the tasks of. A page has far fewer tasks than a draw can launch,
@@ -425,7 +534,7 @@ public final class MeshTerrainRenderer {
         }
         return end;
     }
-
+    
     /**
      * Tells the GPU world diagnostics what the visibility pass did since this was last called. The
      * page counts come from counters the GPU keeps, so they describe frames that have been drawn
@@ -448,7 +557,7 @@ public final class MeshTerrainRenderer {
         long visible = Math.min(sinceLast[2], sinceLast[0] - culled);
         GpuWorldDatabase.get().recordVisibilityCommandPass(sinceLast[0], culled, visible, emitted, 0L, fallback);
     }
-
+    
     private @Nullable TerrainMeshTaskDispatch buildVisibleMeshDispatch(DescriptorHeapTerrainResources terrainResources, List<SectionMeshletStore.MeshletRange> ranges, int layerOrdinal) {
         DescriptorHeapTerrainResources.TerrainWorkQueueUpload workQueue = terrainResources.writeVisibleWorkQueue(ranges, layerOrdinal);
         TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.cpuWorkQueue(workQueue, layerOrdinal, workQueue.count());
@@ -571,6 +680,8 @@ public final class MeshTerrainRenderer {
         map.put("captureCpuMicros", this.captureCpuNanos.sum() / 1_000L);
         map.put("estimatedMeshlets", this.estimatedMeshlets.sum());
         map.put("meshReplacementDrawCalls", this.meshReplacementDrawCalls.sum());
+        map.put("gpuDrivenFrames", this.gpuDrivenFrames.sum());
+        map.put("gpuDrivenFrameRefusals", this.gpuDrivenFrameRefusals.sum());
         map.put("meshReplacementTasks", this.meshReplacementTasks.sum());
         map.put("meshReplacementVisibleListDrawCalls", this.meshReplacementVisibleListDrawCalls.sum());
         map.put("meshReplacementWorkQueueDrawCalls", this.meshReplacementWorkQueueDrawCalls.sum());

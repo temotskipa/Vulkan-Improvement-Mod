@@ -23,7 +23,7 @@ struct ResidentPage {
     int indexBytes;
     int vertexByteOffset;
     int indexByteOffset;
-    int reserved0;
+    int fadeStart;
     int customIndexBuffer;
     int reserved1;
     int reserved2;

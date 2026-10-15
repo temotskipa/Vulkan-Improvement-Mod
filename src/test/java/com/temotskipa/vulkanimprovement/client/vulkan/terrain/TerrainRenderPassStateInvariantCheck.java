@@ -65,17 +65,22 @@ public final class TerrainRenderPassStateInvariantCheck {
     /**
      * Minecraft hands the terrain renderers a render pass that is already open, and its command
      * encoder fails the frame when another command buffer is executed inside one. Uploads and the
-     * compute step that writes mesh-task commands therefore belong to frame preparation.
+     * compute steps that write mesh-task commands therefore belong to frame preparation: before
+     * Minecraft collects the frame's sections, and once it has.
      */
     private static void checkFramePreparationStaysOutsideTheRenderPass(String meshRenderer, String meshProgram, String levelRendererMixin) {
         String observe = methodBody(meshRenderer, "public void observeTerrainGroup");
         require(!observe.contains("uploadDirtyTerrainData"), "terrain data must not be uploaded while Minecraft's terrain render pass is open");
         require(!observe.contains("prepareTerrainCommands"), "mesh-task commands must not be generated while Minecraft's terrain render pass is open");
+        String beginFrame = methodBody(meshRenderer, "public boolean beginVisibleFrame");
         String prepareFrame = methodBody(meshRenderer, "public void prepareVisibleFrame");
-        require(prepareFrame.contains("uploadDirtyTerrainData()") && prepareFrame.contains("prepareTerrainCommands()"), "frame preparation must upload terrain data and generate mesh-task commands");
-        require(prepareFrame.indexOf("uploadDirtyTerrainData()") < prepareFrame.indexOf("prepareTerrainCommands()"), "terrain data must be uploaded before the frame's commands are generated from it");
+        require(beginFrame.contains("uploadDirtyTerrainData()") && prepareFrame.contains("prepareTerrainCommands()"), "frame preparation must upload terrain data and generate mesh-task commands");
+        // Which section layers have pages is settled before Minecraft collects the frame, and the
+        // commands of both kinds of frame are generated from that.
+        require(beginFrame.indexOf("uploadDirtyTerrainData()") < beginFrame.indexOf("takesOverSectionLayers(wireframe)") && beginFrame.indexOf("takesOverSectionLayers(wireframe)") < beginFrame.indexOf("prepareGpuDrivenFrame("), "terrain data must be uploaded before the frame's commands are generated from it");
+        require(methodBody(levelRendererMixin, "private void vim$beginVisibleFrame").contains("MeshTerrainRenderer.get().beginVisibleFrame(this.levelRenderState.renderWireframeTerrain"), "terrain data must be uploaded before Minecraft collects the frame's sections, knowing whether they are drawn as wireframe");
         require(methodBody(levelRendererMixin, "private void vim$endVisibleFrame").contains("MeshTerrainRenderer.get().prepareVisibleFrame(this.levelRenderState.renderWireframeTerrain)"), "frame preparation must run when Minecraft has collected the frame's sections, and know whether they are drawn as wireframe");
-        require(prepareFrame.contains("if (!wireframe)") && prepareFrame.indexOf("if (!wireframe)") < prepareFrame.indexOf("prepareTerrainCommands()"), "commands must not be prepared for wireframe terrain, which the mesh path does not draw");
+        require(prepareFrame.contains("if (!wireframe") && prepareFrame.indexOf("if (!wireframe") < prepareFrame.indexOf("prepareTerrainCommands()"), "commands must not be prepared for wireframe terrain, which the mesh path does not draw");
         require(observe.contains("TerrainRenderContext.setReplacementAllowed(!wireframe);") && observe.contains("TerrainRenderContext.setImprovedFog(improvedFog);"), "wireframe terrain must be left to Minecraft, and a group's kind of fog must be known to its draws");
         require(levelRendererMixin.contains("method = \"extractSectionDrawGroups\""), "the frame's sections must be taken from the method both Minecraft terrain paths share");
         
@@ -83,6 +88,10 @@ public final class TerrainRenderPassStateInvariantCheck {
         int guard = prepareCommand.indexOf("TerrainRenderPassAccess.insideRenderPass(encoder)");
         int execute = prepareCommand.indexOf("encoder.execute(commandBuffer)");
         require(guard >= 0 && execute > guard, "command generation must refuse to execute a command buffer inside a render pass");
+        // The GPU-driven pass records into Minecraft's open command buffer, which it gets only
+        // outside a render pass.
+        String prepareGpuDriven = methodBody(meshProgram, "synchronized boolean prepareGpuDrivenPages");
+        require(prepareGpuDriven.contains("TerrainRenderPassAccess.frameCommandBuffer(") && prepareGpuDriven.contains("if (commandBuffer == null)") && !prepareGpuDriven.contains("encoder.execute("), "the GPU-driven pass must record into Minecraft's open command buffer, and refuse inside a render pass");
     }
     
     /**

@@ -16,6 +16,16 @@ public interface TerrainRenderPassAccess {
         return !(commandEncoder instanceof Encoder encoder) || encoder.vim$insideRenderPass();
     }
     
+    /**
+     * The command buffer Minecraft records the frame into, started if none is open, or
+     * {@code null} while a render pass is open. Commands recorded into it run in order with
+     * Minecraft's own: executing a command buffer of the mod's instead would end Minecraft's open
+     * ones there, each with a barrier on all work before it.
+     */
+    static @Nullable VkCommandBuffer frameCommandBuffer(Object commandEncoder) {
+        return commandEncoder instanceof Encoder encoder && !encoder.vim$insideRenderPass() ? encoder.vim$frameCommandBuffer() : null;
+    }
+    
     static @Nullable TerrainRenderPassAccess of(Object renderPass) {
         Object backend = renderPass instanceof Frontend frontend ? frontend.vim$backend() : renderPass;
         return backend instanceof TerrainRenderPassAccess access ? access : null;
@@ -43,5 +53,7 @@ public interface TerrainRenderPassAccess {
      */
     interface Encoder {
         boolean vim$insideRenderPass();
+        
+        VkCommandBuffer vim$frameCommandBuffer();
     }
 }

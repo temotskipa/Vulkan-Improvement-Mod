@@ -196,6 +196,7 @@ validation on real Vulkan hardware.
 | `vim.terrainMirrorStabilizationMillis` | `750`       | Delay before mirrored terrain is treated as stable.   |
 | `vim.allowCpuVisibleMeshletFallback`   | `false`     | Allow the legacy CPU visible-meshlet ring when work-queue upload is unavailable. |
 | `vim.taskStagePageCulling`             | `true`      | Hand each layer's listed pages straight to the task stage in Minecraft's order, one task per 32 of a page's meshlets; the task stage drops what is out of view. Off runs the GPU visibility pass first, which culls and compacts the pages. |
+| `vim.gpuDrivenTerrain`                 | `true`      | In strict replacement, let the GPU draw the solid/cutout terrain of every section in view from its own page table, told only which sections are in view; Minecraft collects only the sections that draw something else. Off lists the pages of the section layers Minecraft collects every frame. |
 | `vim.cullMeshlets`                     | `true`      | Let the task stage drop a page's meshlets that face away from the camera or are out of view. Off draws every meshlet of every page the visibility pass kept. |
 | `vim.terrainGpuTimer`                  | `false`     | Write GPU timestamps around the mod's per-frame prepared work and each group of terrain layers, for `terrainRenderer.performance.gpu`. Measures vanilla terrain and the mesh path alike. |
 

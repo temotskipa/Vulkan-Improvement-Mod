@@ -7,6 +7,7 @@ import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.chunk.CompiledSectionMesh;
 import net.minecraft.client.renderer.chunk.SectionMesh;
 import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
+import net.minecraft.util.Util;
 import org.jspecify.annotations.Nullable;
 
 import java.nio.ByteBuffer;
@@ -16,6 +17,22 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 public final class SectionMeshletStore {
+    private static final ChunkSectionLayer[] LAYERS = ChunkSectionLayer.values();
+    /**
+     * What a frame does with the section of a compiled mesh, kept on the mesh: not yet known,
+     * nothing because the mesh draws nothing, leave it to Minecraft because it draws a layer the
+     * GPU-driven draw does not, or leave it out of Minecraft's collection because the GPU draws it
+     * whole.
+     */
+    private static final byte ROLE_UNKNOWN = 0;
+    private static final byte ROLE_NOTHING = 1;
+    private static final byte ROLE_MINECRAFT = 2;
+    private static final byte ROLE_GPU = 3;
+    /**
+     * The start of the clock the GPU fades sections in by. Minecraft's clock counts milliseconds
+     * from an arbitrary start, which an int on the GPU cannot hold; this one starts with the game.
+     */
+    private static final long FADE_EPOCH_MILLIS = Util.getMillis();
     private static final Map<CompiledSectionMesh, CapturedSection> SECTIONS = new ConcurrentHashMap<>();
     private static final VisibleFrame VISIBLE_FRAME = new VisibleFrame();
     private static final ResidentTerrainPages<SectionLayerKey> PAGES = new ResidentTerrainPages<>();
@@ -50,12 +67,14 @@ public final class SectionMeshletStore {
             meshlets = customIndexBuffer ? buildIndexedMeshlets(sectionNode, layer, indexCount, countedMeshlets) : buildMeshlets(sectionNode, layer, estimatedVertices, indexCount, countedMeshlets);
         }
         int estimatedMeshlets = meshlets.size();
+        int drawLayers = drawLayers(mesh);
         ByteBuffer capturedVertices = copiedVertices;
         ByteBuffer copiedIndices = customIndexBuffer ? copyIndexBuffer(indexBuffer, indexElementBytes) : copy(indexBuffer);
         int gpuIndexElementBytes = customIndexBuffer && copiedIndices.remaining() > 0 ? TerrainGpuLayout.NORMALIZED_INDEX_STRIDE : indexElementBytes;
         CaptureResult result = new CaptureResult();
         SECTIONS.compute(mesh, (ignored, existing) -> {
             CapturedSection section = existing == null ? new CapturedSection(sectionNode) : existing;
+            section.drawLayers = drawLayers;
             LayerCapture previous = section.layers.get(layer);
             ByteBuffer vertices = vertexBuffer == null && previous != null ? previous.buffers.vertices() : capturedVertices;
             // The meshlets describe the vertices they were cut from.
@@ -128,13 +147,15 @@ public final class SectionMeshletStore {
      * Starts collecting the section layers of a frame. Minecraft collects them once per frame, for
      * its indirect and its separate draw path alike.
      *
-     * @param takeover whether the mesh path takes the section layers it can draw out of Minecraft's
-     *                 draw lists this frame; otherwise every section layer Minecraft draws is listed
+     * @param takeover  whether the mesh path takes the section layers it can draw out of Minecraft's
+     *                  draw lists this frame; otherwise every section layer Minecraft draws is listed
+     * @param gpuDriven whether the GPU draws every page of the frame's visible sections, so that a
+     *                  taken section layer is not listed
      */
-    public static void beginVisibleFrame(boolean takeover) {
-        VISIBLE_FRAME.begin(takeover);
+    public static void beginVisibleFrame(boolean takeover, boolean gpuDriven) {
+        VISIBLE_FRAME.begin(takeover, gpuDriven);
     }
-
+    
     /**
      * Whether a frame's section layers are being collected, between {@link #beginVisibleFrame} and
      * {@link #endVisibleFrame}. Minecraft's collection begins one only while the Vulkan backend is
@@ -143,7 +164,7 @@ public final class SectionMeshletStore {
     public static boolean collectingFrame() {
         return VISIBLE_FRAME.open;
     }
-
+    
     /**
      * Whether a frame is being collected in which the mesh path takes section layers out of
      * Minecraft's draw lists.
@@ -151,7 +172,7 @@ public final class SectionMeshletStore {
     public static boolean collectingTakeoverFrame() {
         return VISIBLE_FRAME.collectingTakeover();
     }
-
+    
     /**
      * Called for each section layer Minecraft looks at while it collects a frame, before it looks
      * the layer's buffers up. In a takeover frame a layer the mesh path stands in for, whose
@@ -172,6 +193,10 @@ public final class SectionMeshletStore {
         ResidentTerrainPages.Page page = binding.page;
         if (page == null || page.meshletCount() <= 0 || page.meshletCount() > TerrainGpuLayout.MAX_PAGE_MESHLETS) {
             return false;
+        }
+        if (VISIBLE_FRAME.gpuDriven()) {
+            // The GPU draws every page of the frame's visible sections; nothing is listed.
+            return true;
         }
         float visibility = TerrainRendererDebugConfig.vanillaChunkVisibilityFadeEnabled() ? Math.clamp(section.getVisibility(now, fadeDuration), 0.0F, 1.0F) : 1.0F;
         return VISIBLE_FRAME.take(layer.ordinal(), binding, page, capturedSection.sectionNode, visibility);
@@ -211,22 +236,106 @@ public final class SectionMeshletStore {
     public static @Nullable List<MeshletRange> visibleMeshletRanges(int layerOrdinal) {
         return VISIBLE_FRAME.meshletRanges(layerOrdinal);
     }
-
+    
     /**
-     * Called as Minecraft makes the draw data of a section it collects for the frame, right after
-     * the first of the section's layers it draws; the fade-in applies to all of them.
+     * Keeps on the mesh the section captured from it, and what a frame does with that section.
      */
     private static void holdCapture(CompiledSectionMesh mesh, @Nullable CapturedSection section) {
         if ((Object) mesh instanceof CaptureHolder holder) {
             holder.vim$setCapturedSection(section);
+            updateFrameRole(holder, section);
         }
     }
-
+    
+    /**
+     * Works out what a frame does with a mesh's section from the pages its layers have: the GPU
+     * draws the section whole when each layer it draws has a page the GPU-driven draw can draw.
+     * Called whenever one of those pages is handed out or given back. A mesh nothing was captured
+     * from is worked out again when a frame first meets it.
+     */
+    private static void updateFrameRole(CaptureHolder holder, @Nullable CapturedSection section) {
+        if (section == null) {
+            holder.vim$setFrameRole(ROLE_UNKNOWN);
+            return;
+        }
+        section.updateFrameRole(holder);
+    }
+    
+    private static void updateFrameRole(CompiledSectionMesh mesh, CapturedSection section) {
+        if ((Object) mesh instanceof CaptureHolder holder && holder.vim$capturedSection() == section) {
+            updateFrameRole(holder, section);
+        }
+    }
+    
+    private static int drawLayers(SectionMesh sectionMesh) {
+        int layers = 0;
+        for (ChunkSectionLayer layer : LAYERS) {
+            if (sectionMesh.getSectionDraw(layer) != null) {
+                layers |= 1 << layer.ordinal();
+            }
+        }
+        return layers;
+    }
+    
+    /**
+     * Whether Minecraft has to collect a visible section in a GPU-driven frame: its mesh draws a
+     * layer the GPU does not. Called for every visible section of such a frame, so it reads what
+     * the mesh keeps and works it out only for a mesh nothing was captured from.
+     */
+    public static boolean needsMinecraft(SectionMesh sectionMesh) {
+        if (!(sectionMesh instanceof CaptureHolder holder)) {
+            return drawLayers(sectionMesh) != 0;
+        }
+        byte role = holder.vim$frameRole();
+        if (role == ROLE_UNKNOWN) {
+            role = drawLayers(sectionMesh) != 0 ? ROLE_MINECRAFT : ROLE_NOTHING;
+            holder.vim$setFrameRole(role);
+        }
+        return role == ROLE_MINECRAFT;
+    }
+    
+    /**
+     * Called when Minecraft shows a compiled mesh in its section, with the time the section was
+     * first shown, which its fade-in counts from. Until then the mesh it replaces is the one drawn,
+     * so the new mesh's layers get pages only from now on.
+     */
+    public static void meshShown(CompiledSectionMesh mesh, long sectionShownMillis) {
+        if ((Object) mesh instanceof CaptureHolder holder) {
+            holder.vim$setShownSince(sectionShownMillis != 0L ? sectionShownMillis : Util.getMillis());
+            if (holder.vim$capturedSection() != null) {
+                DescriptorHeapTerrainResources.get().markTerrainDataDirty();
+            }
+        }
+    }
+    
+    private static boolean shown(CompiledSectionMesh mesh) {
+        return !((Object) mesh instanceof CaptureHolder holder) || holder.vim$shownSince() != 0L;
+    }
+    
+    /**
+     * When a mesh's section began to fade in, on the GPU's fade-in clock.
+     */
+    private static int fadeStart(CompiledSectionMesh mesh) {
+        long shownSince = (Object) mesh instanceof CaptureHolder holder ? holder.vim$shownSince() : 0L;
+        return shownSince == 0L ? 0 : (int) (shownSince - FADE_EPOCH_MILLIS);
+    }
+    
+    /**
+     * The time now on the GPU's fade-in clock.
+     */
+    static int fadeClockMillis() {
+        return (int) (Util.getMillis() - FADE_EPOCH_MILLIS);
+    }
+    
+    /**
+     * Called as Minecraft makes the draw data of a section it collects for the frame, right after
+     * the first of the section's layers it draws; the fade-in applies to all of them.
+     */
     public static void recordSectionVisibility(int blockX, int blockY, int blockZ, float visibility) {
         long sectionNode = net.minecraft.core.SectionPos.asLong(net.minecraft.core.SectionPos.blockToSectionCoord(blockX), net.minecraft.core.SectionPos.blockToSectionCoord(blockY), net.minecraft.core.SectionPos.blockToSectionCoord(blockZ));
         VISIBLE_FRAME.sectionVisibility(sectionNode, TerrainRendererDebugConfig.vanillaChunkVisibilityFadeEnabled() ? Math.clamp(visibility, 0.0F, 1.0F) : 1.0F);
     }
-
+    
     /**
      * The pages of the section layers Minecraft draws this frame for a layer, or {@code null} when
      * one of them has no page on the GPU yet. The list is the layer's own and is filled again by
@@ -235,7 +344,7 @@ public final class SectionMeshletStore {
     public static @Nullable PageList visiblePages(int layerOrdinal) {
         return VISIBLE_FRAME.pages(layerOrdinal);
     }
-
+    
     /**
      * Every page a layer has on the GPU as a range of meshlets, whether or not Minecraft draws
      * its section this frame.
@@ -250,7 +359,7 @@ public final class SectionMeshletStore {
         ranges.sort(Comparator.comparingLong(MeshletRange::sectionNode).thenComparingInt(MeshletRange::offset));
         return ranges;
     }
-
+    
     /**
      * Called when the GPU buffers are created or replaced: no section layer has a page in the new
      * buffers, and every captured one waits for one again.
@@ -261,24 +370,45 @@ public final class SectionMeshletStore {
         GpuWorldTerrainLayerDirectory.get().clear("resident terrain pages reset");
         for (Map.Entry<CompiledSectionMesh, CapturedSection> section : SECTIONS.entrySet()) {
             section.getValue().clearBindings();
+            updateFrameRole(section.getKey(), section.getValue());
             for (ChunkSectionLayer layer : section.getValue().layers.keySet()) {
                 PAGES.markPending(new SectionLayerKey(section.getKey(), section.getValue().sectionNode, layer.ordinal()));
             }
         }
     }
-
+    
     static ResidentTerrainPages.Stats residentPageStats() {
         return PAGES.stats();
     }
-
+    
     static ResidentTerrainPages.Shortage takePageShortage() {
         return PAGES.takeShortage();
     }
-
+    
+    static ResidentTerrainPages.TableChanges takePageTableChanges() {
+        return PAGES.takeTableChanges();
+    }
+    
+    /**
+     * One more than the highest page-table slot in use since the buffers were made.
+     */
+    static int pageSlotHighWater() {
+        return PAGES.slotHighWater();
+    }
+    
+    /**
+     * How many tasks drawing every page of a layer would launch, at most.
+     */
+    static int layerTasks(int layerOrdinal) {
+        return PAGES.tasks(layerOrdinal);
+    }
+    
     /**
      * Gives pages to the section layers that wait for one and returns what has to be copied to the
      * GPU for them, up to the frame's budget. A section layer that does not fit keeps waiting, and
-     * {@link #takePageShortage()} then says which buffer was too small and by how much.
+     * {@link #takePageShortage()} then says which buffer was too small and by how much. So does one
+     * whose mesh Minecraft does not show yet: a GPU-driven frame draws every page of a visible
+     * section, so a section has the pages of one mesh only.
      */
     static List<PageUpload> collectPageUploads(long byteBudget, int pageBudget) {
         List<PageUpload> uploads = new ArrayList<>();
@@ -295,16 +425,22 @@ public final class SectionMeshletStore {
                 PAGES.release(key);
                 if (section != null) {
                     section.binding(key.layerOrdinal()).page = null;
+                    updateFrameRole(key.mesh(), section);
                 }
+                continue;
+            }
+            if (!shown(key.mesh())) {
                 continue;
             }
             // Allocating gives back the page the section layer had, so nothing may refer to it after this.
             section.binding(key.layerOrdinal()).page = null;
             ResidentTerrainPages.Page page = PAGES.allocate(key, key.sectionNode(), key.layerOrdinal(), layer.buffers.vertexBytes(), layer.buffers.indexBytes(), layer.meshlets.size(), layer.customIndexBuffer);
             if (page == null) {
+                updateFrameRole(key.mesh(), section);
                 break;
             }
             section.binding(key.layerOrdinal()).page = page;
+            updateFrameRole(key.mesh(), section);
             int vertexByteOffset = Math.toIntExact(page.vertexOffset());
             int indexByteOffset = Math.toIntExact(page.indexOffset());
             ByteBuffer headers = ByteBuffer.allocate(layer.meshlets.size() * TerrainGpuLayout.MESHLET_HEADER_STRIDE).order(ByteOrder.LITTLE_ENDIAN);
@@ -313,7 +449,7 @@ public final class SectionMeshletStore {
             }
             headers.flip();
             ByteBuffer record = ByteBuffer.allocate(TerrainGpuLayout.SECTION_METADATA_STRIDE).order(ByteOrder.LITTLE_ENDIAN);
-            writeSectionLayer(record, key.sectionNode(), chunkLayer, page.firstMeshlet(), page.meshletCount(), layer, vertexByteOffset, indexByteOffset);
+            writeSectionLayer(record, key.sectionNode(), chunkLayer, page.firstMeshlet(), page.meshletCount(), layer, vertexByteOffset, indexByteOffset, fadeStart(key.mesh()));
             record.flip();
             PageUpload upload = new PageUpload(page, layer.buffers.vertices().duplicate(), layer.buffers.indices().duplicate(), headers, record);
             uploads.add(upload);
@@ -356,6 +492,7 @@ public final class SectionMeshletStore {
         Map<String, Object> frame = VISIBLE_FRAME.published();
         map.put("visibleSectionLayers", frame.get("entries"));
         map.put("visibleSectionLayersWithoutCapture", frame.get("uncaptured"));
+        map.put("gpuDrivenFrame", frame.get("gpuDriven"));
         map.put("residentPages", PAGES.stats().asMap());
         map.put("vanillaChunkVisibilityFadeEnabled", TerrainRendererDebugConfig.vanillaChunkVisibilityFadeEnabled());
         map.put("sectionVisibility", Map.of("entries", frame.get("entries"), "belowOne", frame.get("belowOne"), "min", frame.get("min")));
@@ -536,7 +673,7 @@ public final class SectionMeshletStore {
         return List.copyOf(meshlets);
     }
     
-    private static void writeSectionLayer(ByteBuffer target, long sectionNode, ChunkSectionLayer layer, int firstMeshlet, int meshletCount, LayerCapture capture, int vertexByteOffset, int indexByteOffset) {
+    private static void writeSectionLayer(ByteBuffer target, long sectionNode, ChunkSectionLayer layer, int firstMeshlet, int meshletCount, LayerCapture capture, int vertexByteOffset, int indexByteOffset, int fadeStart) {
         target.putLong(sectionNode);
         target.putInt(net.minecraft.core.SectionPos.x(sectionNode));
         target.putInt(net.minecraft.core.SectionPos.y(sectionNode));
@@ -550,7 +687,7 @@ public final class SectionMeshletStore {
         target.putInt(capture.indexBytes);
         target.putInt(vertexByteOffset);
         target.putInt(indexByteOffset);
-        target.putInt(0);
+        target.putInt(fadeStart);
         target.putInt(capture.customIndexBuffer ? 1 : 0);
         target.putInt(0);
         target.putInt(0);
@@ -589,33 +726,66 @@ public final class SectionMeshletStore {
      */
     public interface CaptureHolder {
         @Nullable Object vim$capturedSection();
-
+        
         void vim$setCapturedSection(@Nullable Object section);
+        
+        byte vim$frameRole();
+        
+        void vim$setFrameRole(byte role);
+        
+        /**
+         * When the section this mesh is shown in was first shown, by Minecraft's clock; 0 while
+         * Minecraft does not show the mesh.
+         */
+        long vim$shownSince();
+        
+        void vim$setShownSince(long millis);
     }
-
+    
     private static final class CapturedSection {
         private final long sectionNode;
+        // The layers the mesh draws, one bit per layer, whether or not they were captured.
+        private volatile int drawLayers;
         private final EnumMap<ChunkSectionLayer, LayerCapture> layers = new EnumMap<>(ChunkSectionLayer.class);
         private final PageBinding[] bindings = new PageBinding[ChunkSectionLayer.values().length];
-
+        
         private CapturedSection(long sectionNode) {
             this.sectionNode = sectionNode;
             for (int layer = 0; layer < this.bindings.length; layer++) {
                 this.bindings[layer] = new PageBinding();
             }
         }
-
+        
         private PageBinding binding(int layerOrdinal) {
             return this.bindings[layerOrdinal];
         }
-
+        
         private void clearBindings() {
             for (PageBinding binding : this.bindings) {
                 binding.page = null;
             }
         }
+        
+        /**
+         * Tells the mesh whether the GPU draws this section whole: each layer the mesh draws has a
+         * page the GPU-driven draw can draw. Pages are handed out on the render thread and
+         * captures given back on others, so the answer is worked out and kept under one lock.
+         */
+        private synchronized void updateFrameRole(CaptureHolder holder) {
+            holder.vim$setFrameRole(gpuDrawsWhole() ? ROLE_GPU : ROLE_MINECRAFT);
+        }
+        
+        private boolean gpuDrawsWhole() {
+            int layers = this.drawLayers;
+            for (ChunkSectionLayer layer : LAYERS) {
+                if ((layers & 1 << layer.ordinal()) != 0 && !(TerrainLayerReplacementPolicy.canReplaceLayer(layer) && drawable(binding(layer.ordinal()).page))) {
+                    return false;
+                }
+            }
+            return layers != 0;
+        }
     }
-
+    
     /**
      * The page a section layer has on the GPU now, or {@code null}. Set when the page is handed out
      * and cleared when it is given back, so a frame reads it without looking the section layer up.
@@ -646,7 +816,7 @@ public final class SectionMeshletStore {
     public static int tasks(int meshletCount) {
         return (meshletCount + TerrainGpuLayout.MESHLETS_PER_TASK - 1) / TerrainGpuLayout.MESHLETS_PER_TASK;
     }
-
+    
     /**
      * A layer's pages as a frame draws them, in Minecraft's order: each page's slot in the GPU page
      * table, how many tasks draw it, and how far its section has faded in. Refilled every frame.
@@ -656,27 +826,27 @@ public final class SectionMeshletStore {
         private int[] tasks = new int[256];
         private float[] visibility = new float[256];
         private int size;
-
+        
         public int size() {
             return this.size;
         }
-
+        
         public int slot(int index) {
             return this.slots[index];
         }
-
+        
         public int tasks(int index) {
             return this.tasks[index];
         }
-
+        
         public float visibility(int index) {
             return this.visibility[index];
         }
-
+        
         private void clear() {
             this.size = 0;
         }
-
+        
         private void add(int slot, int meshletCount, float sectionVisibility) {
             if (this.size == this.slots.length) {
                 int capacity = this.size * 2;
@@ -721,32 +891,38 @@ public final class SectionMeshletStore {
         private final int[] uncaptured = new int[ChunkSectionLayer.values().length];
         private boolean open;
         private volatile boolean takeover;
-        private volatile Map<String, Object> published = Map.of("entries", 0, "uncaptured", 0, "belowOne", 0, "min", 1.0F);
+        private boolean gpuDriven;
+        private volatile Map<String, Object> published = Map.of("entries", 0, "uncaptured", 0, "belowOne", 0, "min", 1.0F, "gpuDriven", false);
         private long currentSection = Long.MIN_VALUE;
         private float currentVisibility = 1.0F;
         private int lastLayer = -1;
-
+        
         private VisibleFrame() {
             for (int layer = 0; layer < this.layers.length; layer++) {
                 this.layers[layer] = new LayerEntries();
                 this.pageLists[layer] = new PageList();
             }
         }
-
-        private void begin(boolean takeoverFrame) {
+        
+        private void begin(boolean takeoverFrame, boolean gpuDrivenFrame) {
             clear();
             this.takeover = takeoverFrame;
+            this.gpuDriven = takeoverFrame && gpuDrivenFrame;
             this.open = true;
         }
-
+        
         private boolean takeover() {
             return this.takeover;
         }
-
+        
+        private boolean gpuDriven() {
+            return this.gpuDriven;
+        }
+        
         private boolean collectingTakeover() {
             return this.open && this.takeover;
         }
-
+        
         private boolean take(int layerOrdinal, PageBinding binding, ResidentTerrainPages.Page page, long sectionNode, float visibility) {
             if (!this.open || !this.takeover) {
                 return false;
@@ -754,10 +930,10 @@ public final class SectionMeshletStore {
             this.layers[layerOrdinal].add(binding, page, sectionNode, visibility);
             return true;
         }
-
+        
         private void end() {
             this.open = false;
-            this.published = Map.of("entries", sectionLayerCount(), "uncaptured", uncapturedCount(), "belowOne", belowOne(), "min", minVisibility());
+            this.published = Map.of("entries", sectionLayerCount(), "uncaptured", uncapturedCount(), "belowOne", belowOne(), "min", minVisibility(), "gpuDriven", this.gpuDriven);
         }
         
         private Map<String, Object> published() {
@@ -785,7 +961,7 @@ public final class SectionMeshletStore {
             }
             return min;
         }
-
+        
         private void clear() {
             for (LayerEntries layer : this.layers) {
                 layer.clear();
@@ -795,13 +971,13 @@ public final class SectionMeshletStore {
             this.currentVisibility = 1.0F;
             this.lastLayer = -1;
         }
-
+        
         private void addUncaptured(int layerOrdinal) {
             if (this.open) {
                 this.uncaptured[layerOrdinal]++;
             }
         }
-
+        
         private void add(int layerOrdinal, PageBinding binding, long sectionNode) {
             if (!this.open) {
                 return;
@@ -809,7 +985,7 @@ public final class SectionMeshletStore {
             this.layers[layerOrdinal].add(binding, binding.page, sectionNode, sectionNode == this.currentSection ? this.currentVisibility : 1.0F);
             this.lastLayer = layerOrdinal;
         }
-
+        
         private void sectionVisibility(long sectionNode, float visibility) {
             if (!this.open || this.takeover) {
                 return;
@@ -820,7 +996,7 @@ public final class SectionMeshletStore {
                 this.layers[this.lastLayer].setLastVisibility(sectionNode, visibility);
             }
         }
-
+        
         private @Nullable PageList pages(int layerOrdinal) {
             if (layerOrdinal < 0 || layerOrdinal >= this.layers.length || !this.takeover && this.uncaptured[layerOrdinal] > 0) {
                 return null;
@@ -847,7 +1023,7 @@ public final class SectionMeshletStore {
             }
             return pages;
         }
-
+        
         private @Nullable List<MeshletRange> meshletRanges(int layerOrdinal) {
             if (layerOrdinal < 0 || layerOrdinal >= this.layers.length || !this.takeover && this.uncaptured[layerOrdinal] > 0) {
                 return null;
@@ -866,7 +1042,7 @@ public final class SectionMeshletStore {
             }
             return ranges;
         }
-
+        
         private int sectionLayerCount() {
             int count = 0;
             for (LayerEntries layer : this.layers) {
@@ -874,15 +1050,12 @@ public final class SectionMeshletStore {
             }
             return count;
         }
-
+        
         private int uncapturedCount() {
             return Arrays.stream(this.uncaptured).sum();
         }
     }
-
-    /**
-     * One layer's entries of a frame, in parallel arrays that are reused from frame to frame.
-     */
+    
     /**
      * Whether the mesh path can draw a page: it has meshlets, and no more than its task records can
      * name.
@@ -890,7 +1063,7 @@ public final class SectionMeshletStore {
     private static boolean drawable(ResidentTerrainPages.@Nullable Page page) {
         return page != null && page.meshletCount() > 0 && page.meshletCount() <= TerrainGpuLayout.MAX_PAGE_MESHLETS;
     }
-
+    
     /**
      * A layer's section layers of the frame being collected. Each keeps its page binding, and the
      * page it had when collected with that page's slot and size, read while the page was at hand:
@@ -904,7 +1077,7 @@ public final class SectionMeshletStore {
         private long[] sectionNodes = new long[256];
         private float[] visibility = new float[256];
         private int size;
-
+        
         private void add(PageBinding binding, ResidentTerrainPages.@Nullable Page page, long sectionNode, float sectionVisibility) {
             if (this.size == this.bindings.length) {
                 int capacity = this.size * 2;
@@ -924,20 +1097,20 @@ public final class SectionMeshletStore {
             this.visibility[this.size] = sectionVisibility;
             this.size++;
         }
-
+        
         private void setLastVisibility(long sectionNode, float sectionVisibility) {
             if (this.size > 0 && this.sectionNodes[this.size - 1] == sectionNode) {
                 this.visibility[this.size - 1] = sectionVisibility;
             }
         }
-
+        
         private void clear() {
             Arrays.fill(this.bindings, 0, this.size, null);
             Arrays.fill(this.pages, 0, this.size, null);
             this.size = 0;
         }
     }
-
+    
     private static final class CaptureResult {
         private boolean accepted;
         private String reason = "";

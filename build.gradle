@@ -440,6 +440,10 @@ tasks.register("checkTerrainLayoutManifest") {
                                  "TASK_RECORD_PAGE_BITS",
                                  "MAX_PAGE_MESHLETS",
                                  "TASK_WORKGROUP_SIZE",
+                                 "SECTION_PAGES_PUSH_CONSTANT_BYTES",
+                                 "SECTION_PAGES_WORKGROUP_SIZE",
+                                 "SECTION_PAGES_LAYERS",
+                                 "SECTION_PAGES_DISTANCES",
                                  "BLOCK_VERTEX_STRIDE",
                                  "INDEXED_TRIANGLES_FLAG",
                                  "NORMALIZED_INDEX_STRIDE"]
@@ -453,6 +457,7 @@ tasks.register("checkTerrainLayoutManifest") {
         def meshShader = new File(shaderDir, "mesh_terrain.mesh.glsl").getText("UTF-8")
         def fragmentShader = new File(shaderDir, "mesh_terrain.frag.glsl").getText("UTF-8")
         def commandShader = new File(shaderDir, "mesh_task_command.comp.glsl").getText("UTF-8")
+        def sectionPagesShader = new File(shaderDir, "visible_section_pages.comp.glsl").getText("UTF-8")
         def normalize = { value -> value.replaceAll(/\s+/, " ").trim() }
         def requireText = { label, text, expected ->
             if (!text.contains(expected)) {
@@ -542,9 +547,23 @@ tasks.register("checkTerrainLayoutManifest") {
         requireText("mesh-task command shader", commandShader, "ResidentPage page = PageTable(pc.pageTable).pages[visible.pageIndex & ((1u << TASK_RECORD_PAGE_BITS) - 1u)];")
         requireText("task terrain shader", taskShader, "EmitMeshTasksEXT(kept, 1, 1);")
         requireText("mesh terrain shader", meshShader, "meshlets.headers[taskPayload.meshlets[gl_WorkGroupID.x]]")
-        def residentPageStruct = "struct ResidentPage { uint64_t sectionNode; int sectionX; int sectionY; int sectionZ; int layer; int firstMeshlet; int meshletCount; int estimatedVertices; int estimatedMeshlets; int vertexBytes; int indexBytes; int vertexByteOffset; int indexByteOffset; int reserved0; int customIndexBuffer; int reserved1; int reserved2; uint64_t reserved3; };"
+        def residentPageStruct = "struct ResidentPage { uint64_t sectionNode; int sectionX; int sectionY; int sectionZ; int layer; int firstMeshlet; int meshletCount; int estimatedVertices; int estimatedMeshlets; int vertexBytes; int indexBytes; int vertexByteOffset; int indexByteOffset; int fadeStart; int customIndexBuffer; int reserved1; int reserved2; uint64_t reserved3; };"
         requireNormalizedText("task terrain shader", taskShader, residentPageStruct)
         requireNormalizedText("mesh-task command shader", commandShader, residentPageStruct)
+        requireNormalizedText("visible section pages shader", sectionPagesShader, residentPageStruct)
+        requireText("visible section pages shader", sectionPagesShader, "const uint MESHLETS_PER_TASK = ${constants.MESHLETS_PER_TASK}u;")
+        requireText("visible section pages shader", sectionPagesShader, "const uint TASK_RECORD_PAGE_BITS = ${constants.TASK_RECORD_PAGE_BITS}u;")
+        requireText("visible section pages shader", sectionPagesShader, "const int MAX_PAGE_MESHLETS = ${constants.MAX_PAGE_MESHLETS};")
+        requireText("visible section pages shader", sectionPagesShader, "const uint LAYERS = ${constants.SECTION_PAGES_LAYERS}u;")
+        requireText("visible section pages shader", sectionPagesShader, "const uint DISTANCES = ${constants.SECTION_PAGES_DISTANCES}u;")
+        requireText("visible section pages shader", sectionPagesShader, "layout(local_size_x = ${constants.SECTION_PAGES_WORKGROUP_SIZE}) in;")
+        requireNormalizedText("visible section pages shader", sectionPagesShader, "struct VisibleMeshletRecord { uint meshletIndex; float visibility; };")
+        // The counters come first in a frame's data, as SECTION_PAGES_COUNTER_RECORDS says.
+        requireNormalizedText("visible section pages shader", sectionPagesShader, "buffer FrameData { uint distanceTasks[LAYERS * DISTANCES]; uint distanceCursors[LAYERS * DISTANCES]; uint sectionsInView[]; };")
+        requireNormalizedText("visible section pages shader", sectionPagesShader, "layout(push_constant, scalar) uniform SectionPagePushConstants { uint64_t pageTable; uint64_t records; uint64_t meshTaskCommands; uint frameRecord; uint pass; ivec4 boxMin; ivec4 boxSize; ivec4 cameraSection; uvec4 layerOutput; uvec4 layerCommand; } pc;")
+        if (constants.SECTION_PAGES_PUSH_CONSTANT_BYTES != Long.BYTES * 3 + Integer.BYTES * 2 + Integer.BYTES * 4 * 5) {
+            throw new GradleException("TerrainGpuLayout.SECTION_PAGES_PUSH_CONSTANT_BYTES must cover the GPU-driven pass's push constants.")
+        }
         if (constants.SECTION_METADATA_STRIDE != Long.BYTES * 2 + Integer.BYTES * 16) {
             throw new GradleException("TerrainGpuLayout.SECTION_METADATA_STRIDE must match the ResidentPage record the shaders read.")
         }
