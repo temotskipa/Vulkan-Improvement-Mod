@@ -3,7 +3,7 @@ import groovy.json.JsonSlurper
 import java.util.concurrent.TimeUnit
 
 plugins {
-    id 'net.fabricmc.fabric-loom' version '1.18-SNAPSHOT'
+    id 'net.fabricmc.fabric-loom' version '1.19.1'
     id 'maven-publish'
 }
 
@@ -67,15 +67,15 @@ sourceSets {
 }
 
 processResources {
-    inputs.property "version", project.version
-    inputs.property "minecraft_dependency", project.minecraft_dependency
-    inputs.property "loader_version", project.loader_version
+    // Read at configuration time: a task may not reach the project while it runs.
+    def metadata = ["version"             : project.version,
+                    "minecraft_dependency": project.minecraft_dependency,
+                    "loader_version"      : project.loader_version]
+    inputs.properties metadata
     filteringCharset = "UTF-8"
 
     filesMatching("fabric.mod.json") {
-        expand "version": project.version,
-                "minecraft_dependency": project.minecraft_dependency,
-                "loader_version": project.loader_version
+        expand metadata
     }
 }
 

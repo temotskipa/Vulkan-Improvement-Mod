@@ -1,7 +1,10 @@
 # Minecraft 26.4 Mixin Targets
 
-Verified with mcdev static analysis for Minecraft `26.4-snapshot-3` on
-2026-10-13, and at runtime by starting the client with every mixin applied.
+Verified with mcdev static analysis for Minecraft `26.4-snapshot-4` on
+2026-10-15, and at runtime by starting the client with every mixin applied.
+From `26.4-snapshot-3` only `SectionRenderDispatcher.RenderSection` and
+`VulkanGpuSurface` changed among the target classes, and none of the members
+or invocation points below changed.
 
 This manifest records the Mojang classes, fields, methods, and invocation
 points touched by the client mixins.
