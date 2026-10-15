@@ -1218,10 +1218,6 @@ public final class DescriptorHeapTerrainResources {
     }
     
     public record Layout(boolean configured, boolean descriptorHeapEnabled, boolean descriptorBufferEnabled, int sectionCapacity, int meshletCapacity, long vertexPayloadBytes, long indexPayloadBytes, long visibleMeshletBytes, long workQueueBytes, long meshTaskCommandBytes, long materialTableBytes, long samplerHeapBytes, long resourceHeapBytes, long samplerDescriptorBufferBytes, long resourceDescriptorBufferBytes, long sectionMetadataBytes, long meshletHeaderBytes, long samplerDescriptorBytes, long imageDescriptorBytes, long bufferDescriptorBytes, long descriptorBufferAlignment, long descriptorBufferSamplerDescriptorBytes, long descriptorBufferSampledImageDescriptorBytes, long descriptorBufferUniformBufferDescriptorBytes, long descriptorBufferStorageBufferDescriptorBytes, Map<String, String> slots) {
-        // LWJGL hands mapped memory over as a buffer an int indexes (see TerrainGpuBuffer.mapped()).
-        // Cap host-mapped GPU buffers at 1 GiB, a power of two well under that limit.
-        private static final long MAX_HOST_MAPPED_BUFFER_BYTES = 1L << 30;
-        
         static Layout unconfigured() {
             return new Layout(false, false, false, 0, 0, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 1L, 0L, 0L, 0L, 0L, Map.of());
         }
@@ -1278,13 +1274,33 @@ public final class DescriptorHeapTerrainResources {
             return (int) Math.min(Integer.MAX_VALUE, nextPowerOfTwo(Math.max(headroom, doubled)));
         }
         
+        /**
+         * A payload buffer's next size: at most as large as the device lets one buffer be. A page
+         * that does not fit even then is turned away.
+         */
         private static long growLongCapacity(long current, long required) {
             if (required <= current) {
                 return current;
             }
             long headroom = required + Math.max(1L << 20, required / 4L);
             long doubled = Math.max(1L, current) * 2L;
-            return Math.min(MAX_HOST_MAPPED_BUFFER_BYTES, nextPowerOfTwo(Math.max(headroom, doubled)));
+            long grown = Math.min(VulkanImprovementCapabilities.maxBufferBytes(), nextPowerOfTwo(Math.max(headroom, doubled)));
+            // Never smaller than now, though the device's limit may be: it is 0 before a device was looked at.
+            return Math.max(current, grown);
+        }
+        
+        private static int growMeshletCapacity(int current, int required) {
+            int grown = Math.min(maxMeshletCapacity(), growIntCapacity(current, required));
+            return Math.max(current, grown);
+        }
+        
+        /**
+         * How many meshlets the buffers kept per meshlet may hold, at most: the headers and the
+         * visible list, whichever takes more bytes a meshlet, may not outgrow one buffer.
+         */
+        private static int maxMeshletCapacity() {
+            long bytesPerMeshlet = Math.max(TerrainGpuLayout.MESHLET_HEADER_STRIDE, (long) TerrainGpuLayout.VISIBLE_MESHLET_RING_MULTIPLIER * TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE);
+            return (int) Math.min(Integer.MAX_VALUE, VulkanImprovementCapabilities.maxBufferBytes() / bytesPerMeshlet);
         }
         
         private static long nextPowerOfTwo(long value) {
@@ -1308,7 +1324,7 @@ public final class DescriptorHeapTerrainResources {
          */
         Layout growFor(ResidentTerrainPages.Shortage shortage) {
             int grownSectionCapacity = shortage.pages() > 0 ? Math.min(TerrainGpuLayout.MAX_PAGES, growIntCapacity(this.sectionCapacity, Math.addExact(this.sectionCapacity, shortage.pages()))) : this.sectionCapacity;
-            int grownMeshletCapacity = shortage.meshlets() > 0L ? growIntCapacity(this.meshletCapacity, Math.toIntExact(this.meshletCapacity + shortage.meshlets())) : this.meshletCapacity;
+            int grownMeshletCapacity = shortage.meshlets() > 0L ? growMeshletCapacity(this.meshletCapacity, Math.toIntExact(this.meshletCapacity + shortage.meshlets())) : this.meshletCapacity;
             long grownVertexPayloadBytes = shortage.vertexBytes() > 0L ? growLongCapacity(this.vertexPayloadBytes, this.vertexPayloadBytes + shortage.vertexBytes()) : this.vertexPayloadBytes;
             long grownIndexPayloadBytes = shortage.indexBytes() > 0L ? growLongCapacity(this.indexPayloadBytes, this.indexPayloadBytes + shortage.indexBytes()) : this.indexPayloadBytes;
             if (grownSectionCapacity == this.sectionCapacity && grownMeshletCapacity == this.meshletCapacity && grownVertexPayloadBytes == this.vertexPayloadBytes && grownIndexPayloadBytes == this.indexPayloadBytes) {

@@ -29,7 +29,7 @@ public final class TerrainGpuRecords {
      * A section layer's record in the page table.
      */
     public static final class ResidentPage {
-        public static final StructLayout LAYOUT = MemoryLayout.structLayout(LONG.withName("sectionNode"), INT.withName("sectionX"), INT.withName("sectionY"), INT.withName("sectionZ"), INT.withName("layer"), INT.withName("firstMeshlet"), INT.withName("meshletCount"), INT.withName("estimatedVertices"), INT.withName("estimatedMeshlets"), INT.withName("vertexBytes"), INT.withName("indexBytes"), INT.withName("vertexByteOffset"), INT.withName("indexByteOffset"), INT.withName("fadeStart"), INT.withName("customIndexBuffer"), INT.withName("reserved1"), INT.withName("reserved2"), LONG.withName("reserved3")).withName("ResidentPage");
+        public static final StructLayout LAYOUT = MemoryLayout.structLayout(LONG.withName("sectionNode"), INT.withName("sectionX"), INT.withName("sectionY"), INT.withName("sectionZ"), INT.withName("layer"), INT.withName("firstMeshlet"), INT.withName("meshletCount"), INT.withName("estimatedVertices"), INT.withName("estimatedMeshlets"), INT.withName("vertexBytes"), INT.withName("indexBytes"), LONG.withName("vertexByteOffset"), LONG.withName("indexByteOffset"), INT.withName("fadeStart"), INT.withName("customIndexBuffer"), INT.withName("reserved1"), INT.withName("reserved2")).withName("ResidentPage");
         public static final long SECTION_NODE = offset(LAYOUT, "sectionNode");
         public static final long SECTION_X = offset(LAYOUT, "sectionX");
         public static final long SECTION_Y = offset(LAYOUT, "sectionY");
@@ -52,10 +52,11 @@ public final class TerrainGpuRecords {
     
     /**
      * A meshlet's header: where its vertices and indices are, its box and the way its faces point.
+     * Where they are is a byte offset into the payload buffers, 64 bits wide like the addresses
+     * the shaders add it to.
      */
     public static final class MeshletHeader {
-        public static final StructLayout LAYOUT = MemoryLayout.structLayout(LONG.withName("sectionNode"), INT.withName("sectionX"), INT.withName("sectionY"), INT.withName("sectionZ"), INT.withName("layer"), INT.withName("firstVertex"), INT.withName("vertexCount"), INT.withName("firstIndex"), INT.withName("indexCount"), INT.withName("vertexByteOffset"), INT.withName("indexByteOffset"), INT.withName("vertexBytes"), INT.withName("indexBytes"), INT.withName("flags0"), INT.withName("materialId"), MemoryLayout.sequenceLayout(3, FLOAT).withName("boundsMin"), MemoryLayout.sequenceLayout(3, FLOAT).withName("boundsMax"), INT.withName("facing"), INT.withName("reserved0")).withName("MeshletHeader");
-        public static final long SECTION_NODE = offset(LAYOUT, "sectionNode");
+        public static final StructLayout LAYOUT = MemoryLayout.structLayout(INT.withName("sectionX"), INT.withName("sectionY"), INT.withName("sectionZ"), INT.withName("layer"), INT.withName("firstVertex"), INT.withName("vertexCount"), INT.withName("firstIndex"), INT.withName("indexCount"), LONG.withName("vertexByteOffset"), LONG.withName("indexByteOffset"), INT.withName("vertexBytes"), INT.withName("indexBytes"), INT.withName("flags0"), INT.withName("materialId"), MemoryLayout.sequenceLayout(3, FLOAT).withName("boundsMin"), MemoryLayout.sequenceLayout(3, FLOAT).withName("boundsMax"), INT.withName("facing"), INT.withName("reserved0")).withName("MeshletHeader");
         public static final long SECTION_X = offset(LAYOUT, "sectionX");
         public static final long SECTION_Y = offset(LAYOUT, "sectionY");
         public static final long SECTION_Z = offset(LAYOUT, "sectionZ");

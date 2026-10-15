@@ -449,8 +449,8 @@ public final class SectionMeshletStore {
             }
             section.binding(key.layerOrdinal()).page = page;
             updateFrameRole(key.mesh(), section);
-            int vertexByteOffset = Math.toIntExact(page.vertexOffset());
-            int indexByteOffset = Math.toIntExact(page.indexOffset());
+            long vertexByteOffset = page.vertexOffset();
+            long indexByteOffset = page.indexOffset();
             MemorySegment headers = MemorySegment.ofArray(new byte[layer.meshlets.size() * TerrainGpuLayout.MESHLET_HEADER_STRIDE]);
             long header = 0L;
             for (TerrainMeshlet meshlet : layer.meshlets) {
@@ -681,7 +681,7 @@ public final class SectionMeshletStore {
     /**
      * Writes a page's record into zeroed memory, which its reserved members keep.
      */
-    private static void writeSectionLayer(MemorySegment target, long sectionNode, ChunkSectionLayer layer, int firstMeshlet, int meshletCount, LayerCapture capture, int vertexByteOffset, int indexByteOffset, int fadeStart) {
+    private static void writeSectionLayer(MemorySegment target, long sectionNode, ChunkSectionLayer layer, int firstMeshlet, int meshletCount, LayerCapture capture, long vertexByteOffset, long indexByteOffset, int fadeStart) {
         target.set(TerrainGpuRecords.LONG, ResidentPage.SECTION_NODE, sectionNode);
         target.set(TerrainGpuRecords.INT, ResidentPage.SECTION_X, net.minecraft.core.SectionPos.x(sectionNode));
         target.set(TerrainGpuRecords.INT, ResidentPage.SECTION_Y, net.minecraft.core.SectionPos.y(sectionNode));
@@ -693,8 +693,8 @@ public final class SectionMeshletStore {
         target.set(TerrainGpuRecords.INT, ResidentPage.ESTIMATED_MESHLETS, capture.estimatedMeshlets);
         target.set(TerrainGpuRecords.INT, ResidentPage.VERTEX_BYTES, capture.vertexBytes);
         target.set(TerrainGpuRecords.INT, ResidentPage.INDEX_BYTES, capture.indexBytes);
-        target.set(TerrainGpuRecords.INT, ResidentPage.VERTEX_BYTE_OFFSET, vertexByteOffset);
-        target.set(TerrainGpuRecords.INT, ResidentPage.INDEX_BYTE_OFFSET, indexByteOffset);
+        target.set(TerrainGpuRecords.LONG, ResidentPage.VERTEX_BYTE_OFFSET, vertexByteOffset);
+        target.set(TerrainGpuRecords.LONG, ResidentPage.INDEX_BYTE_OFFSET, indexByteOffset);
         target.set(TerrainGpuRecords.INT, ResidentPage.FADE_START, fadeStart);
         target.set(TerrainGpuRecords.INT, ResidentPage.CUSTOM_INDEX_BUFFER, capture.customIndexBuffer ? 1 : 0);
     }
@@ -702,8 +702,7 @@ public final class SectionMeshletStore {
     /**
      * Writes a meshlet's header into zeroed memory, which its reserved member keeps.
      */
-    private static void writeMeshlet(MemorySegment target, TerrainMeshlet meshlet, int vertexByteOffset, int indexByteOffset, int vertexBytes, int indexBytes) {
-        target.set(TerrainGpuRecords.LONG, MeshletHeader.SECTION_NODE, meshlet.sectionNode());
+    private static void writeMeshlet(MemorySegment target, TerrainMeshlet meshlet, long vertexByteOffset, long indexByteOffset, int vertexBytes, int indexBytes) {
         target.set(TerrainGpuRecords.INT, MeshletHeader.SECTION_X, meshlet.sectionX());
         target.set(TerrainGpuRecords.INT, MeshletHeader.SECTION_Y, meshlet.sectionY());
         target.set(TerrainGpuRecords.INT, MeshletHeader.SECTION_Z, meshlet.sectionZ());
@@ -712,8 +711,8 @@ public final class SectionMeshletStore {
         target.set(TerrainGpuRecords.INT, MeshletHeader.VERTEX_COUNT, meshlet.vertexCount());
         target.set(TerrainGpuRecords.INT, MeshletHeader.FIRST_INDEX, meshlet.firstIndex());
         target.set(TerrainGpuRecords.INT, MeshletHeader.INDEX_COUNT, meshlet.indexCount());
-        target.set(TerrainGpuRecords.INT, MeshletHeader.VERTEX_BYTE_OFFSET, vertexByteOffset);
-        target.set(TerrainGpuRecords.INT, MeshletHeader.INDEX_BYTE_OFFSET, indexByteOffset);
+        target.set(TerrainGpuRecords.LONG, MeshletHeader.VERTEX_BYTE_OFFSET, vertexByteOffset);
+        target.set(TerrainGpuRecords.LONG, MeshletHeader.INDEX_BYTE_OFFSET, indexByteOffset);
         target.set(TerrainGpuRecords.INT, MeshletHeader.VERTEX_BYTES, vertexBytes);
         target.set(TerrainGpuRecords.INT, MeshletHeader.INDEX_BYTES, indexBytes);
         target.set(TerrainGpuRecords.INT, MeshletHeader.FLAGS, meshlet.indexCount() > 0 && indexBytes > 0 ? TerrainGpuLayout.INDEXED_TRIANGLES_FLAG : 0);

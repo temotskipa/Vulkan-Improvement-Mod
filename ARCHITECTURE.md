@@ -199,7 +199,12 @@ renderer code does not drift back into a catch-all root package.
   name them, and the mod writes them, and captured section data, through
   `MemorySegment`s. Only what LWJGL or Minecraft hands over or takes as a
   `ByteBuffer` stays one: push constants, SPIR-V, descriptors and Minecraft's
-  section buffers.
+  section buffers. `TerrainGpuBuffer` turns a buffer's mapped address into a
+  segment of the buffer's size once, the one unchecked step; every access after
+  it is checked against that size and fails once the buffer is given back.
+  Offsets into the payload buffers are 64 bits wide, so those buffers may grow
+  as large as the device lets one buffer be (`maxBufferSize` and
+  `maxMemoryAllocationSize`).
 - `DescriptorHeapTerrainResources` owns the first GPU material table: a vanilla
   terrain material record backed by captured block-atlas and lightmap texture
   bindings. `TerrainMaterialClassifier` assigns one material ID per Minecraft

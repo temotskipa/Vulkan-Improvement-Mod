@@ -8,7 +8,6 @@ layout(local_size_x = 32) in;
 layout(triangles, max_vertices = 64, max_primitives = 32) out;
 
 struct MeshletHeader {
-    uint64_t sectionNode;
     int sectionX;
     int sectionY;
     int sectionZ;
@@ -17,8 +16,8 @@ struct MeshletHeader {
     int vertexCount;
     int firstIndex;
     int indexCount;
-    uint vertexByteOffset;
-    uint indexByteOffset;
+    uint64_t vertexByteOffset;
+    uint64_t indexByteOffset;
     int vertexBytes;
     int indexBytes;
     int flags0;
@@ -171,14 +170,8 @@ void main() {
 
     uint vertexCount = indexedTriangles ? uint(clamp(header.indexCount, 0, 64)) : uint(clamp(header.vertexCount, 0, 64));
     uint primitiveCount = indexedTriangles ? min(vertexCount / 3u, 32u) : min(vertexCount / 4u * 2u, 32u);
-    TerrainVertices payload = TerrainVertices(
-            pc.vertexPayload
-            + uint64_t(header.vertexByteOffset)
-    );
-    TerrainIndices indices = TerrainIndices(
-            pc.indexPayload
-            + uint64_t(header.indexByteOffset)
-    );
+    TerrainVertices payload = TerrainVertices(pc.vertexPayload + header.vertexByteOffset);
+    TerrainIndices indices = TerrainIndices(pc.indexPayload + header.indexByteOffset);
     uint materialIndex = uint(clamp(header.materialId, 0, MATERIAL_TABLE_CAPACITY - 1));
     uint materialFlags = 3u;
     if (pc.materialTable != uint64_t(0)) {

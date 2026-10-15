@@ -15,6 +15,7 @@ public final class VulkanImprovementCapabilities {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static volatile Snapshot lastSnapshot = Snapshot.empty();
     private static volatile int maxTaskWorkGroups;
+    private static volatile long maxBufferBytes;
     
     private VulkanImprovementCapabilities() {
     }
@@ -26,8 +27,11 @@ public final class VulkanImprovementCapabilities {
             VkPhysicalDeviceDescriptorHeapPropertiesEXT descriptorHeapProperties = VkPhysicalDeviceDescriptorHeapPropertiesEXT.calloc(stack).sType$Default();
             VkPhysicalDeviceDescriptorBufferPropertiesEXT descriptorBufferProperties = VkPhysicalDeviceDescriptorBufferPropertiesEXT.calloc(stack).sType$Default();
             VkPhysicalDeviceFragmentShadingRatePropertiesKHR fragmentShadingRateProperties = VkPhysicalDeviceFragmentShadingRatePropertiesKHR.calloc(stack).sType$Default();
+            // Core in Vulkan 1.4, which the mod requires.
+            VkPhysicalDeviceVulkan13Properties vulkan13Properties = VkPhysicalDeviceVulkan13Properties.calloc(stack).sType$Default();
+            VkPhysicalDeviceVulkan11Properties vulkan11Properties = VkPhysicalDeviceVulkan11Properties.calloc(stack).sType$Default().pNext(vulkan13Properties.address());
             
-            long pNext = 0L;
+            long pNext = vulkan11Properties.address();
             if (physicalDevice.hasDeviceExtension(KHRFragmentShadingRate.VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME)) {
                 fragmentShadingRateProperties.pNext(pNext);
                 pNext = fragmentShadingRateProperties.address();
@@ -48,6 +52,7 @@ public final class VulkanImprovementCapabilities {
             VkPhysicalDeviceProperties2 properties2 = VkPhysicalDeviceProperties2.calloc(stack).sType$Default().pNext(pNext);
             VK12.vkGetPhysicalDeviceProperties2(physicalDevice.vkPhysicalDevice(), properties2);
             maxTaskWorkGroups = Math.min(meshProperties.maxTaskWorkGroupCount(0), meshProperties.maxTaskWorkGroupTotalCount());
+            maxBufferBytes = Math.min(deviceSize(vulkan13Properties.maxBufferSize()), deviceSize(vulkan11Properties.maxMemoryAllocationSize()));
             
             VkPhysicalDeviceMaintenance6FeaturesKHR maintenance6Features = VkPhysicalDeviceMaintenance6FeaturesKHR.calloc(stack).sType$Default();
             VkPhysicalDeviceMaintenance5FeaturesKHR maintenance5Features = VkPhysicalDeviceMaintenance5FeaturesKHR.calloc(stack).sType$Default().pNext(maintenance6Features.address());
@@ -68,6 +73,14 @@ public final class VulkanImprovementCapabilities {
         return snapshot;
     }
     
+    /**
+     * A size the device reports, which is unsigned: a device with no limit reports the largest
+     * value, which Java reads as negative.
+     */
+    private static long deviceSize(long size) {
+        return size < 0L ? Long.MAX_VALUE : size;
+    }
+    
     public static Snapshot snapshot() {
         return lastSnapshot;
     }
@@ -78,6 +91,13 @@ public final class VulkanImprovementCapabilities {
      */
     public static int maxTaskWorkGroups() {
         return maxTaskWorkGroups;
+    }
+    
+    /**
+     * The most bytes one buffer may hold, in one allocation, or 0 before a device was looked at.
+     */
+    public static long maxBufferBytes() {
+        return maxBufferBytes;
     }
     
     public static Map<String, Object> asMap() {

@@ -21,13 +21,12 @@ struct ResidentPage {
     int estimatedMeshlets;
     int vertexBytes;
     int indexBytes;
-    int vertexByteOffset;
-    int indexByteOffset;
+    uint64_t vertexByteOffset;
+    uint64_t indexByteOffset;
     int fadeStart;
     int customIndexBuffer;
     int reserved1;
     int reserved2;
-    uint64_t reserved3;
 };
 
 struct VisiblePage {
