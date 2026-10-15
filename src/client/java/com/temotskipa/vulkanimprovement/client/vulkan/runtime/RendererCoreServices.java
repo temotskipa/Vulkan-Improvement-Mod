@@ -1,6 +1,7 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.runtime;
 
 import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanImprovementCapabilities;
+import com.temotskipa.vulkanimprovement.client.vulkan.gpu.FramebufferCache;
 import com.temotskipa.vulkanimprovement.client.vulkan.presentation.PresentPacingController;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.FragmentShadingRateController;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
@@ -68,6 +69,7 @@ public final class RendererCoreServices {
         map.put("domains", RendererDomainRegistry.get().asMap());
         map.put("presentPacing", PresentPacingController.get().asMap());
         map.put("fragmentShadingRate", FragmentShadingRateController.get().asMap());
+        map.put("framebuffers", FramebufferCache.latest().map(FramebufferCache::asMap).orElse(Map.of()));
         return map;
     }
     

@@ -126,6 +126,25 @@ inside a render pass the level renderer has already opened.
   dispatches of `ComputeCommands` into that command buffer, in a debug group
   of their label, each followed by the barrier Minecraft records after a copy.
 
+### VulkanCommandEncoderFramebufferMixin
+
+- Target: `com.mojang.renderpearl.backend.vulkan.VulkanCommandEncoder`.
+- mcdev 26.4 surface: `createRenderPass` fills a `VkFramebufferCreateInfo`
+  with the render pass from `RenderPassCache`, every attachment's image view
+  in order (`VK_NULL_HANDLE` for an absent color attachment) and the size of
+  the last color attachment, or of the depth attachment if there is no color
+  attachment; calls `VK12.vkCreateFramebuffer`, then queues the framebuffer's
+  destruction with `queueForDestroy(Destroyable)`, its only call of that
+  method, which `DestructionQueue` runs two submits later, in the order
+  queued. `destroy()` waits for the queue to idle and then empties the
+  destruction queue. `RenderPassCache` destroys its render passes only when
+  the device closes. Final field `device`.
+- Source tokens: `method = "createRenderPass"`, `VK12;vkCreateFramebuffer(`,
+  `VulkanCommandEncoder;queueForDestroy(`, `method = "destroy"`,
+  `private VulkanDevice device`.
+- Purpose: keep framebuffers across frames (`FramebufferCache`), behind
+  `vim.keepFramebuffers`.
+
 ### FrontendCommandEncoderMixin
 
 - Target: `com.mojang.renderpearl.frontend.FrontendCommandEncoder`.
@@ -137,6 +156,19 @@ inside a render pass the level renderer has already opened.
   `private boolean isInRenderPass`.
 - Purpose: add compute dispatch to Minecraft's command encoder the way it adds
   its own commands: checked here, then recorded by the backend.
+
+### VulkanGpuTextureViewMixin
+
+- Target: `com.mojang.renderpearl.backend.vulkan.VulkanGpuTextureView`.
+- mcdev 26.4 surface: final fields `device` and `vkImageView`, field
+  `closed`; `close()`, once, sets `closed` and queues the view for
+  destruction with the device's command encoder (`createCommandEncoder()`
+  returns the device's one encoder). The image view is destroyed only from
+  that queue, so its handle cannot be reused before then.
+- Source tokens: `private VulkanDevice device`, `private long vkImageView`,
+  `private boolean closed`, `method = "close"`.
+- Purpose: release the framebuffers `FramebufferCache` keeps with the view as
+  an attachment, queued for destruction before the view.
 
 ### VulkanConstMixin
 

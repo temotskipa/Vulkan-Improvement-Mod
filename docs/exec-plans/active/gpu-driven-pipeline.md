@@ -121,6 +121,18 @@ format, translucent quads Minecraft sorts as it uploads them, subclasses of
 `ModelPart.Cube`, and every model while another mod's mixins target a class
 the path replaces.
 
+2026-10-16, framebuffers kept across frames (`vim.keepFramebuffers`, on by
+default). A render pass over the same views, size and Vulkan render pass as
+one in an earlier frame gets that one's framebuffer; a framebuffer is
+destroyed through Minecraft's destruction queue once one of its views closes,
+and Minecraft destroys views only after they close. In the entity scene a
+frame opens 13 render passes and, with the framebuffers kept, creates none
+after the first. A window resize replaced the 12 whose views Minecraft
+recreated. Frames are identical with and without, before and after a resize.
+Six runs of each in turn, 8 s each: 0.02 ms a frame shorter, about 1 %, inside
+the run-to-run spread. What it removes is 13 creations and 13 destructions of
+Vulkan objects a frame, not a measurable share of this scene's frame time.
+
 ## Decisions
 
 - The mod extends Minecraft's renderer instead of running its own beside it
