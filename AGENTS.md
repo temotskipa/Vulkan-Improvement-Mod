@@ -6,8 +6,8 @@ manual.
 
 ## Project Shape
 
-- This is a Fabric client mod for Minecraft focused on Vulkan terrain rendering
-  improvements.
+- This is a Fabric client mod that extends Minecraft's Vulkan renderer:
+  GPU-driven terrain first, then the rest of the frame.
 - Gradle uses Fabric Loom with split `main` and `client` source sets.
 - Runtime Vulkan work lives under
   `src/client/java/com/temotskipa/vulkanimprovement/client/vulkan`.
@@ -39,6 +39,8 @@ manual.
 
 - Preserve the current boundary: mixins adapt Minecraft/Vulkan internals, while
   reusable rendering behavior belongs in `client.vulkan`.
+- Extend Minecraft's renderer instead of building beside it; follow the Design
+  Principles in [ARCHITECTURE.md](ARCHITECTURE.md).
 - Keep `src/main` free of client renderer behavior unless Fabric metadata or a
   shared initializer truly requires it.
 - When adding, renaming, or deleting mixins, update

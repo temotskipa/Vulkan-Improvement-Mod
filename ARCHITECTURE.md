@@ -1,7 +1,36 @@
 # Architecture
 
-This repository is a Fabric client mod that experiments with replacing or
-augmenting vanilla terrain rendering through modern Vulkan capabilities.
+This repository is a Fabric client mod that extends Minecraft's Vulkan
+renderer with modern Vulkan capabilities: GPU-driven terrain first, then the
+rest of what a frame draws.
+
+## Design Principles
+
+The mod extends Minecraft's renderer; it does not run a second renderer beside
+it. Other mods address Minecraft's rendering APIs as if they were vanilla, so
+the mod keeps its work inside them.
+
+1. Shared contracts stay Minecraft's, extended by mixins: the device and its
+   features, buffers and textures, command buffers and submission, render
+   targets, render types and pipelines, and the submit system. Where one lacks
+   something the mod needs, a mixin adds it, such as a buffer usage or a
+   command.
+2. Where Minecraft's Vulkan backend is slow or lacks a feature, the mod
+   improves the backend in place, so vanilla rendering and other mods gain
+   too: barriers that wait only for what a resource needs, framebuffers kept
+   across frames, compute dispatch on the command encoder, more buffer usages.
+3. GPU-driven execution (compute passes, mesh shading, visibility on the GPU)
+   is the mod's own code, built on Minecraft's objects: its buffers come from
+   `GpuDevice.createBuffer`, its commands go into Minecraft's command buffer,
+   and its draws use Minecraft's render types where they can.
+4. Every replacement checks whether another mod changed what it replaces and,
+   where one did, leaves that work to Minecraft's path, decided per submit.
+
+Hooks follow how often their target runs. `@WrapOperation` and `@WrapMethod`
+chain with other mods' hooks and suit calls made once per object drawn; a call
+made for every section and layer uses `@Redirect`, which costs nothing while
+the mod is idle (see `LevelRendererMixin` in
+[the mixin target manifest](docs/references/minecraft-26-4-mixin-targets.md)).
 
 ## Runtime Flow
 

@@ -12,6 +12,11 @@ vertices. Terrain is GPU-driven already (see
 entities, block entities, items, particles and text into the same pipeline, and
 then moves visibility and occlusion for all of it to the GPU.
 
+All of it extends Minecraft's renderer, following the Design Principles in
+[ARCHITECTURE.md](../../../ARCHITECTURE.md): the work lives in Minecraft's
+buffers, command buffers, render types and submits, so other mods that use
+those keep working.
+
 ## Baseline
 
 A render-thread profile (JFR, fifteen seconds) of a GPU-driven terrain frame at
@@ -37,27 +42,47 @@ model, every frame, although a cube never changes after its model is baked.
 - Nothing on the CPU waits for the GPU in a frame.
 - Nothing is uploaded and no compute work is recorded while Minecraft's render
   pass is open.
-- What the GPU path cannot reproduce exactly stays on Minecraft's path, decided
-  per submit, never for the whole frame.
+- What the GPU path cannot reproduce exactly, or another mod has changed, stays
+  on Minecraft's path, decided per submit, never for the whole frame.
 - Every claim of a gain comes from the benchmark under Validation, Minecraft's
   path and the GPU path in the same session.
 
 ## Steps
 
-1. Model vertices from the GPU. Every model cube is uploaded once. Each frame
-   the CPU poses a model's parts as Minecraft does and writes one record per
-   part and one per cube; a compute pass writes the vertices into a buffer the
-   mod owns, and Minecraft draws them with its own pipelines.
-2. Model draws from mesh shaders. The mesh stage reads cubes and part poses
+1. Minecraft's backend extended for GPU-driven work. Buffers made by
+   `GpuDevice.createBuffer` that shaders read and write by device address,
+   through a buffer usage the mod adds, and compute dispatch on Minecraft's
+   command encoder: checked by its frontend like Minecraft's own commands,
+   recorded by its Vulkan backend into the frame's command buffer, and followed
+   by the barrier Minecraft puts after its own transfers.
+2. Model vertices from the GPU. Every model cube is uploaded once. Each frame
+   Minecraft still poses a model's parts; the mod writes one record per part
+   and one per cube, a compute pass writes the vertices into Minecraft buffers,
+   and Minecraft draws them with its own render types, as draws of its own
+   staged vertex buffer.
+3. Model draws from mesh shaders. The mesh stage reads cubes and part poses
    directly, so no vertex buffer is written, and the task stage culls models
    outside the view.
-3. Terrain visibility on the GPU: frustum and occlusion per section from the
+4. Terrain visibility on the GPU: frustum and occlusion per section from the
    page table, Minecraft's section walk kept only for scheduling compiles, and
    translucent terrain on the mesh path, sorted on the GPU.
-4. Items, block models, particles and text the same way: their quads resident,
+5. Items, block models, particles and text the same way: their quads resident,
    one record per instance.
-5. Occlusion culling for everything the GPU draws, against a depth pyramid, in
+6. Occlusion culling for everything the GPU draws, against a depth pyramid, in
    two phases so that nothing newly visible is missing for a frame.
+
+Alongside the steps, Minecraft's backend improved in place, each change
+measured with the benchmark on its own:
+
+- Barriers by resource. Minecraft follows every transfer with a barrier on all
+  commands before and after it; recording what each buffer and texture was
+  last used for lets a command wait only for that.
+- Framebuffers kept across frames. Minecraft creates one for every render pass
+  and destroys it once the frame is done.
+- Mapping kept. `GpuBuffer.map` maps and unmaps the allocation on every call.
+- Terrain on Minecraft's objects. Terrain allocates through `DeviceBuffer` and
+  records its compute passes itself; it moves onto Minecraft's buffers and the
+  compute dispatch of step 1.
 
 ## Validation
 
@@ -68,17 +93,22 @@ profile before and after each step.
 
 ## Decisions
 
-- Step 1 leaves drawing to Minecraft. The GPU writes the bytes Minecraft would
+- The mod extends Minecraft's renderer instead of running its own beside it
+  (the Design Principles in `ARCHITECTURE.md`). The GPU path's buffers,
+  commands and draws are Minecraft's, so mods that hook those see the usual
+  objects, and Minecraft's code keeps running wherever the GPU path does not
+  need to replace it.
+- Step 2 leaves drawing to Minecraft. The GPU writes the bytes Minecraft would
   have written into a buffer Minecraft's pipelines draw from, so every entity
   render type, shader, transparency mode and outline works unchanged, and the
-  largest CPU cost goes first. Step 2 drops the vertex buffer once the mesh
+  largest CPU cost goes first. Step 3 drops the vertex buffer once the mesh
   stage reproduces the shading.
 - The mod compiles its own shaders and builds its own compute pipelines.
   Minecraft's `GlslCompiler` compiles only vertex and fragment shaders, numbers
   bindings itself for its descriptor model and targets Vulkan 1.2, and its
   pipelines have no compute or mesh stages. Everything else comes from
   Minecraft: the allocator, debug names, the shaderc library and the frame's
-  command buffer. Step 2 should include Minecraft's shader includes at runtime
+  command buffer. Step 3 should include Minecraft's shader includes at runtime
   for lighting and fog rather than rewrite them.
 
 ## Follow-Up
