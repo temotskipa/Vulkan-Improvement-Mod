@@ -3,6 +3,7 @@ package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 import com.mojang.renderpearl.backend.vulkan.Destroyable;
 import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
 import com.mojang.renderpearl.backend.vulkan.VulkanUtils;
+import org.jspecify.annotations.Nullable;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
@@ -15,7 +16,6 @@ import org.lwjgl.vulkan.VkBufferCreateInfo;
 import org.lwjgl.vulkan.VkBufferDeviceAddressInfo;
 
 import java.lang.foreign.MemorySegment;
-import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 
@@ -27,6 +27,8 @@ final class TerrainGpuBuffer implements Destroyable, AutoCloseable {
     private final long size;
     private final long deviceAddress;
     private final long mappedAddress;
+    // The mapped memory, or null where the CPU cannot map it.
+    private final @Nullable MemorySegment mapped;
     // Whether the CPU's writes reach the GPU, and the GPU's the CPU, without a flush or an
     // invalidation. A flush of a whole buffer otherwise costs the render thread every frame.
     private final boolean coherent;
@@ -79,12 +81,25 @@ final class TerrainGpuBuffer implements Destroyable, AutoCloseable {
             this.vkBuffer = bufferPtr.get(0);
             this.allocation = allocationPtr.get(0);
             this.mappedAddress = allocationResult.pMappedData();
+            this.mapped = mappedSegment(this.mappedAddress, size);
             IntBuffer memoryFlags = stack.callocInt(1);
             Vma.vmaGetAllocationMemoryProperties(device.vma(), this.allocation, memoryFlags);
             this.coherent = (memoryFlags.get(0) & VK10.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0;
             this.deviceAddress = queryDeviceAddress(stack, device, this.vkBuffer);
             device.instance().debug().setObjectName(device.vkDevice(), VK10.VK_OBJECT_TYPE_BUFFER, this.vkBuffer, label);
         }
+    }
+    
+    /**
+     * The mapped memory as a segment. LWJGL hands it over as a buffer an int indexes, which limits a
+     * mapped buffer to 2 GiB; a segment made from the address alone would need native access, which
+     * the game is not started with.
+     */
+    private static @Nullable MemorySegment mappedSegment(long address, long size) {
+        if (address == 0L || size > Integer.MAX_VALUE) {
+            return null;
+        }
+        return MemorySegment.ofBuffer(MemoryUtil.memByteBuffer(address, (int) size));
     }
     
     private static long queryDeviceAddress(MemoryStack stack, VulkanDevice device, long buffer) {
@@ -125,21 +140,14 @@ final class TerrainGpuBuffer implements Destroyable, AutoCloseable {
         return this.mappedAddress != 0L;
     }
     
-    ByteBuffer mappedByteBuffer() {
-        if (this.mappedAddress == 0L) {
-            throw new IllegalStateException(this.label + " is not host visible");
-        }
-        if (this.size > Integer.MAX_VALUE - 8) {
-            throw new IllegalStateException(this.label + " exceeds ByteBuffer limit (" + this.size + " bytes); use mappedSlice() instead");
-        }
-        return MemoryUtil.memByteBuffer(this.mappedAddress, (int) this.size);
-    }
-    
     /**
-     * The mapped memory as a segment: written at offsets, with no position to keep track of.
+     * The mapped memory, written and read at offsets in the layouts of {@code TerrainGpuRecords}.
      */
-    MemorySegment mappedSegment() {
-        return MemorySegment.ofBuffer(mappedByteBuffer());
+    MemorySegment mapped() {
+        if (this.mapped == null) {
+            throw new IllegalStateException(this.mappedAddress == 0L ? this.label + " is not host visible" : this.label + " is too large to map (" + this.size + " bytes)");
+        }
+        return this.mapped;
     }
     
     void flush() {

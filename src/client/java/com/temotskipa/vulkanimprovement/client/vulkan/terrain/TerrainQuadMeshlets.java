@@ -1,11 +1,12 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuRecords;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import org.jspecify.annotations.Nullable;
 
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -34,56 +35,54 @@ final class TerrainQuadMeshlets {
     // A face counts as pointing along an axis only when its other two directions vanish, not when
     // it is merely close: a slightly tilted face can be seen from behind its box from far enough.
     private static final float OFF_AXIS = 1.0e-5F;
-
+    
     private TerrainQuadMeshlets() {
     }
-
+    
     /**
      * @param vertices the layer's vertices, four per quad, as Minecraft built them
-     * @return the vertices in facing order and their meshlets, or {@code null} when the vertices
-     * are not whole quads
+     * @return a copy of the vertices in facing order, outside the Java heap, and their meshlets;
+     * or {@code null} when the vertices are not whole quads
      */
-    static @Nullable Built build(long sectionNode, ChunkSectionLayer layer, ByteBuffer vertices) {
-        ByteBuffer source = vertices.duplicate().order(ByteOrder.LITTLE_ENDIAN);
-        int base = source.position();
-        int bytes = source.remaining();
+    static @Nullable Built build(long sectionNode, ChunkSectionLayer layer, MemorySegment vertices) {
+        long bytes = vertices.byteSize();
         if (bytes % QUAD_BYTES != 0) {
             return null;
         }
-        int quadCount = bytes / QUAD_BYTES;
+        int quadCount = Math.toIntExact(bytes / QUAD_BYTES);
         int[] facing = new int[quadCount];
         int[] counts = new int[FACINGS];
         for (int quad = 0; quad < quadCount; quad++) {
-            facing[quad] = facingOf(source, base + quad * QUAD_BYTES);
+            facing[quad] = facingOf(vertices, (long) quad * QUAD_BYTES);
             counts[facing[quad]]++;
         }
         int[] firstQuad = new int[FACINGS];
         for (int group = 1; group < FACINGS; group++) {
             firstQuad[group] = firstQuad[group - 1] + counts[group - 1];
         }
-        ByteBuffer sorted = ByteBuffer.allocateDirect(bytes).order(ByteOrder.LITTLE_ENDIAN);
+        MemorySegment sorted = Arena.ofAuto().allocate(bytes);
         int[] cursor = firstQuad.clone();
         for (int quad = 0; quad < quadCount; quad++) {
-            sorted.put(cursor[facing[quad]]++ * QUAD_BYTES, source, base + quad * QUAD_BYTES, QUAD_BYTES);
+            MemorySegment.copy(vertices, (long) quad * QUAD_BYTES, sorted, (long) cursor[facing[quad]]++ * QUAD_BYTES, QUAD_BYTES);
         }
-
+        
         List<TerrainMeshlet> meshlets = new ArrayList<>();
         for (int group = 0; group < FACINGS; group++) {
             int end = firstQuad[group] + counts[group];
             for (int first = firstQuad[group]; first < end; first += QUADS_PER_MESHLET) {
                 int quads = Math.min(QUADS_PER_MESHLET, end - first);
-                float[] bounds = bounds(sorted, first * QUAD_BYTES, quads * 4);
+                float[] bounds = bounds(sorted, (long) first * QUAD_BYTES, quads * 4);
                 meshlets.add(TerrainMeshlet.quads(sectionNode, layer, first * 4, quads * 4, bounds, group));
             }
         }
         return new Built(sorted, List.copyOf(meshlets));
     }
-
+    
     /**
      * Which way a quad faces: the normal of its first triangle, which for Minecraft's quads points
      * out of the face they are seen from, or of its second when the first has no area.
      */
-    static int facingOf(ByteBuffer vertices, int quadOffset) {
+    static int facingOf(MemorySegment vertices, long quadOffset) {
         float[] normal = normal(vertices, quadOffset, 0, 1, 2);
         if (normal == null) {
             normal = normal(vertices, quadOffset, 0, 2, 3);
@@ -107,41 +106,43 @@ final class TerrainQuadMeshlets {
         }
         return FACING_ANY;
     }
-
-    private static float @Nullable [] normal(ByteBuffer vertices, int quadOffset, int a, int b, int c) {
-        int stride = TerrainGpuLayout.BLOCK_VERTEX_STRIDE;
-        float ax = vertices.getFloat(quadOffset + a * stride);
-        float ay = vertices.getFloat(quadOffset + a * stride + Float.BYTES);
-        float az = vertices.getFloat(quadOffset + a * stride + 2 * Float.BYTES);
-        float ux = vertices.getFloat(quadOffset + b * stride) - ax;
-        float uy = vertices.getFloat(quadOffset + b * stride + Float.BYTES) - ay;
-        float uz = vertices.getFloat(quadOffset + b * stride + 2 * Float.BYTES) - az;
-        float vx = vertices.getFloat(quadOffset + c * stride) - ax;
-        float vy = vertices.getFloat(quadOffset + c * stride + Float.BYTES) - ay;
-        float vz = vertices.getFloat(quadOffset + c * stride + 2 * Float.BYTES) - az;
+    
+    private static float @Nullable [] normal(MemorySegment vertices, long quadOffset, int a, int b, int c) {
+        long first = quadOffset + (long) a * TerrainGpuLayout.BLOCK_VERTEX_STRIDE;
+        long second = quadOffset + (long) b * TerrainGpuLayout.BLOCK_VERTEX_STRIDE;
+        long third = quadOffset + (long) c * TerrainGpuLayout.BLOCK_VERTEX_STRIDE;
+        float ax = vertices.get(TerrainGpuRecords.FLOAT, first);
+        float ay = vertices.get(TerrainGpuRecords.FLOAT, first + Float.BYTES);
+        float az = vertices.get(TerrainGpuRecords.FLOAT, first + 2 * Float.BYTES);
+        float ux = vertices.get(TerrainGpuRecords.FLOAT, second) - ax;
+        float uy = vertices.get(TerrainGpuRecords.FLOAT, second + Float.BYTES) - ay;
+        float uz = vertices.get(TerrainGpuRecords.FLOAT, second + 2 * Float.BYTES) - az;
+        float vx = vertices.get(TerrainGpuRecords.FLOAT, third) - ax;
+        float vy = vertices.get(TerrainGpuRecords.FLOAT, third + Float.BYTES) - ay;
+        float vz = vertices.get(TerrainGpuRecords.FLOAT, third + 2 * Float.BYTES) - az;
         float x = uy * vz - uz * vy;
         float y = uz * vx - ux * vz;
         float z = ux * vy - uy * vx;
         float squared = x * x + y * y + z * z;
         return squared > 1.0e-12F && Float.isFinite(squared) ? new float[]{x, y, z} : null;
     }
-
+    
     /**
      * The box around a run of vertices: minimum x, y, z, then maximum x, y, z.
      */
-    private static float[] bounds(ByteBuffer vertices, int offset, int vertexCount) {
+    private static float[] bounds(MemorySegment vertices, long offset, int vertexCount) {
         float[] bounds = {Float.MAX_VALUE, Float.MAX_VALUE, Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE};
         for (int vertex = 0; vertex < vertexCount; vertex++) {
-            int at = offset + vertex * TerrainGpuLayout.BLOCK_VERTEX_STRIDE;
+            long at = offset + (long) vertex * TerrainGpuLayout.BLOCK_VERTEX_STRIDE;
             for (int axis = 0; axis < 3; axis++) {
-                float value = vertices.getFloat(at + axis * Float.BYTES);
+                float value = vertices.get(TerrainGpuRecords.FLOAT, at + (long) axis * Float.BYTES);
                 bounds[axis] = Math.min(bounds[axis], value);
                 bounds[axis + 3] = Math.max(bounds[axis + 3], value);
             }
         }
         return bounds;
     }
-
-    record Built(ByteBuffer vertices, List<TerrainMeshlet> meshlets) {
+    
+    record Built(MemorySegment vertices, List<TerrainMeshlet> meshlets) {
     }
 }

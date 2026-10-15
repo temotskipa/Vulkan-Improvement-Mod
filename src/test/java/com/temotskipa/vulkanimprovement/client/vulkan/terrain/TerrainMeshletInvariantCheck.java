@@ -1,13 +1,16 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuRecords;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.core.SectionPos;
 
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
+import java.lang.foreign.MemorySegment;
 
 public final class TerrainMeshletInvariantCheck {
+    private static final int QUAD_BYTES = 4 * TerrainGpuLayout.BLOCK_VERTEX_STRIDE;
+    private static final MemorySegment NO_INDICES = MemorySegment.ofArray(new byte[0]);
+    
     private TerrainMeshletInvariantCheck() {
     }
     
@@ -22,7 +25,7 @@ public final class TerrainMeshletInvariantCheck {
         checkFacingFollowsWinding();
         checkLargeGroupsSplitIntoMeshlets();
     }
-
+    
     /**
      * Quads are sorted into one group per facing, keeping their order inside a group, and every
      * meshlet holds quads of one group and the box around them.
@@ -30,22 +33,21 @@ public final class TerrainMeshletInvariantCheck {
     private static void checkQuadsAreGroupedByFacing() {
         long sectionNode = SectionPos.asLong(1, 2, 3);
         ChunkSectionLayer layer = ChunkSectionLayer.values()[0];
-        ByteBuffer vertices = ByteBuffer.allocateDirect(5 * 4 * TerrainGpuLayout.BLOCK_VERTEX_STRIDE).order(ByteOrder.LITTLE_ENDIAN);
-        putQuad(vertices, UP_FACE, 1);
-        putQuad(vertices, EAST_FACE, 2);
-        putQuad(vertices, PLANT_FACE, 3);
-        putQuad(vertices, UP_FACE, 4);
-        putQuad(vertices, EAST_FACE, 5);
-        vertices.flip();
-
+        MemorySegment vertices = MemorySegment.ofArray(new byte[5 * QUAD_BYTES]);
+        putQuad(vertices, 0, UP_FACE, 1);
+        putQuad(vertices, 1, EAST_FACE, 2);
+        putQuad(vertices, 2, PLANT_FACE, 3);
+        putQuad(vertices, 3, UP_FACE, 4);
+        putQuad(vertices, 4, EAST_FACE, 5);
+        
         TerrainQuadMeshlets.Built built = TerrainQuadMeshlets.build(sectionNode, layer, vertices);
         require(built != null, "whole quads must be grouped");
-        require(built.vertices().remaining() == vertices.remaining(), "grouping must keep every vertex");
+        require(built.vertices().byteSize() == vertices.byteSize(), "grouping must keep every vertex");
         require(built.meshlets().size() == 3, "three facings must give three meshlets");
         require(built.meshlets().get(0).facing() == TerrainQuadMeshlets.FACING_EAST && built.meshlets().get(1).facing() == TerrainQuadMeshlets.FACING_UP && built.meshlets().get(2).facing() == TerrainQuadMeshlets.FACING_ANY, "groups must come in facing order");
         int[] expectedTags = {2, 5, 1, 4, 3};
         for (int quad = 0; quad < expectedTags.length; quad++) {
-            require(built.vertices().getInt(quad * 4 * TerrainGpuLayout.BLOCK_VERTEX_STRIDE + 12) == expectedTags[quad], "quads must keep their order inside a facing group");
+            require(built.vertices().get(TerrainGpuRecords.INT, (long) quad * QUAD_BYTES + 12) == expectedTags[quad], "quads must keep their order inside a facing group");
         }
         int covered = 0;
         for (TerrainMeshlet meshlet : built.meshlets()) {
@@ -53,61 +55,67 @@ public final class TerrainMeshletInvariantCheck {
             covered += meshlet.vertexCount();
         }
         require(covered == 20, "meshlets must cover every vertex once");
-        TerrainMeshlet east = built.meshlets().get(0);
+        TerrainMeshlet east = built.meshlets().getFirst();
         require(east.minX() == 1.0F && east.maxX() == 1.0F && east.minY() == 0.0F && east.maxY() == 1.0F, "a meshlet's box must hold its quads and no more");
         require(TerrainQuadMeshlets.build(sectionNode, layer, blockVertices(3)) == null, "vertices that are not whole quads must not be grouped");
     }
-
+    
     /**
      * A face points to the side its corners go round anticlockwise when seen from, as Minecraft's
      * do; a face that does not lie across an axis is never dropped for facing.
      */
     private static void checkFacingFollowsWinding() {
-        ByteBuffer vertices = ByteBuffer.allocateDirect(4 * 4 * TerrainGpuLayout.BLOCK_VERTEX_STRIDE).order(ByteOrder.LITTLE_ENDIAN);
-        putQuad(vertices, UP_FACE, 0);
-        putQuad(vertices, EAST_FACE, 0);
-        putQuad(vertices, new float[][]{EAST_FACE[3], EAST_FACE[2], EAST_FACE[1], EAST_FACE[0]}, 0);
-        putQuad(vertices, new float[][]{{0, 1, 0}, {0, 1, 0}, {0, 1, 1}, {1, 1, 1}}, 0);
-        int quadBytes = 4 * TerrainGpuLayout.BLOCK_VERTEX_STRIDE;
-        require(TerrainQuadMeshlets.facingOf(vertices, 0) == TerrainQuadMeshlets.FACING_UP, "a top face must face up");
-        require(TerrainQuadMeshlets.facingOf(vertices, quadBytes) == TerrainQuadMeshlets.FACING_EAST, "an east face must face east");
-        require(TerrainQuadMeshlets.facingOf(vertices, 2 * quadBytes) == TerrainQuadMeshlets.FACING_WEST, "reversed corners must face the other way");
-        require(TerrainQuadMeshlets.facingOf(vertices, 3 * quadBytes) == TerrainQuadMeshlets.FACING_UP, "a quad whose first triangle has no area must face the way its second does");
-        ByteBuffer plant = ByteBuffer.allocateDirect(quadBytes).order(ByteOrder.LITTLE_ENDIAN);
-        putQuad(plant, PLANT_FACE, 0);
-        require(TerrainQuadMeshlets.facingOf(plant, 0) == TerrainQuadMeshlets.FACING_ANY, "a diagonal face must not be dropped for facing");
+        MemorySegment vertices = MemorySegment.ofArray(new byte[4 * QUAD_BYTES]);
+        putQuad(vertices, 0, UP_FACE, 0);
+        putQuad(vertices, 1, EAST_FACE, 0);
+        putQuad(vertices, 2, new float[][]{EAST_FACE[3], EAST_FACE[2], EAST_FACE[1], EAST_FACE[0]}, 0);
+        putQuad(vertices, 3, new float[][]{{0, 1, 0}, {0, 1, 0}, {0, 1, 1}, {1, 1, 1}}, 0);
+        require(TerrainQuadMeshlets.facingOf(vertices, 0L) == TerrainQuadMeshlets.FACING_UP, "a top face must face up");
+        require(TerrainQuadMeshlets.facingOf(vertices, QUAD_BYTES) == TerrainQuadMeshlets.FACING_EAST, "an east face must face east");
+        require(TerrainQuadMeshlets.facingOf(vertices, 2L * QUAD_BYTES) == TerrainQuadMeshlets.FACING_WEST, "reversed corners must face the other way");
+        require(TerrainQuadMeshlets.facingOf(vertices, 3L * QUAD_BYTES) == TerrainQuadMeshlets.FACING_UP, "a quad whose first triangle has no area must face the way its second does");
+        MemorySegment plant = MemorySegment.ofArray(new byte[QUAD_BYTES]);
+        putQuad(plant, 0, PLANT_FACE, 0);
+        require(TerrainQuadMeshlets.facingOf(plant, 0L) == TerrainQuadMeshlets.FACING_ANY, "a diagonal face must not be dropped for facing");
     }
-
+    
     private static void checkLargeGroupsSplitIntoMeshlets() {
         int quads = TerrainGpuLayout.TARGET_VERTICES_PER_MESHLET / 4 + 1;
-        ByteBuffer vertices = ByteBuffer.allocateDirect(quads * 4 * TerrainGpuLayout.BLOCK_VERTEX_STRIDE).order(ByteOrder.LITTLE_ENDIAN);
+        MemorySegment vertices = MemorySegment.ofArray(new byte[quads * QUAD_BYTES]);
         for (int quad = 0; quad < quads; quad++) {
-            putQuad(vertices, UP_FACE, quad);
+            putQuad(vertices, quad, UP_FACE, quad);
         }
-        vertices.flip();
         TerrainQuadMeshlets.Built built = TerrainQuadMeshlets.build(SectionPos.asLong(0, 0, 0), ChunkSectionLayer.values()[0], vertices);
         require(built != null && built.meshlets().size() == 2, "a facing group larger than a meshlet must be split");
         require(built.meshlets().get(0).vertexCount() == TerrainGpuLayout.TARGET_VERTICES_PER_MESHLET && built.meshlets().get(1).vertexCount() == 4, "a meshlet must hold at most its vertex budget");
     }
-
+    
     // Corners of faces of the block at the origin, anticlockwise seen from outside.
     private static final float[][] UP_FACE = {{0, 1, 0}, {0, 1, 1}, {1, 1, 1}, {1, 1, 0}};
     private static final float[][] EAST_FACE = {{1, 0, 0}, {1, 1, 0}, {1, 1, 1}, {1, 0, 1}};
     private static final float[][] PLANT_FACE = {{0, 0, 0}, {0, 1, 0}, {1, 1, 1}, {1, 0, 1}};
-
+    
     /**
      * Writes a quad; its colour holds a tag, so its place after grouping can be told.
      */
-    private static void putQuad(ByteBuffer buffer, float[][] corners, int tag) {
-        for (float[] corner : corners) {
-            buffer.putFloat(corner[0]);
-            buffer.putFloat(corner[1]);
-            buffer.putFloat(corner[2]);
-            buffer.putInt(tag);
-            buffer.putFloat(0.0F);
-            buffer.putFloat(0.0F);
-            buffer.putInt(0x00F000F0);
+    private static void putQuad(MemorySegment vertices, int quad, float[][] corners, int tag) {
+        for (int corner = 0; corner < corners.length; corner++) {
+            putVertex(vertices, quad * 4 + corner, corners[corner][0], corners[corner][1], corners[corner][2], tag, 0.0F, 0.0F);
         }
+    }
+    
+    /**
+     * Writes a block vertex: its position, colour, texture coordinates and light.
+     */
+    private static void putVertex(MemorySegment vertices, int vertex, float x, float y, float z, int color, float u, float v) {
+        long at = (long) vertex * TerrainGpuLayout.BLOCK_VERTEX_STRIDE;
+        vertices.set(TerrainGpuRecords.FLOAT, at, x);
+        vertices.set(TerrainGpuRecords.FLOAT, at + 4, y);
+        vertices.set(TerrainGpuRecords.FLOAT, at + 8, z);
+        vertices.set(TerrainGpuRecords.INT, at + 12, color);
+        vertices.set(TerrainGpuRecords.FLOAT, at + 16, u);
+        vertices.set(TerrainGpuRecords.FLOAT, at + 20, v);
+        vertices.set(TerrainGpuRecords.INT, at + 24, 0x00F000F0);
     }
     
     private static void checkNonIndexedMeshletsPartitionVertices() {
@@ -167,56 +175,50 @@ public final class TerrainMeshletInvariantCheck {
     
     private static void checkCaptureValidationAcceptsValidQuadPayload() {
         ChunkSectionLayer layer = ChunkSectionLayer.values()[0];
-        ByteBuffer vertices = blockVertices(4);
-        SectionMeshletStore.CaptureValidation nonIndexed = SectionMeshletStore.validateCapture(layer, vertices.duplicate(), ByteBuffer.allocateDirect(0).order(ByteOrder.LITTLE_ENDIAN), vertices.remaining(), 0, 6, false, 0);
+        MemorySegment vertices = blockVertices(4);
+        SectionMeshletStore.CaptureValidation nonIndexed = SectionMeshletStore.validateCapture(layer, vertices, NO_INDICES, bytes(vertices), 0, 6, false, 0);
         require(nonIndexed.valid(), "valid non-indexed quad payload must be accepted: " + nonIndexed.reason());
         
-        ByteBuffer indices = normalizedIndices(0, 1, 2, 2, 3, 0);
-        SectionMeshletStore.CaptureValidation indexed = SectionMeshletStore.validateCapture(layer, vertices.duplicate(), indices.duplicate().order(ByteOrder.LITTLE_ENDIAN), vertices.remaining(), Short.BYTES * 6, 6, true, TerrainGpuLayout.NORMALIZED_INDEX_STRIDE);
+        MemorySegment indices = normalizedIndices(0, 1, 2, 2, 3, 0);
+        SectionMeshletStore.CaptureValidation indexed = SectionMeshletStore.validateCapture(layer, vertices, indices, bytes(vertices), Short.BYTES * 6, 6, true, TerrainGpuLayout.NORMALIZED_INDEX_STRIDE);
         require(indexed.valid(), "valid normalized custom-index payload must be accepted: " + indexed.reason());
     }
     
     private static void checkCaptureValidationRejectsBadPayloads() {
         ChunkSectionLayer layer = ChunkSectionLayer.values()[0];
-        ByteBuffer vertices = blockVertices(4);
+        MemorySegment vertices = blockVertices(4);
         
-        SectionMeshletStore.CaptureValidation misaligned = SectionMeshletStore.validateCapture(layer, vertices.duplicate(), ByteBuffer.allocateDirect(0).order(ByteOrder.LITTLE_ENDIAN), vertices.remaining() - 1, 0, 6, false, 0);
+        SectionMeshletStore.CaptureValidation misaligned = SectionMeshletStore.validateCapture(layer, vertices, NO_INDICES, bytes(vertices) - 1, 0, 6, false, 0);
         require(!misaligned.valid(), "misaligned vertex payload must be rejected");
         
-        SectionMeshletStore.CaptureValidation vertexMismatch = SectionMeshletStore.validateCapture(layer, blockVertices(3), ByteBuffer.allocateDirect(0).order(ByteOrder.LITTLE_ENDIAN), TerrainGpuLayout.BLOCK_VERTEX_STRIDE * 3, 0, 6, false, 0);
+        SectionMeshletStore.CaptureValidation vertexMismatch = SectionMeshletStore.validateCapture(layer, blockVertices(3), NO_INDICES, TerrainGpuLayout.BLOCK_VERTEX_STRIDE * 3, 0, 6, false, 0);
         require(!vertexMismatch.valid(), "non-indexed vertex/index mismatch must be rejected");
         
-        SectionMeshletStore.CaptureValidation badIndex = SectionMeshletStore.validateCapture(layer, vertices.duplicate(), normalizedIndices(0, 1, 7).order(ByteOrder.LITTLE_ENDIAN), vertices.remaining(), Short.BYTES * 3, 3, true, TerrainGpuLayout.NORMALIZED_INDEX_STRIDE);
+        SectionMeshletStore.CaptureValidation badIndex = SectionMeshletStore.validateCapture(layer, vertices, normalizedIndices(0, 1, 7), bytes(vertices), Short.BYTES * 3, 3, true, TerrainGpuLayout.NORMALIZED_INDEX_STRIDE);
         require(!badIndex.valid(), "out-of-range custom index must be rejected");
         
-        ByteBuffer nonFinite = blockVertices(4);
-        nonFinite.putFloat(0, Float.NaN);
-        SectionMeshletStore.CaptureValidation badVertex = SectionMeshletStore.validateCapture(layer, nonFinite.duplicate(), ByteBuffer.allocateDirect(0).order(ByteOrder.LITTLE_ENDIAN), nonFinite.remaining(), 0, 6, false, 0);
+        MemorySegment nonFinite = blockVertices(4);
+        nonFinite.set(TerrainGpuRecords.FLOAT, 0L, Float.NaN);
+        SectionMeshletStore.CaptureValidation badVertex = SectionMeshletStore.validateCapture(layer, nonFinite, NO_INDICES, bytes(nonFinite), 0, 6, false, 0);
         require(!badVertex.valid(), "non-finite vertex payload must be rejected");
     }
     
-    private static ByteBuffer blockVertices(int vertexCount) {
-        ByteBuffer buffer = ByteBuffer.allocateDirect(vertexCount * TerrainGpuLayout.BLOCK_VERTEX_STRIDE).order(ByteOrder.LITTLE_ENDIAN);
+    private static MemorySegment blockVertices(int vertexCount) {
+        MemorySegment vertices = MemorySegment.ofArray(new byte[vertexCount * TerrainGpuLayout.BLOCK_VERTEX_STRIDE]);
         for (int vertex = 0; vertex < vertexCount; vertex++) {
-            buffer.putFloat(vertex & 1);
-            buffer.putFloat(vertex >> 1);
-            buffer.putFloat(0.0F);
-            buffer.putInt(0xFFFFFFFF);
-            buffer.putFloat(vertex & 1);
-            buffer.putFloat(vertex >> 1);
-            buffer.putInt(0x00F000F0);
+            putVertex(vertices, vertex, vertex & 1, vertex >> 1, 0.0F, 0xFFFFFFFF, vertex & 1, vertex >> 1);
         }
-        buffer.flip();
-        return buffer;
+        return vertices;
     }
     
-    private static ByteBuffer normalizedIndices(int... indices) {
-        ByteBuffer buffer = ByteBuffer.allocateDirect(indices.length * TerrainGpuLayout.NORMALIZED_INDEX_STRIDE).order(ByteOrder.LITTLE_ENDIAN);
-        for (int index : indices) {
-            buffer.putInt(index);
-        }
-        buffer.flip();
-        return buffer;
+    private static MemorySegment normalizedIndices(int... indices) {
+        MemorySegment segment = MemorySegment.ofArray(new byte[indices.length * TerrainGpuLayout.NORMALIZED_INDEX_STRIDE]);
+        MemorySegment.copy(indices, 0, segment, TerrainGpuRecords.INT, 0L, indices.length);
+        return segment;
+    }
+    
+    private static int bytes(MemorySegment segment) {
+        return Math.toIntExact(segment.byteSize());
     }
     
     private static void require(boolean condition, String message) {

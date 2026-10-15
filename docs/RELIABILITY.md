@@ -40,6 +40,10 @@ validation on real Vulkan hardware.
   generation through the shared `glslangValidator` gate.
 - `.\gradlew.bat checkMaterialRecordInvariants` runs pure Java checks for GPU
   material record layout, default flags, and encoded texture dimensions.
+- `.\gradlew.bat checkTerrainGpuRecordInvariants` runs pure Java checks that
+  each record the CPU writes for the GPU declares the members of the terrain
+  shaders' struct of that name, in order and of the same size, and is as large
+  as its buffer's stride.
 - `.\gradlew.bat checkTerrainMaterialInvariants` runs pure Java checks for
   terrain render-layer material IDs, alpha-mode classification, material-table
   records, and diagnostics.

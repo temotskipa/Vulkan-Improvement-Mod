@@ -1,10 +1,10 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuRecords;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
+import java.lang.foreign.MemorySegment;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -51,7 +51,7 @@ public final class TerrainMaterialClassifierInvariantCheck {
     private static void checkTerrainLayerRecords() {
         TextureInfo blockAtlas = new TextureInfo(true, 1024, 512, 0, 5);
         TextureInfo lightmap = new TextureInfo(true, 16, 16, 0, 1);
-        ByteBuffer table = ByteBuffer.allocate(TerrainGpuLayout.MATERIAL_TABLE_CAPACITY * TerrainGpuLayout.MATERIAL_RECORD_STRIDE).order(ByteOrder.LITTLE_ENDIAN);
+        MemorySegment table = MemorySegment.ofArray(new byte[TerrainGpuLayout.MATERIAL_TABLE_CAPACITY * TerrainGpuLayout.MATERIAL_RECORD_STRIDE]);
         TerrainMaterialClassifier.writeTerrainLayerRecords(table, blockAtlas, lightmap);
         
         for (ChunkSectionLayer layer : ChunkSectionLayer.values()) {
@@ -90,14 +90,8 @@ public final class TerrainMaterialClassifierInvariantCheck {
         return flags;
     }
     
-    private static int[] readRecord(ByteBuffer table, int materialId) {
-        ByteBuffer duplicate = table.duplicate().order(ByteOrder.LITTLE_ENDIAN);
-        duplicate.position(materialId * TerrainGpuLayout.MATERIAL_RECORD_STRIDE);
-        int[] encoded = new int[GpuMaterialRecord.INT_COUNT];
-        for (int i = 0; i < encoded.length; i++) {
-            encoded[i] = duplicate.getInt();
-        }
-        return encoded;
+    private static int[] readRecord(MemorySegment table, int materialId) {
+        return table.asSlice((long) materialId * TerrainGpuLayout.MATERIAL_RECORD_STRIDE, TerrainGpuLayout.MATERIAL_RECORD_STRIDE).toArray(TerrainGpuRecords.INT);
     }
     
     private static void require(boolean condition, String message) {

@@ -3,6 +3,9 @@ package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldDatabase;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldTerrainLayerDirectory;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuRecords;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuRecords.MeshletHeader;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuRecords.ResidentPage;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.chunk.CompiledSectionMesh;
 import net.minecraft.client.renderer.chunk.SectionMesh;
@@ -10,8 +13,9 @@ import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
 import net.minecraft.util.Util;
 import org.jspecify.annotations.Nullable;
 
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -33,6 +37,7 @@ public final class SectionMeshletStore {
      * from an arbitrary start, which an int on the GPU cannot hold; this one starts with the game.
      */
     private static final long FADE_EPOCH_MILLIS = Util.getMillis();
+    private static final MemorySegment EMPTY = MemorySegment.ofArray(new byte[0]);
     private static final Map<CompiledSectionMesh, CapturedSection> SECTIONS = new ConcurrentHashMap<>();
     private static final VisibleFrame VISIBLE_FRAME = new VisibleFrame();
     private static final ResidentTerrainPages<SectionLayerKey> PAGES = new ResidentTerrainPages<>();
@@ -47,39 +52,42 @@ public final class SectionMeshletStore {
     
     public static void capture(long sectionNode, CompiledSectionMesh mesh, ChunkSectionLayer layer, @Nullable ByteBuffer vertexBuffer, @Nullable ByteBuffer indexBuffer) {
         long startedNanos = System.nanoTime();
-        int vertexBytes = remaining(vertexBuffer);
-        int indexBytes = remaining(indexBuffer);
+        MemorySegment vertexSource = vertexBuffer == null ? null : MemorySegment.ofBuffer(vertexBuffer);
+        MemorySegment indexSource = indexBuffer == null ? null : MemorySegment.ofBuffer(indexBuffer);
+        int vertexBytes = bytes(vertexSource);
+        int indexBytes = bytes(indexSource);
         var draw = mesh.getSectionDraw(layer);
         int indexCount = draw == null ? 0 : draw.indexCount();
         boolean customIndexBuffer = draw != null && draw.hasCustomIndexBuffer();
         int indexElementBytes = draw == null ? 0 : draw.indexType().bytes;
         int estimatedVertices = customIndexBuffer ? estimateIndexedVertices(indexCount) : estimateVertices(indexCount);
-        ByteBuffer copiedVertices = copy(vertexBuffer);
         // Quads are grouped by the way they face, so the task stage can drop a group seen from behind.
-        TerrainQuadMeshlets.Built quads = customIndexBuffer || copiedVertices.remaining() == 0 ? null : TerrainQuadMeshlets.build(sectionNode, layer, copiedVertices);
+        // Grouping copies them out of Minecraft's buffer; other vertices are copied as they are.
+        TerrainQuadMeshlets.Built quads = customIndexBuffer || vertexSource == null || vertexBytes == 0 ? null : TerrainQuadMeshlets.build(sectionNode, layer, vertexSource);
         List<TerrainMeshlet> meshlets;
+        MemorySegment capturedVertices;
         if (quads != null) {
             meshlets = quads.meshlets();
-            copiedVertices = quads.vertices();
+            capturedVertices = quads.vertices();
         }
         else {
             int countedMeshlets = customIndexBuffer ? estimateIndexedMeshlets(indexCount) : estimateMeshlets(estimatedVertices);
             meshlets = customIndexBuffer ? buildIndexedMeshlets(sectionNode, layer, indexCount, countedMeshlets) : buildMeshlets(sectionNode, layer, estimatedVertices, indexCount, countedMeshlets);
+            capturedVertices = copy(vertexSource);
         }
         int estimatedMeshlets = meshlets.size();
         int drawLayers = drawLayers(mesh);
-        ByteBuffer capturedVertices = copiedVertices;
-        ByteBuffer copiedIndices = customIndexBuffer ? copyIndexBuffer(indexBuffer, indexElementBytes) : copy(indexBuffer);
-        int gpuIndexElementBytes = customIndexBuffer && copiedIndices.remaining() > 0 ? TerrainGpuLayout.NORMALIZED_INDEX_STRIDE : indexElementBytes;
+        MemorySegment copiedIndices = customIndexBuffer ? copyIndexBuffer(indexSource, indexElementBytes) : copy(indexSource);
+        int gpuIndexElementBytes = customIndexBuffer && copiedIndices.byteSize() > 0L ? TerrainGpuLayout.NORMALIZED_INDEX_STRIDE : indexElementBytes;
         CaptureResult result = new CaptureResult();
         SECTIONS.compute(mesh, (ignored, existing) -> {
             CapturedSection section = existing == null ? new CapturedSection(sectionNode) : existing;
             section.drawLayers = drawLayers;
             LayerCapture previous = section.layers.get(layer);
-            ByteBuffer vertices = vertexBuffer == null && previous != null ? previous.buffers.vertices() : capturedVertices;
+            MemorySegment vertices = vertexBuffer == null && previous != null ? previous.buffers.vertices() : capturedVertices;
             // The meshlets describe the vertices they were cut from.
             List<TerrainMeshlet> layerMeshlets = vertexBuffer == null && previous != null ? previous.meshlets : meshlets;
-            ByteBuffer indices = indexBuffer == null && previous != null ? previous.buffers.indices() : copiedIndices;
+            MemorySegment indices = indexBuffer == null && previous != null ? previous.buffers.indices() : copiedIndices;
             int capturedVertexBytes = vertexBuffer == null && previous != null ? previous.vertexBytes : vertexBytes;
             int capturedIndexBytes = indexBuffer == null && previous != null ? previous.indexBytes : indexBytes;
             int capturedIndexElementBytes = gpuIndexElementBytes == 0 && previous != null ? previous.indexElementBytes : gpuIndexElementBytes;
@@ -443,15 +451,15 @@ public final class SectionMeshletStore {
             updateFrameRole(key.mesh(), section);
             int vertexByteOffset = Math.toIntExact(page.vertexOffset());
             int indexByteOffset = Math.toIntExact(page.indexOffset());
-            ByteBuffer headers = ByteBuffer.allocate(layer.meshlets.size() * TerrainGpuLayout.MESHLET_HEADER_STRIDE).order(ByteOrder.LITTLE_ENDIAN);
+            MemorySegment headers = MemorySegment.ofArray(new byte[layer.meshlets.size() * TerrainGpuLayout.MESHLET_HEADER_STRIDE]);
+            long header = 0L;
             for (TerrainMeshlet meshlet : layer.meshlets) {
-                writeMeshlet(headers, meshlet, vertexByteOffset, indexByteOffset, layer.vertexBytes, layer.buffers.indexBytes());
+                writeMeshlet(headers.asSlice(header, TerrainGpuLayout.MESHLET_HEADER_STRIDE), meshlet, vertexByteOffset, indexByteOffset, layer.vertexBytes, layer.buffers.indexBytes());
+                header += TerrainGpuLayout.MESHLET_HEADER_STRIDE;
             }
-            headers.flip();
-            ByteBuffer record = ByteBuffer.allocate(TerrainGpuLayout.SECTION_METADATA_STRIDE).order(ByteOrder.LITTLE_ENDIAN);
+            MemorySegment record = MemorySegment.ofArray(new byte[TerrainGpuLayout.SECTION_METADATA_STRIDE]);
             writeSectionLayer(record, key.sectionNode(), chunkLayer, page.firstMeshlet(), page.meshletCount(), layer, vertexByteOffset, indexByteOffset, fadeStart(key.mesh()));
-            record.flip();
-            PageUpload upload = new PageUpload(page, layer.buffers.vertices().duplicate(), layer.buffers.indices().duplicate(), headers, record);
+            PageUpload upload = new PageUpload(page, layer.buffers.vertices(), layer.buffers.indices(), headers, record);
             uploads.add(upload);
             bytes += upload.bytes();
             GpuWorldDatabase.get().currentTerrainLayerUpdate(key.sectionNode(), key.layerOrdinal()).ifPresent(update -> GpuWorldTerrainLayerDirectory.get().publish(update, page.firstMeshlet(), page.meshletCount(), 1.0F));
@@ -519,43 +527,42 @@ public final class SectionMeshletStore {
         return result;
     }
     
-    private static int remaining(@Nullable ByteBuffer buffer) {
-        return buffer == null ? 0 : buffer.remaining();
+    private static int bytes(@Nullable MemorySegment segment) {
+        return segment == null ? 0 : Math.toIntExact(segment.byteSize());
     }
     
-    private static ByteBuffer copy(@Nullable ByteBuffer source) {
-        if (source == null || source.remaining() == 0) {
-            return ByteBuffer.allocateDirect(0);
+    /**
+     * A copy of what Minecraft hands over, which it reuses once the upload is done. Copies live
+     * outside the Java heap until nothing refers to them any more, as Minecraft's buffers do.
+     */
+    private static MemorySegment copy(@Nullable MemorySegment source) {
+        if (source == null || source.byteSize() == 0L) {
+            return EMPTY;
         }
-        ByteBuffer duplicate = source.duplicate();
-        ByteBuffer copy = ByteBuffer.allocateDirect(duplicate.remaining());
-        copy.put(duplicate);
-        copy.flip();
-        return copy;
+        return Arena.ofAuto().allocate(source.byteSize()).copyFrom(source);
     }
     
-    private static ByteBuffer copyIndexBuffer(@Nullable ByteBuffer source, int sourceElementBytes) {
-        if (source == null || source.remaining() == 0 || sourceElementBytes <= 0) {
-            return ByteBuffer.allocateDirect(0).order(ByteOrder.LITTLE_ENDIAN);
+    /**
+     * A copy of Minecraft's indices, each widened to an int.
+     */
+    private static MemorySegment copyIndexBuffer(@Nullable MemorySegment source, int sourceElementBytes) {
+        if (source == null || source.byteSize() == 0L || sourceElementBytes <= 0) {
+            return EMPTY;
         }
-        ByteBuffer duplicate = source.duplicate().order(ByteOrder.LITTLE_ENDIAN);
-        int indexCount = duplicate.remaining() / sourceElementBytes;
-        ByteBuffer copy = ByteBuffer.allocateDirect(indexCount * TerrainGpuLayout.NORMALIZED_INDEX_STRIDE).order(ByteOrder.LITTLE_ENDIAN);
+        long indexCount = source.byteSize() / sourceElementBytes;
+        MemorySegment copy = Arena.ofAuto().allocate(indexCount * TerrainGpuLayout.NORMALIZED_INDEX_STRIDE);
         if (sourceElementBytes == Short.BYTES) {
-            for (int i = 0; i < indexCount; i++) {
-                copy.putInt(Short.toUnsignedInt(duplicate.getShort()));
+            for (long i = 0; i < indexCount; i++) {
+                copy.setAtIndex(TerrainGpuRecords.INT, i, Short.toUnsignedInt(source.getAtIndex(TerrainGpuRecords.SHORT, i)));
             }
         }
         else if (sourceElementBytes == Integer.BYTES) {
-            for (int i = 0; i < indexCount; i++) {
-                copy.putInt(duplicate.getInt());
-            }
+            MemorySegment.copy(source, 0L, copy, 0L, copy.byteSize());
         }
-        copy.flip();
         return copy;
     }
     
-    static CaptureValidation validateCapture(ChunkSectionLayer layer, ByteBuffer vertices, ByteBuffer indices, int vertexBytes, int indexBytes, int indexCount, boolean customIndexBuffer, int indexElementBytes) {
+    static CaptureValidation validateCapture(ChunkSectionLayer layer, MemorySegment vertices, MemorySegment indices, int vertexBytes, int indexBytes, int indexCount, boolean customIndexBuffer, int indexElementBytes) {
         if (indexCount <= 0) {
             return CaptureValidation.invalid("non-positive index count for " + layer.label() + ": " + indexCount);
         }
@@ -565,8 +572,8 @@ public final class SectionMeshletStore {
         if (vertexBytes % TerrainGpuLayout.BLOCK_VERTEX_STRIDE != 0) {
             return CaptureValidation.invalid("vertex payload is not block-vertex aligned for " + layer.label() + ": bytes=" + vertexBytes);
         }
-        if (vertices.remaining() != vertexBytes) {
-            return CaptureValidation.invalid("vertex payload byte count mismatch for " + layer.label() + ": remaining=" + vertices.remaining() + ", expected=" + vertexBytes);
+        if (vertices.byteSize() != vertexBytes) {
+            return CaptureValidation.invalid("vertex payload byte count mismatch for " + layer.label() + ": bytes=" + vertices.byteSize() + ", expected=" + vertexBytes);
         }
         
         int vertexCount = vertexBytes / TerrainGpuLayout.BLOCK_VERTEX_STRIDE;
@@ -589,19 +596,18 @@ public final class SectionMeshletStore {
         if (indexElementBytes != TerrainGpuLayout.NORMALIZED_INDEX_STRIDE) {
             return CaptureValidation.invalid("custom index payload is not normalized for " + layer.label() + ": indexElementBytes=" + indexElementBytes);
         }
-        if (indexBytes <= 0 || indices.remaining() <= 0) {
+        if (indexBytes <= 0 || indices.byteSize() <= 0L) {
             return CaptureValidation.invalid("missing custom index payload for " + layer.label());
         }
-        if (indices.remaining() != indexCount * TerrainGpuLayout.NORMALIZED_INDEX_STRIDE) {
-            return CaptureValidation.invalid("custom index payload byte count mismatch for " + layer.label() + ": remaining=" + indices.remaining() + ", expected=" + (indexCount * TerrainGpuLayout.NORMALIZED_INDEX_STRIDE));
+        if (indices.byteSize() != (long) indexCount * TerrainGpuLayout.NORMALIZED_INDEX_STRIDE) {
+            return CaptureValidation.invalid("custom index payload byte count mismatch for " + layer.label() + ": bytes=" + indices.byteSize() + ", expected=" + (long) indexCount * TerrainGpuLayout.NORMALIZED_INDEX_STRIDE);
         }
         if (indexCount % 3 != 0) {
             return CaptureValidation.invalid("custom index count is not triangle-aligned for " + layer.label() + ": " + indexCount);
         }
         
-        ByteBuffer indexView = indices.duplicate().order(ByteOrder.LITTLE_ENDIAN);
         for (int i = 0; i < indexCount; i++) {
-            int sourceVertex = indexView.getInt();
+            int sourceVertex = indices.getAtIndex(TerrainGpuRecords.INT, i);
             if (sourceVertex < 0 || sourceVertex >= vertexCount) {
                 return CaptureValidation.invalid("custom index out of range for " + layer.label() + ": index=" + i + ", sourceVertex=" + sourceVertex + ", vertexCount=" + vertexCount);
             }
@@ -609,17 +615,16 @@ public final class SectionMeshletStore {
         return CaptureValidation.ok();
     }
     
-    private static CaptureValidation validateVertexSamples(ChunkSectionLayer layer, ByteBuffer vertices, int vertexCount) {
-        ByteBuffer view = vertices.duplicate().order(ByteOrder.LITTLE_ENDIAN);
+    private static CaptureValidation validateVertexSamples(ChunkSectionLayer layer, MemorySegment vertices, int vertexCount) {
         int sampleCount = Math.min(vertexCount, 512);
         int step = Math.max(vertexCount / Math.max(sampleCount, 1), 1);
         for (int vertex = 0; vertex < vertexCount; vertex += step) {
-            int offset = vertex * TerrainGpuLayout.BLOCK_VERTEX_STRIDE;
-            float x = view.getFloat(offset);
-            float y = view.getFloat(offset + Float.BYTES);
-            float z = view.getFloat(offset + Float.BYTES * 2);
-            float u = view.getFloat(offset + 16);
-            float v = view.getFloat(offset + 20);
+            long offset = (long) vertex * TerrainGpuLayout.BLOCK_VERTEX_STRIDE;
+            float x = vertices.get(TerrainGpuRecords.FLOAT, offset);
+            float y = vertices.get(TerrainGpuRecords.FLOAT, offset + Float.BYTES);
+            float z = vertices.get(TerrainGpuRecords.FLOAT, offset + Float.BYTES * 2);
+            float u = vertices.get(TerrainGpuRecords.FLOAT, offset + 16);
+            float v = vertices.get(TerrainGpuRecords.FLOAT, offset + 20);
             if (!Float.isFinite(x) || !Float.isFinite(y) || !Float.isFinite(z) || !Float.isFinite(u) || !Float.isFinite(v)) {
                 return CaptureValidation.invalid("non-finite vertex payload for " + layer.label() + ": vertex=" + vertex);
             }
@@ -673,51 +678,53 @@ public final class SectionMeshletStore {
         return List.copyOf(meshlets);
     }
     
-    private static void writeSectionLayer(ByteBuffer target, long sectionNode, ChunkSectionLayer layer, int firstMeshlet, int meshletCount, LayerCapture capture, int vertexByteOffset, int indexByteOffset, int fadeStart) {
-        target.putLong(sectionNode);
-        target.putInt(net.minecraft.core.SectionPos.x(sectionNode));
-        target.putInt(net.minecraft.core.SectionPos.y(sectionNode));
-        target.putInt(net.minecraft.core.SectionPos.z(sectionNode));
-        target.putInt(layer.ordinal());
-        target.putInt(firstMeshlet);
-        target.putInt(meshletCount);
-        target.putInt(capture.estimatedVertices);
-        target.putInt(capture.estimatedMeshlets);
-        target.putInt(capture.vertexBytes);
-        target.putInt(capture.indexBytes);
-        target.putInt(vertexByteOffset);
-        target.putInt(indexByteOffset);
-        target.putInt(fadeStart);
-        target.putInt(capture.customIndexBuffer ? 1 : 0);
-        target.putInt(0);
-        target.putInt(0);
-        target.putLong(0L);
+    /**
+     * Writes a page's record into zeroed memory, which its reserved members keep.
+     */
+    private static void writeSectionLayer(MemorySegment target, long sectionNode, ChunkSectionLayer layer, int firstMeshlet, int meshletCount, LayerCapture capture, int vertexByteOffset, int indexByteOffset, int fadeStart) {
+        target.set(TerrainGpuRecords.LONG, ResidentPage.SECTION_NODE, sectionNode);
+        target.set(TerrainGpuRecords.INT, ResidentPage.SECTION_X, net.minecraft.core.SectionPos.x(sectionNode));
+        target.set(TerrainGpuRecords.INT, ResidentPage.SECTION_Y, net.minecraft.core.SectionPos.y(sectionNode));
+        target.set(TerrainGpuRecords.INT, ResidentPage.SECTION_Z, net.minecraft.core.SectionPos.z(sectionNode));
+        target.set(TerrainGpuRecords.INT, ResidentPage.LAYER, layer.ordinal());
+        target.set(TerrainGpuRecords.INT, ResidentPage.FIRST_MESHLET, firstMeshlet);
+        target.set(TerrainGpuRecords.INT, ResidentPage.MESHLET_COUNT, meshletCount);
+        target.set(TerrainGpuRecords.INT, ResidentPage.ESTIMATED_VERTICES, capture.estimatedVertices);
+        target.set(TerrainGpuRecords.INT, ResidentPage.ESTIMATED_MESHLETS, capture.estimatedMeshlets);
+        target.set(TerrainGpuRecords.INT, ResidentPage.VERTEX_BYTES, capture.vertexBytes);
+        target.set(TerrainGpuRecords.INT, ResidentPage.INDEX_BYTES, capture.indexBytes);
+        target.set(TerrainGpuRecords.INT, ResidentPage.VERTEX_BYTE_OFFSET, vertexByteOffset);
+        target.set(TerrainGpuRecords.INT, ResidentPage.INDEX_BYTE_OFFSET, indexByteOffset);
+        target.set(TerrainGpuRecords.INT, ResidentPage.FADE_START, fadeStart);
+        target.set(TerrainGpuRecords.INT, ResidentPage.CUSTOM_INDEX_BUFFER, capture.customIndexBuffer ? 1 : 0);
     }
     
-    private static void writeMeshlet(ByteBuffer target, TerrainMeshlet meshlet, int vertexByteOffset, int indexByteOffset, int vertexBytes, int indexBytes) {
-        target.putLong(meshlet.sectionNode());
-        target.putInt(meshlet.sectionX());
-        target.putInt(meshlet.sectionY());
-        target.putInt(meshlet.sectionZ());
-        target.putInt(meshlet.layer().ordinal());
-        target.putInt(meshlet.firstVertex());
-        target.putInt(meshlet.vertexCount());
-        target.putInt(meshlet.firstIndex());
-        target.putInt(meshlet.indexCount());
-        target.putInt(vertexByteOffset);
-        target.putInt(indexByteOffset);
-        target.putInt(vertexBytes);
-        target.putInt(indexBytes);
-        target.putInt(meshlet.indexCount() > 0 && indexBytes > 0 ? TerrainGpuLayout.INDEXED_TRIANGLES_FLAG : 0);
-        target.putInt(meshlet.materialId());
-        target.putFloat(meshlet.minX());
-        target.putFloat(meshlet.minY());
-        target.putFloat(meshlet.minZ());
-        target.putFloat(meshlet.maxX());
-        target.putFloat(meshlet.maxY());
-        target.putFloat(meshlet.maxZ());
-        target.putInt(meshlet.facing());
-        target.putInt(0);
+    /**
+     * Writes a meshlet's header into zeroed memory, which its reserved member keeps.
+     */
+    private static void writeMeshlet(MemorySegment target, TerrainMeshlet meshlet, int vertexByteOffset, int indexByteOffset, int vertexBytes, int indexBytes) {
+        target.set(TerrainGpuRecords.LONG, MeshletHeader.SECTION_NODE, meshlet.sectionNode());
+        target.set(TerrainGpuRecords.INT, MeshletHeader.SECTION_X, meshlet.sectionX());
+        target.set(TerrainGpuRecords.INT, MeshletHeader.SECTION_Y, meshlet.sectionY());
+        target.set(TerrainGpuRecords.INT, MeshletHeader.SECTION_Z, meshlet.sectionZ());
+        target.set(TerrainGpuRecords.INT, MeshletHeader.LAYER, meshlet.layer().ordinal());
+        target.set(TerrainGpuRecords.INT, MeshletHeader.FIRST_VERTEX, meshlet.firstVertex());
+        target.set(TerrainGpuRecords.INT, MeshletHeader.VERTEX_COUNT, meshlet.vertexCount());
+        target.set(TerrainGpuRecords.INT, MeshletHeader.FIRST_INDEX, meshlet.firstIndex());
+        target.set(TerrainGpuRecords.INT, MeshletHeader.INDEX_COUNT, meshlet.indexCount());
+        target.set(TerrainGpuRecords.INT, MeshletHeader.VERTEX_BYTE_OFFSET, vertexByteOffset);
+        target.set(TerrainGpuRecords.INT, MeshletHeader.INDEX_BYTE_OFFSET, indexByteOffset);
+        target.set(TerrainGpuRecords.INT, MeshletHeader.VERTEX_BYTES, vertexBytes);
+        target.set(TerrainGpuRecords.INT, MeshletHeader.INDEX_BYTES, indexBytes);
+        target.set(TerrainGpuRecords.INT, MeshletHeader.FLAGS, meshlet.indexCount() > 0 && indexBytes > 0 ? TerrainGpuLayout.INDEXED_TRIANGLES_FLAG : 0);
+        target.set(TerrainGpuRecords.INT, MeshletHeader.MATERIAL_ID, meshlet.materialId());
+        target.set(TerrainGpuRecords.FLOAT, MeshletHeader.BOUNDS_MIN, meshlet.minX());
+        target.set(TerrainGpuRecords.FLOAT, MeshletHeader.BOUNDS_MIN + Float.BYTES, meshlet.minY());
+        target.set(TerrainGpuRecords.FLOAT, MeshletHeader.BOUNDS_MIN + 2 * Float.BYTES, meshlet.minZ());
+        target.set(TerrainGpuRecords.FLOAT, MeshletHeader.BOUNDS_MAX, meshlet.maxX());
+        target.set(TerrainGpuRecords.FLOAT, MeshletHeader.BOUNDS_MAX + Float.BYTES, meshlet.maxY());
+        target.set(TerrainGpuRecords.FLOAT, MeshletHeader.BOUNDS_MAX + 2 * Float.BYTES, meshlet.maxZ());
+        target.set(TerrainGpuRecords.INT, MeshletHeader.FACING, meshlet.facing());
     }
     
     /**
@@ -797,13 +804,13 @@ public final class SectionMeshletStore {
     private record LayerCapture(int vertexBytes, int indexBytes, int estimatedVertices, int estimatedMeshlets, boolean customIndexBuffer, int indexElementBytes, List<TerrainMeshlet> meshlets, MeshLayerBuffers buffers) {
     }
     
-    private record MeshLayerBuffers(ByteBuffer vertices, ByteBuffer indices) {
+    private record MeshLayerBuffers(MemorySegment vertices, MemorySegment indices) {
         private int vertexBytes() {
-            return this.vertices.remaining();
+            return bytes(this.vertices);
         }
         
         private int indexBytes() {
-            return this.indices.remaining();
+            return bytes(this.indices);
         }
     }
     
@@ -865,9 +872,9 @@ public final class SectionMeshletStore {
      * What has to be copied to the GPU for one page: its payload, the headers of its meshlets and
      * its record in the page table.
      */
-    record PageUpload(ResidentTerrainPages.Page page, ByteBuffer vertices, ByteBuffer indices, ByteBuffer meshletHeaders, ByteBuffer pageRecord) {
+    record PageUpload(ResidentTerrainPages.Page page, MemorySegment vertices, MemorySegment indices, MemorySegment meshletHeaders, MemorySegment pageRecord) {
         long bytes() {
-            return (long) this.vertices.remaining() + this.indices.remaining() + this.meshletHeaders.remaining() + this.pageRecord.remaining();
+            return this.vertices.byteSize() + this.indices.byteSize() + this.meshletHeaders.byteSize() + this.pageRecord.byteSize();
         }
     }
     

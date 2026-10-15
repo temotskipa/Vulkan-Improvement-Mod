@@ -1,9 +1,8 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
-import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuRecords;
 
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
+import java.lang.foreign.MemorySegment;
 import java.util.Map;
 
 public final class GpuMaterialRecordInvariantCheck {
@@ -18,10 +17,10 @@ public final class GpuMaterialRecordInvariantCheck {
         checkReadyTerrainMaterialEncoding();
     }
     
-    @SuppressWarnings("ConstantValue")
     private static void checkRecordSizeMatchesTerrainLayout() {
-        require(GpuMaterialRecord.BYTES == TerrainGpuLayout.MATERIAL_RECORD_STRIDE, "material record byte size must match terrain GPU layout");
-        require(GpuMaterialRecord.INT_COUNT == 16, "material record must remain a 16-int shader record");
+        require(GpuMaterialRecord.BYTES == TerrainGpuRecords.MaterialRecord.LAYOUT.byteSize(), "material record byte size must match the shader's record");
+        require(GpuMaterialRecord.INT_COUNT == TerrainGpuRecords.MaterialRecord.LAYOUT.memberLayouts().size(), "material record must write one int per member of the shader's record");
+        require(GpuMaterialRecord.INT_COUNT == GpuMaterialRecord.class.getRecordComponents().length, "material record must write every one of its components");
     }
     
     private static void checkLayoutDiagnostics() {
@@ -63,15 +62,11 @@ public final class GpuMaterialRecordInvariantCheck {
     }
     
     private static int[] encode(GpuMaterialRecord record) {
-        ByteBuffer buffer = ByteBuffer.allocate(GpuMaterialRecord.BYTES).order(ByteOrder.LITTLE_ENDIAN);
-        record.write(buffer);
-        require(buffer.position() == GpuMaterialRecord.BYTES, "material record writer must write exactly one record");
-        buffer.flip();
-        int[] encoded = new int[GpuMaterialRecord.INT_COUNT];
-        for (int i = 0; i < encoded.length; i++) {
-            encoded[i] = buffer.getInt();
-        }
-        return encoded;
+        MemorySegment target = MemorySegment.ofArray(new byte[GpuMaterialRecord.BYTES + Integer.BYTES]);
+        target.fill((byte) 0x5A);
+        record.write(target);
+        require(target.get(TerrainGpuRecords.INT, GpuMaterialRecord.BYTES) == 0x5A5A5A5A, "material record writer must write exactly one record");
+        return target.asSlice(0L, GpuMaterialRecord.BYTES).toArray(TerrainGpuRecords.INT);
     }
     
     private static void require(boolean condition, String message) {

@@ -193,7 +193,13 @@ renderer code does not drift back into a catch-all root package.
   to use it.
 - `TerrainGpuLayout` is the CPU-side source of truth for terrain buffer,
   meshlet, visible-list, and push-constant layout constants that shaders depend
-  on.
+  on. `TerrainGpuRecords` declares the records the CPU writes for the GPU (page
+  records, meshlet headers, material records, task records, work-queue records
+  and mesh-task commands) as foreign-memory struct layouts named as the shaders
+  name them, and the mod writes them, and captured section data, through
+  `MemorySegment`s. Only what LWJGL or Minecraft hands over or takes as a
+  `ByteBuffer` stays one: push constants, SPIR-V, descriptors and Minecraft's
+  section buffers.
 - `DescriptorHeapTerrainResources` owns the first GPU material table: a vanilla
   terrain material record backed by captured block-atlas and lightmap texture
   bindings. `TerrainMaterialClassifier` assigns one material ID per Minecraft

@@ -3,7 +3,7 @@ package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 
-import java.nio.ByteBuffer;
+import java.lang.foreign.MemorySegment;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -40,16 +40,13 @@ final class TerrainMaterialClassifier {
         return GpuMaterialRecord.terrainLayer(materialIdForLayer(layer), layer == null ? -1 : layer.ordinal(), alphaModeForLayer(layer), blockAtlas, lightmap);
     }
     
-    static void writeTerrainLayerRecords(ByteBuffer target, TextureInfo blockAtlas, TextureInfo lightmap) {
+    static void writeTerrainLayerRecords(MemorySegment target, TextureInfo blockAtlas, TextureInfo lightmap) {
         for (ChunkSectionLayer layer : ChunkSectionLayer.values()) {
-            int materialId = materialIdForLayer(layer);
-            int position = materialId * TerrainGpuLayout.MATERIAL_RECORD_STRIDE;
-            if (position + TerrainGpuLayout.MATERIAL_RECORD_STRIDE > target.capacity()) {
+            long position = (long) materialIdForLayer(layer) * TerrainGpuLayout.MATERIAL_RECORD_STRIDE;
+            if (position + TerrainGpuLayout.MATERIAL_RECORD_STRIDE > target.byteSize()) {
                 throw new IllegalArgumentException("Terrain material table is too small for " + layer.label());
             }
-            ByteBuffer duplicate = target.duplicate().order(target.order());
-            duplicate.position(position);
-            recordForLayer(layer, blockAtlas, lightmap).write(duplicate);
+            recordForLayer(layer, blockAtlas, lightmap).write(target.asSlice(position, TerrainGpuLayout.MATERIAL_RECORD_STRIDE));
         }
     }
     

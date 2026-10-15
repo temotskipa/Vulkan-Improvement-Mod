@@ -1,6 +1,8 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
-import java.nio.ByteBuffer;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuRecords;
+
+import java.lang.foreign.MemorySegment;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -52,22 +54,11 @@ public record GpuMaterialRecord(int materialId, int flags, int blockAtlasWidth, 
         return map;
     }
     
-    void write(ByteBuffer target) {
-        target.putInt(this.materialId);
-        target.putInt(this.flags);
-        target.putInt(this.blockAtlasWidth);
-        target.putInt(this.blockAtlasHeight);
-        target.putInt(this.blockAtlasBaseMip);
-        target.putInt(this.blockAtlasMipLevels);
-        target.putInt(this.lightmapWidth);
-        target.putInt(this.lightmapHeight);
-        target.putInt(this.normalTextureIndex);
-        target.putInt(this.specularTextureIndex);
-        target.putInt(this.emissionTextureIndex);
-        target.putInt(this.tintFlags);
-        target.putInt(this.alphaMode);
-        target.putInt(this.renderLayerOrdinal);
-        target.putInt(this.materialDomain);
-        target.putInt(this.reserved0);
+    /**
+     * Writes the record at the start of a segment, in the order of {@link TerrainGpuRecords.MaterialRecord}.
+     */
+    void write(MemorySegment target) {
+        int[] values = {this.materialId, this.flags, this.blockAtlasWidth, this.blockAtlasHeight, this.blockAtlasBaseMip, this.blockAtlasMipLevels, this.lightmapWidth, this.lightmapHeight, this.normalTextureIndex, this.specularTextureIndex, this.emissionTextureIndex, this.tintFlags, this.alphaMode, this.renderLayerOrdinal, this.materialDomain, this.reserved0};
+        MemorySegment.copy(values, 0, target, TerrainGpuRecords.INT, 0L, INT_COUNT);
     }
 }

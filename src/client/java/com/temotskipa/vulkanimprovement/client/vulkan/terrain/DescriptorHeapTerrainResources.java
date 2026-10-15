@@ -11,14 +11,13 @@ import com.mojang.renderpearl.backend.vulkan.VulkanUtils;
 import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanImprovementCapabilities;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldDatabase;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuRecords;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.*;
 
 import java.lang.foreign.MemorySegment;
-import java.lang.foreign.ValueLayout;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -30,7 +29,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.LongAdder;
 
 public final class DescriptorHeapTerrainResources {
-    private static final ValueLayout.OfLong LITTLE_ENDIAN_LONG = ValueLayout.JAVA_LONG_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN);
     /**
      * The images improved fog reads, under the names Minecraft's terrain shaders give them.
      */
@@ -100,27 +98,27 @@ public final class DescriptorHeapTerrainResources {
         return INSTANCE;
     }
     
-    private static void writeSampledImageDescriptor(VulkanDevice device, MemoryStack stack, ByteBuffer descriptors, long offset, long size, TextureBinding binding) {
+    private static void writeSampledImageDescriptor(VulkanDevice device, MemoryStack stack, MemorySegment descriptors, long offset, long size, TextureBinding binding) {
         VkDescriptorImageInfo imageInfo = VkDescriptorImageInfo.calloc(stack).imageView(binding.imageView()).imageLayout(VK10.VK_IMAGE_LAYOUT_GENERAL);
         VkDescriptorGetInfoEXT descriptorInfo = VkDescriptorGetInfoEXT.calloc(stack).sType$Default().type(VK10.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
         descriptorInfo.data().pSampledImage(imageInfo);
         EXTDescriptorBuffer.vkGetDescriptorEXT(device.vkDevice(), descriptorInfo, descriptorSlice(descriptors, offset, size));
     }
     
-    private static void writeSamplerDescriptor(VulkanDevice device, MemoryStack stack, ByteBuffer descriptors, long offset, long size, TextureBinding binding) {
+    private static void writeSamplerDescriptor(VulkanDevice device, MemoryStack stack, MemorySegment descriptors, long offset, long size, TextureBinding binding) {
         VkDescriptorGetInfoEXT descriptorInfo = VkDescriptorGetInfoEXT.calloc(stack).sType$Default().type(VK10.VK_DESCRIPTOR_TYPE_SAMPLER);
         descriptorInfo.data().pSampler(stack.longs(binding.sampler()));
         EXTDescriptorBuffer.vkGetDescriptorEXT(device.vkDevice(), descriptorInfo, descriptorSlice(descriptors, offset, size));
     }
     
-    private static ByteBuffer descriptorSlice(ByteBuffer source, long offset, long size) {
-        if (offset < 0L || size <= 0L || offset + size > source.capacity() || offset + size > Integer.MAX_VALUE) {
-            throw new IllegalArgumentException("Descriptor buffer write exceeds mapped terrain descriptor buffer: offset=" + offset + ", size=" + size + ", capacity=" + source.capacity());
+    /**
+     * Where a descriptor goes, as the buffer LWJGL writes it into.
+     */
+    private static ByteBuffer descriptorSlice(MemorySegment descriptors, long offset, long size) {
+        if (offset < 0L || size <= 0L || offset + size > descriptors.byteSize()) {
+            throw new IllegalArgumentException("Descriptor buffer write exceeds mapped terrain descriptor buffer: offset=" + offset + ", size=" + size + ", capacity=" + descriptors.byteSize());
         }
-        ByteBuffer duplicate = source.duplicate();
-        duplicate.position((int) offset);
-        duplicate.limit((int) (offset + size));
-        return duplicate.slice().order(ByteOrder.LITTLE_ENDIAN);
+        return descriptors.asSlice(offset, size).asByteBuffer();
     }
     
     private static TextureInfo textureInfo(TextureBinding binding) {
@@ -393,7 +391,7 @@ public final class DescriptorHeapTerrainResources {
         VkBufferCopy.Buffer recordRegions = VkBufferCopy.calloc(uploads.size());
         try {
             if (staging != null) {
-                ByteBuffer staged = staging.mappedByteBuffer();
+                MemorySegment staged = staging.mapped();
                 long cursor = 0L;
                 for (SectionMeshletStore.PageUpload upload : uploads) {
                     ResidentTerrainPages.Page page = upload.page();
@@ -451,12 +449,12 @@ public final class DescriptorHeapTerrainResources {
         }
     }
     
-    private static long stage(ByteBuffer staged, long cursor, ByteBuffer source, VkBufferCopy.Buffer regions, long targetOffset) {
-        int length = source.remaining();
-        if (length == 0) {
+    private static long stage(MemorySegment staged, long cursor, MemorySegment source, VkBufferCopy.Buffer regions, long targetOffset) {
+        long length = source.byteSize();
+        if (length == 0L) {
             return cursor;
         }
-        staged.put(Math.toIntExact(cursor), source, source.position(), length);
+        MemorySegment.copy(source, 0L, staged, cursor, length);
         regions.get().srcOffset(cursor).dstOffset(targetOffset).size(length);
         return cursor + length;
     }
@@ -640,7 +638,7 @@ public final class DescriptorHeapTerrainResources {
         if (write.equals(this.lastDescriptorWrite)) {
             return true;
         }
-        ByteBuffer descriptors = activeResources.resourceDescriptorBuffer().mappedByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
+        MemorySegment descriptors = activeResources.resourceDescriptorBuffer().mapped();
         try (MemoryStack stack = MemoryStack.stackPush()) {
             writeSampledImageDescriptor(device, stack, descriptors, textureLayout.blockAtlasImageOffset(), textureLayout.sampledImageDescriptorBytes(), blockAtlas);
             writeSamplerDescriptor(device, stack, descriptors, textureLayout.blockAtlasSamplerOffset(), textureLayout.samplerDescriptorBytes(), blockAtlas);
@@ -669,8 +667,7 @@ public final class DescriptorHeapTerrainResources {
             return;
         }
         
-        ByteBuffer materials = materialTable.mappedByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
-        TerrainMaterialClassifier.writeTerrainLayerRecords(materials, textureInfo(blockAtlas), textureInfo(lightmap));
+        TerrainMaterialClassifier.writeTerrainLayerRecords(materialTable.mapped(), textureInfo(blockAtlas), textureInfo(lightmap));
         materialTable.flush();
         this.materialTableWrites.increment();
     }
@@ -690,9 +687,9 @@ public final class DescriptorHeapTerrainResources {
             return new long[3];
         }
         buffer.invalidate();
-        ByteBuffer counters = buffer.mappedByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
-        int base = TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET;
-        return new long[]{Integer.toUnsignedLong(counters.getInt(base)), Integer.toUnsignedLong(counters.getInt(base + Integer.BYTES)), Integer.toUnsignedLong(counters.getInt(base + 2 * Integer.BYTES))};
+        MemorySegment counters = buffer.mapped();
+        long base = TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET;
+        return new long[]{Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, base)), Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, base + Integer.BYTES)), Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, base + 2 * Integer.BYTES))};
     }
     
     /**
@@ -729,14 +726,14 @@ public final class DescriptorHeapTerrainResources {
         if (allocation.wrapped()) {
             this.visibleMeshletRingWraps.increment();
         }
-        ByteBuffer records = ring.mappedByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
-        records.position(allocation.offset() * TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE);
+        MemorySegment records = ring.mapped();
+        long record = (long) allocation.offset() * TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE;
         for (int page = from; page < to; page++) {
             int slot = pages.slot(page);
             float visibility = Math.clamp(pages.visibility(page), 0.0F, 1.0F);
-            for (int task = 0, tasks = pages.tasks(page); task < tasks; task++) {
-                records.putInt(slot | task << TerrainGpuLayout.TASK_RECORD_PAGE_BITS);
-                records.putFloat(visibility);
+            for (int task = 0, tasks = pages.tasks(page); task < tasks; task++, record += TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE) {
+                records.set(TerrainGpuRecords.INT, record + TerrainGpuRecords.VisibleRecord.MESHLET_INDEX, slot | task << TerrainGpuLayout.TASK_RECORD_PAGE_BITS);
+                records.set(TerrainGpuRecords.FLOAT, record + TerrainGpuRecords.VisibleRecord.VISIBILITY, visibility);
             }
         }
         ring.flush((long) allocation.offset() * TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE, (long) count * TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE);
@@ -786,9 +783,9 @@ public final class DescriptorHeapTerrainResources {
         }
         long offsetBytes = (long) allocation.offset() * TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE;
         long counterBytes = (long) TerrainGpuLayout.SECTION_PAGES_COUNTER_RECORDS * TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE;
-        MemorySegment frame = ring.mappedSegment().asSlice(offsetBytes, (long) written * TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE);
+        MemorySegment frame = ring.mapped().asSlice(offsetBytes, (long) written * TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE);
         frame.asSlice(0L, counterBytes).fill((byte) 0);
-        MemorySegment.copy(sections.words(), 0, frame, LITTLE_ENDIAN_LONG, counterBytes, sections.wordCount());
+        MemorySegment.copy(sections.words(), 0, frame, TerrainGpuRecords.LONG, counterBytes, sections.wordCount());
         ring.flush(offsetBytes, frame.byteSize());
         this.gpuDrivenFrameUploads.increment();
         return new GpuDrivenFrame(ring.deviceAddress(), allocation.offset(), allocation.offset() + written, true);
@@ -836,13 +833,13 @@ public final class DescriptorHeapTerrainResources {
         if (allocation.wrapped()) {
             this.visibleMeshletRingWraps.increment();
         }
-        ByteBuffer visibleRecords = visibleMeshlets.mappedByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
-        visibleRecords.position(firstRecord * TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE);
+        MemorySegment visibleRecords = visibleMeshlets.mapped();
+        long record = (long) firstRecord * TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE;
         for (SectionMeshletStore.MeshletRange range : ranges) {
             float visibility = Math.clamp(range.visibility(), 0.0F, 1.0F);
-            for (int i = 0; i < range.count(); i++) {
-                visibleRecords.putInt(range.offset() + i);
-                visibleRecords.putFloat(visibility);
+            for (int i = 0; i < range.count(); i++, record += TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE) {
+                visibleRecords.set(TerrainGpuRecords.INT, record + TerrainGpuRecords.VisibleRecord.MESHLET_INDEX, range.offset() + i);
+                visibleRecords.set(TerrainGpuRecords.FLOAT, record + TerrainGpuRecords.VisibleRecord.VISIBILITY, visibility);
             }
         }
         visibleMeshlets.flush();
@@ -850,65 +847,6 @@ public final class DescriptorHeapTerrainResources {
         this.visibleMeshletRecordsUploaded.add(requiredRecords);
         this.lastVisibleMeshletUpload = VisibleMeshletStats.fromAllocation(requiredRecords, 0, allocation);
         return new VisibleMeshletUpload(firstRecord, requiredRecords, visibleMeshlets.deviceAddress(), 0, true);
-    }
-    
-    public synchronized TerrainWorkQueueUpload writeLayerWorkQueue(int meshletOffset, int layerOrdinal, int requestedRecords) {
-        if (requestedRecords <= 0) {
-            this.lastWorkQueueUpload = TerrainWorkQueueStats.unavailable(0, workQueueRecordCapacity(), this.workQueueCursor, "no terrain work queue records requested", false);
-            return TerrainWorkQueueUpload.unavailable(0);
-        }
-        
-        TerrainGpuBuffer workQueue = this.resources.workQueue();
-        if (workQueue == null || workQueue.deviceAddress() == 0L || !workQueue.hostVisible()) {
-            this.lastWorkQueueUpload = TerrainWorkQueueStats.unavailable(requestedRecords, 0, this.workQueueCursor, "terrain work queue buffer unavailable", false);
-            this.terrainWorkQueueRecordsDropped.add(requestedRecords);
-            return TerrainWorkQueueUpload.unavailable(requestedRecords);
-        }
-        
-        int capacity = workQueueRecordCapacity(workQueue);
-        if (requestedRecords > capacity) {
-            this.lastWorkQueueUpload = TerrainWorkQueueStats.unavailable(requestedRecords, capacity, this.workQueueCursor, "terrain work queue records exceed capacity", false);
-            this.terrainWorkQueueRecordsDropped.add(requestedRecords);
-            return TerrainWorkQueueUpload.unavailable(requestedRecords);
-        }
-        
-        boolean wrapped = false;
-        if (this.workQueueCursor + requestedRecords > capacity) {
-            if (!awaitRingLap(Ring.WORK_QUEUE)) {
-                this.terrainWorkQueueDeferrals.increment();
-                this.lastWorkQueueUpload = TerrainWorkQueueStats.unavailable(requestedRecords, capacity, this.workQueueCursor, "terrain work queue wrap requires the frame that began the lap to finish", true);
-                return TerrainWorkQueueUpload.unavailable(requestedRecords);
-            }
-            this.workQueueCursor = 0;
-            wrapped = true;
-        }
-        
-        int firstRecord = this.workQueueCursor;
-        if (firstRecord == 0) {
-            beginRingLap(Ring.WORK_QUEUE);
-        }
-        this.workQueueCursor += requestedRecords;
-        ByteBuffer queue = workQueue.mappedByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
-        queue.position(0);
-        queue.putInt(requestedRecords);
-        queue.putInt(0);
-        queue.putInt(0);
-        queue.putInt(0);
-        queue.position((int) TerrainWorkQueueLayout.recordOffset(firstRecord));
-        for (int i = 0; i < requestedRecords; i++) {
-            queue.putInt(meshletOffset + i);
-            queue.putInt(layerOrdinal);
-            queue.putInt(0);
-            queue.putInt(0);
-        }
-        workQueue.flush();
-        this.terrainWorkQueueUploads.increment();
-        this.terrainWorkQueueRecordsUploaded.add(requestedRecords);
-        if (wrapped) {
-            this.terrainWorkQueueRingWraps.increment();
-        }
-        this.lastWorkQueueUpload = new TerrainWorkQueueStats(requestedRecords, 0, firstRecord, capacity, this.workQueueCursor, wrapped, false, "");
-        return new TerrainWorkQueueUpload(firstRecord, requestedRecords, workQueue.deviceAddress(), 0, true);
     }
     
     public synchronized TerrainWorkQueueUpload writeVisibleWorkQueue(List<SectionMeshletStore.MeshletRange> ranges, int layerOrdinal) {
@@ -948,19 +886,16 @@ public final class DescriptorHeapTerrainResources {
             beginRingLap(Ring.WORK_QUEUE);
         }
         this.workQueueCursor += requiredRecords;
-        ByteBuffer queue = workQueue.mappedByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
-        queue.position(0);
-        queue.putInt(requiredRecords);
-        queue.putInt(0);
-        queue.putInt(0);
-        queue.putInt(0);
-        queue.position((int) TerrainWorkQueueLayout.recordOffset(firstRecord));
+        MemorySegment queue = workQueue.mapped();
+        queue.asSlice(0L, TerrainGpuLayout.TERRAIN_WORK_QUEUE_COUNTER_BYTES).fill((byte) 0);
+        queue.set(TerrainGpuRecords.INT, 0L, requiredRecords);
+        long record = TerrainWorkQueueLayout.recordOffset(firstRecord);
         for (SectionMeshletStore.MeshletRange range : ranges) {
-            for (int i = 0; i < range.count(); i++) {
-                queue.putInt(range.offset() + i);
-                queue.putInt(layerOrdinal);
-                queue.putInt(0);
-                queue.putInt(0);
+            for (int i = 0; i < range.count(); i++, record += TerrainGpuLayout.TERRAIN_WORK_QUEUE_RECORD_STRIDE) {
+                queue.set(TerrainGpuRecords.INT, record + TerrainGpuRecords.WorkQueueRecord.MESHLET_INDEX, range.offset() + i);
+                queue.set(TerrainGpuRecords.INT, record + TerrainGpuRecords.WorkQueueRecord.LAYER_ORDINAL, layerOrdinal);
+                queue.set(TerrainGpuRecords.INT, record + TerrainGpuRecords.WorkQueueRecord.LOD_LEVEL, 0);
+                queue.set(TerrainGpuRecords.INT, record + TerrainGpuRecords.WorkQueueRecord.FLAGS, 0);
             }
         }
         workQueue.flush();
@@ -980,11 +915,7 @@ public final class DescriptorHeapTerrainResources {
         }
         
         TerrainGpuBuffer meshTaskCommands = this.resources.meshTaskCommands();
-        ByteBuffer commands = meshTaskCommands.mappedByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
-        commands.position((int) upload.offsetBytes());
-        commands.putInt(taskCount);
-        commands.putInt(1);
-        commands.putInt(1);
+        writeMeshTaskCommand(meshTaskCommands.mapped(), upload.offsetBytes(), taskCount);
         meshTaskCommands.flush();
         this.terrainMeshTaskCommandUploads.increment();
         return upload;
@@ -999,15 +930,20 @@ public final class DescriptorHeapTerrainResources {
         TerrainMeshTaskCommandUpload upload = allocateMeshTaskCommand(taskCount, true);
         if (upload.ready()) {
             TerrainGpuBuffer meshTaskCommands = this.resources.meshTaskCommands();
-            ByteBuffer commands = meshTaskCommands.mappedByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
-            int offset = (int) upload.offsetBytes();
-            commands.putInt(offset, 0);
-            commands.putInt(offset + Integer.BYTES, 1);
-            commands.putInt(offset + 2 * Integer.BYTES, 1);
+            writeMeshTaskCommand(meshTaskCommands.mapped(), upload.offsetBytes(), 0);
             meshTaskCommands.flush();
             this.terrainMeshTaskCommandReservations.increment();
         }
         return upload;
+    }
+    
+    /**
+     * A command that launches some tasks in one row of one layer.
+     */
+    private static void writeMeshTaskCommand(MemorySegment commands, long offset, int taskCount) {
+        commands.set(TerrainGpuRecords.INT, offset + TerrainGpuRecords.MeshTaskCommand.GROUP_COUNT_X, taskCount);
+        commands.set(TerrainGpuRecords.INT, offset + TerrainGpuRecords.MeshTaskCommand.GROUP_COUNT_Y, 1);
+        commands.set(TerrainGpuRecords.INT, offset + TerrainGpuRecords.MeshTaskCommand.GROUP_COUNT_Z, 1);
     }
     
     private TerrainMeshTaskCommandUpload allocateMeshTaskCommand(int taskCount, boolean gpuGenerated) {
@@ -1152,11 +1088,6 @@ public final class DescriptorHeapTerrainResources {
     }
     
     /**
-     * @param inputOffset  where the frame's visible pages of a layer start in the visible list
-     * @param outputOffset where the GPU writes the pages it keeps
-     * @param count        how many pages were listed; no more can be kept
-     */
-    /**
      * Where a GPU-driven frame's data went in the visible list: the list's address, the record the
      * frame's counters begin at, followed by the sections in view, and the record the task records
      * begin at, one layer after another.
@@ -1167,6 +1098,11 @@ public final class DescriptorHeapTerrainResources {
         }
     }
     
+    /**
+     * @param inputOffset  where the frame's visible pages of a layer start in the visible list
+     * @param outputOffset where the GPU writes the pages it keeps
+     * @param count        how many pages were listed; no more can be kept
+     */
     public record VisiblePageUpload(int inputOffset, int outputOffset, int count, long address, boolean ready) {
         static VisiblePageUpload unavailable() {
             return new VisiblePageUpload(0, 0, 0, 0L, false);
@@ -1282,8 +1218,8 @@ public final class DescriptorHeapTerrainResources {
     }
     
     public record Layout(boolean configured, boolean descriptorHeapEnabled, boolean descriptorBufferEnabled, int sectionCapacity, int meshletCapacity, long vertexPayloadBytes, long indexPayloadBytes, long visibleMeshletBytes, long workQueueBytes, long meshTaskCommandBytes, long materialTableBytes, long samplerHeapBytes, long resourceHeapBytes, long samplerDescriptorBufferBytes, long resourceDescriptorBufferBytes, long sectionMetadataBytes, long meshletHeaderBytes, long samplerDescriptorBytes, long imageDescriptorBytes, long bufferDescriptorBytes, long descriptorBufferAlignment, long descriptorBufferSamplerDescriptorBytes, long descriptorBufferSampledImageDescriptorBytes, long descriptorBufferUniformBufferDescriptorBytes, long descriptorBufferStorageBufferDescriptorBytes, Map<String, String> slots) {
-        // Java ByteBuffer and LWJGL MemoryUtil.memByteBuffer cannot wrap segments >= Integer.MAX_VALUE.
-        // Cap host-mapped GPU buffers at 1 GiB which is a safe power-of-two well under that limit.
+        // LWJGL hands mapped memory over as a buffer an int indexes (see TerrainGpuBuffer.mapped()).
+        // Cap host-mapped GPU buffers at 1 GiB, a power of two well under that limit.
         private static final long MAX_HOST_MAPPED_BUFFER_BYTES = 1L << 30;
         
         static Layout unconfigured() {
@@ -1608,23 +1544,14 @@ public final class DescriptorHeapTerrainResources {
         
         void clearDebugCounters() {
             if (this.debugCounters != null) {
-                ByteBuffer counters = this.debugCounters.mappedByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
-                counters.clear();
-                for (int i = 0; i < TerrainGpuLayout.DEBUG_COUNTER_BYTES / Integer.BYTES; i++) {
-                    counters.putInt(0);
-                }
+                this.debugCounters.mapped().asSlice(0L, TerrainGpuLayout.DEBUG_COUNTER_BYTES).fill((byte) 0);
                 this.debugCounters.flush();
             }
         }
         
         void clearWorkQueueCounters() {
             if (this.workQueue != null) {
-                ByteBuffer counters = this.workQueue.mappedByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
-                counters.clear();
-                int counterInts = TerrainGpuLayout.TERRAIN_WORK_QUEUE_COUNTER_BYTES / Integer.BYTES;
-                for (int i = 0; i < counterInts; i++) {
-                    counters.putInt(0);
-                }
+                this.workQueue.mapped().asSlice(0L, TerrainGpuLayout.TERRAIN_WORK_QUEUE_COUNTER_BYTES).fill((byte) 0);
                 this.workQueue.flush();
             }
         }
@@ -1634,12 +1561,12 @@ public final class DescriptorHeapTerrainResources {
             map.put("allocated", this.debugCounters != null);
             if (this.debugCounters != null) {
                 this.debugCounters.invalidate();
-                ByteBuffer counters = this.debugCounters.mappedByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
+                MemorySegment counters = this.debugCounters.mapped();
                 // Counted only where the mesh stage culls meshlets itself, on the CPU work-queue path.
-                map.put("culledMeshlets", Integer.toUnsignedLong(counters.getInt(4)));
-                map.put("visibilityInputPages", Integer.toUnsignedLong(counters.getInt(TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET)));
-                map.put("visibilityCulledPages", Integer.toUnsignedLong(counters.getInt(TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET + Integer.BYTES)));
-                map.put("visibilityVisiblePages", Integer.toUnsignedLong(counters.getInt(TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET + 2 * Integer.BYTES)));
+                map.put("culledMeshlets", Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, 4L)));
+                map.put("visibilityInputPages", Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET)));
+                map.put("visibilityCulledPages", Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET + Integer.BYTES)));
+                map.put("visibilityVisiblePages", Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET + 2 * Integer.BYTES)));
             }
             return map;
         }
