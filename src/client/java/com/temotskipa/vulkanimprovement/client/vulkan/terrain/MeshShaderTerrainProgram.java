@@ -7,6 +7,9 @@ import com.mojang.renderpearl.backend.vulkan.VulkanCommandEncoder;
 import com.mojang.renderpearl.backend.vulkan.VulkanConst;
 import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
 import com.mojang.renderpearl.backend.vulkan.VulkanUtils;
+import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ComputePipeline;
+import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ShaderCompiler;
+import com.temotskipa.vulkanimprovement.client.vulkan.gpu.VulkanObjectNames;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
@@ -43,9 +46,9 @@ public final class MeshShaderTerrainProgram {
     private volatile long meshModule;
     private volatile long fragmentModule;
     private volatile long commandModule;
-    private volatile CommandPipeline commandPipeline;
+    private volatile ComputePipeline commandPipeline;
     private volatile long sectionPagesModule;
-    private volatile CommandPipeline sectionPagesPipeline;
+    private volatile ComputePipeline sectionPagesPipeline;
     private volatile String lastError = "";
     private volatile String taskShaderCompileSource = "unconfigured";
     private volatile String meshShaderCompileSource = "unconfigured";
@@ -176,19 +179,21 @@ public final class MeshShaderTerrainProgram {
     public synchronized void configure(VulkanDevice device) {
         shutdown();
         this.device = device;
-        try (Compiler compiler = new Compiler()) {
-            this.taskModule = compiler.compile(device, TerrainShaderSource.TASK_SHADER, TerrainShaderSource.TASK_SHADER_SPIRV, Shaderc.shaderc_task_shader, TerrainShaderSource.load(TerrainShaderSource.TASK_SHADER));
+        try (ShaderCompiler compiler = new ShaderCompiler()) {
+            this.taskModule = compiler.compile(device, TerrainShaderSource.TASK_SHADER, TerrainShaderSource.TASK_SHADER_SPIRV, Shaderc.shaderc_task_shader);
             this.taskShaderCompileSource = compiler.lastCompileSource();
-            this.meshModule = compiler.compile(device, TerrainShaderSource.MESH_SHADER, TerrainShaderSource.MESH_SHADER_SPIRV, Shaderc.shaderc_mesh_shader, TerrainShaderSource.load(TerrainShaderSource.MESH_SHADER));
+            this.meshModule = compiler.compile(device, TerrainShaderSource.MESH_SHADER, TerrainShaderSource.MESH_SHADER_SPIRV, Shaderc.shaderc_mesh_shader);
             this.meshShaderCompileSource = compiler.lastCompileSource();
-            this.fragmentModule = compiler.compile(device, TerrainShaderSource.FRAGMENT_SHADER, TerrainShaderSource.FRAGMENT_SHADER_SPIRV, Shaderc.shaderc_fragment_shader, TerrainShaderSource.load(TerrainShaderSource.FRAGMENT_SHADER));
+            this.fragmentModule = compiler.compile(device, TerrainShaderSource.FRAGMENT_SHADER, TerrainShaderSource.FRAGMENT_SHADER_SPIRV, Shaderc.shaderc_fragment_shader);
             this.fragmentShaderCompileSource = compiler.lastCompileSource();
-            this.commandModule = compiler.compile(device, TerrainShaderSource.MESH_TASK_COMMAND_SHADER, TerrainShaderSource.MESH_TASK_COMMAND_SHADER_SPIRV, Shaderc.shaderc_compute_shader, TerrainShaderSource.load(TerrainShaderSource.MESH_TASK_COMMAND_SHADER));
+            this.commandModule = compiler.compile(device, TerrainShaderSource.MESH_TASK_COMMAND_SHADER, TerrainShaderSource.MESH_TASK_COMMAND_SHADER_SPIRV, Shaderc.shaderc_compute_shader);
             this.commandShaderCompileSource = compiler.lastCompileSource();
-            this.sectionPagesModule = compiler.compile(device, TerrainShaderSource.VISIBLE_SECTION_PAGES_SHADER, TerrainShaderSource.VISIBLE_SECTION_PAGES_SHADER_SPIRV, Shaderc.shaderc_compute_shader, TerrainShaderSource.load(TerrainShaderSource.VISIBLE_SECTION_PAGES_SHADER));
+            this.sectionPagesModule = compiler.compile(device, TerrainShaderSource.VISIBLE_SECTION_PAGES_SHADER, TerrainShaderSource.VISIBLE_SECTION_PAGES_SHADER_SPIRV, Shaderc.shaderc_compute_shader);
             this.sectionPagesShaderCompileSource = compiler.lastCompileSource();
-            this.commandPipeline = createComputePipeline(device, this.commandModule, TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_PUSH_CONSTANT_BYTES, "VIM Terrain Mesh Task Command");
-            this.sectionPagesPipeline = createComputePipeline(device, this.sectionPagesModule, TerrainGpuLayout.SECTION_PAGES_PUSH_CONSTANT_BYTES, "VIM Terrain Visible Section Pages");
+            this.commandPipeline = ComputePipeline.create(device, this.commandModule, TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_PUSH_CONSTANT_BYTES, "VIM Terrain Mesh Task Command");
+            this.pipelineCompiles.increment();
+            this.sectionPagesPipeline = ComputePipeline.create(device, this.sectionPagesModule, TerrainGpuLayout.SECTION_PAGES_PUSH_CONSTANT_BYTES, "VIM Terrain Visible Section Pages");
+            this.pipelineCompiles.increment();
             this.lastError = "";
             VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_SHADER_MODULE, this.taskModule, "VIM Terrain Task Shader");
             VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_SHADER_MODULE, this.meshModule, "VIM Terrain Mesh Shader");
@@ -209,12 +214,12 @@ public final class MeshShaderTerrainProgram {
                 pipeline.destroy(activeDevice);
             }
             this.pipelineCache.clear();
-            CommandPipeline activeCommandPipeline = this.commandPipeline;
-            if (activeCommandPipeline != null) {
-                activeCommandPipeline.destroy(activeDevice);
+            ComputePipeline activeComputePipeline = this.commandPipeline;
+            if (activeComputePipeline != null) {
+                activeComputePipeline.destroy(activeDevice);
             }
             this.commandPipeline = null;
-            CommandPipeline activeSectionPagesPipeline = this.sectionPagesPipeline;
+            ComputePipeline activeSectionPagesPipeline = this.sectionPagesPipeline;
             if (activeSectionPagesPipeline != null) {
                 activeSectionPagesPipeline.destroy(activeDevice);
             }
@@ -326,7 +331,7 @@ public final class MeshShaderTerrainProgram {
      */
     public synchronized boolean prepareVisiblePageCommands(List<PreparedPages> layers) {
         VulkanDevice activeDevice = this.device;
-        CommandPipeline pipeline = this.commandPipeline;
+        ComputePipeline pipeline = this.commandPipeline;
         if (activeDevice == null || pipeline == null || layers.isEmpty()) {
             return false;
         }
@@ -358,7 +363,7 @@ public final class MeshShaderTerrainProgram {
         return true;
     }
     
-    private void recordVisiblePageCommand(VkCommandBuffer commandBuffer, CommandPipeline pipeline, TerrainMeshTaskDispatch dispatch, DescriptorHeapTerrainResources.VisiblePageUpload pages, MemoryStack stack) {
+    private void recordVisiblePageCommand(VkCommandBuffer commandBuffer, ComputePipeline pipeline, TerrainMeshTaskDispatch dispatch, DescriptorHeapTerrainResources.VisiblePageUpload pages, MemoryStack stack) {
         DescriptorHeapTerrainResources resources = DescriptorHeapTerrainResources.get();
         long commandBaseAddress = dispatch.indirectCommandAddress() - dispatch.indirectCommandOffset();
         int commandIndex = (int) (dispatch.indirectCommandOffset() / dispatch.indirectCommandStride());
@@ -394,7 +399,7 @@ public final class MeshShaderTerrainProgram {
      */
     synchronized boolean prepareGpuDrivenPages(DescriptorHeapTerrainResources.GpuDrivenFrame frame, VisibleSectionGrid sections, int slotCount, int[] layerOutputs, int[] layerCommands, int fadeMillis) {
         VulkanDevice activeDevice = this.device;
-        CommandPipeline pipeline = this.sectionPagesPipeline;
+        ComputePipeline pipeline = this.sectionPagesPipeline;
         if (activeDevice == null || pipeline == null || !frame.ready() || slotCount <= 0) {
             return false;
         }
@@ -603,28 +608,6 @@ public final class MeshShaderTerrainProgram {
         bindings.apply(index, binding -> binding.binding(index).descriptorType(descriptorType).descriptorCount(1).stageFlags(stages));
     }
     
-    private CommandPipeline createComputePipeline(VulkanDevice device, long module, int pushConstantBytes, String name) {
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            VkPushConstantRange.Buffer pushConstantRanges = VkPushConstantRange.calloc(1, stack).stageFlags(VK10.VK_SHADER_STAGE_COMPUTE_BIT).offset(0).size(pushConstantBytes);
-            VkPipelineLayoutCreateInfo layoutCreateInfo = VkPipelineLayoutCreateInfo.calloc(stack).sType$Default().pPushConstantRanges(pushConstantRanges);
-            LongBuffer layoutHandle = stack.callocLong(1);
-            VulkanUtils.crashIfFailure(device, VK12.vkCreatePipelineLayout(device.vkDevice(), layoutCreateInfo, null, layoutHandle), "Failed to create " + name + " pipeline layout");
-            long pipelineLayout = layoutHandle.get(0);
-            
-            ByteBuffer entryPoint = stack.UTF8("main");
-            VkPipelineShaderStageCreateInfo shaderStage = VkPipelineShaderStageCreateInfo.calloc(stack).sType$Default().stage(VK10.VK_SHADER_STAGE_COMPUTE_BIT).module(module).pName(entryPoint);
-            VkComputePipelineCreateInfo.Buffer pipelineCreateInfo = VkComputePipelineCreateInfo.calloc(1, stack).sType$Default().stage(shaderStage).layout(pipelineLayout);
-            
-            LongBuffer pipelineHandle = stack.callocLong(1);
-            VulkanUtils.crashIfFailure(device, VK12.vkCreateComputePipelines(device.vkDevice(), 0L, pipelineCreateInfo, null, pipelineHandle), "Failed to create " + name + " compute pipeline");
-            long pipeline = pipelineHandle.get(0);
-            VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_PIPELINE_LAYOUT, pipelineLayout, name + " Pipeline Layout");
-            VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_PIPELINE, pipeline, name + " Pipeline");
-            this.pipelineCompiles.increment();
-            return new CommandPipeline(pipeline, pipelineLayout);
-        }
-    }
-    
     private record PipelineKey(TerrainPipelineState state, boolean alphaTest) {
     }
     
@@ -639,74 +622,6 @@ public final class MeshShaderTerrainProgram {
             if (this.textureDescriptorSetLayout != 0L) {
                 VK12.vkDestroyDescriptorSetLayout(device.vkDevice(), this.textureDescriptorSetLayout, null);
             }
-        }
-    }
-    
-    private record CommandPipeline(long handle, long layout) {
-        private void destroy(VulkanDevice device) {
-            if (this.handle != 0L) {
-                VK12.vkDestroyPipeline(device.vkDevice(), this.handle, null);
-            }
-            if (this.layout != 0L) {
-                VK12.vkDestroyPipelineLayout(device.vkDevice(), this.layout, null);
-            }
-        }
-    }
-    
-    private static final class Compiler implements AutoCloseable {
-        private final long compiler = Shaderc.shaderc_compiler_initialize();
-        private final long options = Shaderc.shaderc_compile_options_initialize();
-        private String lastCompileSource = "unconfigured";
-        
-        private Compiler() {
-            Shaderc.shaderc_compile_options_set_target_env(this.options, Shaderc.shaderc_target_env_vulkan, Shaderc.shaderc_env_version_vulkan_1_4);
-            Shaderc.shaderc_compile_options_set_target_spirv(this.options, Shaderc.shaderc_spirv_version_1_6);
-            Shaderc.shaderc_compile_options_set_optimization_level(this.options, Shaderc.shaderc_optimization_level_zero);
-            Shaderc.shaderc_compile_options_set_generate_debug_info(this.options);
-        }
-        
-        private static long createShaderModule(VulkanDevice device, String filename, ByteBuffer spirv) {
-            try (MemoryStack stack = MemoryStack.stackPush()) {
-                VkShaderModuleCreateInfo moduleCreateInfo = VkShaderModuleCreateInfo.calloc(stack).sType$Default();
-                moduleCreateInfo.pCode(Objects.requireNonNull(spirv));
-                long[] module = new long[1];
-                VulkanUtils.crashIfFailure(device, VK12.vkCreateShaderModule(device.vkDevice(), moduleCreateInfo, null, module), "Failed to create " + filename);
-                return module[0];
-            }
-        }
-        
-        private String lastCompileSource() {
-            return this.lastCompileSource;
-        }
-        
-        private long compile(VulkanDevice device, String glslResource, String spirvResource, int shaderKind, String source) {
-            ByteBuffer precompiled = TerrainShaderSource.loadSpirv(spirvResource);
-            if (precompiled != null) {
-                this.lastCompileSource = "precompiled-spirv";
-                return createShaderModule(device, glslResource, precompiled);
-            }
-            this.lastCompileSource = "runtime-shaderc";
-            return compileFromSource(device, glslResource, shaderKind, source);
-        }
-        
-        private long compileFromSource(VulkanDevice device, String filename, int shaderKind, String source) {
-            long result = Shaderc.shaderc_compile_into_spv(this.compiler, source, shaderKind, filename, "main", this.options);
-            try {
-                int status = Shaderc.shaderc_result_get_compilation_status(result);
-                if (status != Shaderc.shaderc_compilation_status_success) {
-                    throw new IllegalStateException("Failed to compile " + filename + ": " + Shaderc.shaderc_result_get_error_message(result));
-                }
-                ByteBuffer spirv = Shaderc.shaderc_result_get_bytes(result);
-                return createShaderModule(device, filename, spirv);
-            } finally {
-                Shaderc.shaderc_result_release(result);
-            }
-        }
-        
-        @Override
-        public void close() {
-            Shaderc.shaderc_compile_options_release(this.options);
-            Shaderc.shaderc_compiler_release(this.compiler);
         }
     }
 }

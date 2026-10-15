@@ -1,4 +1,4 @@
-package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
+package com.temotskipa.vulkanimprovement.client.vulkan.gpu;
 
 import com.mojang.renderpearl.backend.vulkan.Destroyable;
 import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
@@ -19,7 +19,11 @@ import java.lang.foreign.MemorySegment;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 
-final class TerrainGpuBuffer implements Destroyable {
+/**
+ * A Vulkan buffer of the mod's, reached by the GPU through its device address and, where it is
+ * mapped, by the CPU through a checked segment.
+ */
+public final class DeviceBuffer implements Destroyable {
     private final VulkanDevice device;
     private final String label;
     private final long vkBuffer;
@@ -42,7 +46,7 @@ final class TerrainGpuBuffer implements Destroyable {
     /**
      * Where a buffer's memory lives and how the CPU reaches it.
      */
-    enum Placement {
+    public enum Placement {
         /**
          * Device memory the CPU cannot map; written by copies only.
          */
@@ -62,7 +66,7 @@ final class TerrainGpuBuffer implements Destroyable {
         HOST
     }
     
-    TerrainGpuBuffer(VulkanDevice device, String label, long size, int usage, Placement placement) {
+    public DeviceBuffer(VulkanDevice device, String label, long size, int usage, Placement placement) {
         this.device = device;
         this.label = label;
         this.size = size;
@@ -85,7 +89,7 @@ final class TerrainGpuBuffer implements Destroyable {
             LongBuffer bufferPtr = stack.callocLong(1);
             PointerBuffer allocationPtr = stack.callocPointer(1);
             VmaAllocationInfo allocationResult = VmaAllocationInfo.calloc(stack);
-            VulkanUtils.crashIfFailure(device, Vma.vmaCreateBuffer(device.vma(), bufferInfo, allocationInfo, bufferPtr, allocationPtr, allocationResult), "Failed to allocate Vulkan Improvement terrain buffer " + label);
+            VulkanUtils.crashIfFailure(device, Vma.vmaCreateBuffer(device.vma(), bufferInfo, allocationInfo, bufferPtr, allocationPtr, allocationResult), "Failed to allocate Vulkan Improvement buffer " + label);
             this.vkBuffer = bufferPtr.get(0);
             this.allocation = allocationPtr.get(0);
             this.mappedAddress = allocationResult.pMappedData();
@@ -115,63 +119,62 @@ final class TerrainGpuBuffer implements Destroyable {
         return VK12.vkGetBufferDeviceAddress(device.vkDevice(), addressInfo);
     }
     
-    long vkBuffer() {
+    public long vkBuffer() {
         return this.vkBuffer;
     }
     
-    String label() {
+    public String label() {
         return this.label;
     }
     
-    String vkBufferHex() {
+    public String vkBufferHex() {
         return "0x" + Long.toUnsignedString(this.vkBuffer, 16);
     }
     
-    boolean closed() {
+    public boolean closed() {
         return this.closed;
     }
     
-    boolean destroyed() {
+    public boolean destroyed() {
         return this.destroyed;
     }
     
-    long size() {
+    public long size() {
         return this.size;
     }
     
-    long deviceAddress() {
+    public long deviceAddress() {
         return this.deviceAddress;
     }
     
-    boolean hostVisible() {
+    public boolean hostVisible() {
         return this.mappedAddress != 0L;
     }
     
     /**
-     * The mapped memory, written and read at offsets in the layouts of {@code TerrainGpuRecords}
-     * until the buffer is given back.
+     * The mapped memory, written and read until the buffer is given back.
      */
-    MemorySegment mapped() {
+    public MemorySegment mapped() {
         if (this.mapped == null) {
             throw new IllegalStateException(this.label + " is not host visible");
         }
         return this.mapped;
     }
     
-    void flush() {
+    public void flush() {
         flush(0L, this.size);
     }
     
     /**
      * Makes what the CPU wrote to a range visible to the GPU.
      */
-    void flush(long offset, long length) {
+    public void flush(long offset, long length) {
         if (this.mappedAddress != 0L && !this.coherent && length > 0L) {
             Vma.vmaFlushAllocation(this.device.vma(), this.allocation, offset, length);
         }
     }
     
-    void invalidate() {
+    public void invalidate() {
         if (this.mappedAddress != 0L && !this.coherent) {
             Vma.vmaInvalidateAllocation(this.device.vma(), this.allocation, 0L, this.size);
         }
@@ -181,7 +184,7 @@ final class TerrainGpuBuffer implements Destroyable {
      * Gives the buffer back. The CPU is done with it from here on, though the GPU may still read it
      * until Minecraft destroys it.
      */
-    synchronized void close() {
+    public synchronized void close() {
         if (!this.closed) {
             this.closed = true;
             endMappedAccess();
@@ -189,7 +192,7 @@ final class TerrainGpuBuffer implements Destroyable {
         }
     }
     
-    synchronized void destroyNow() {
+    public synchronized void destroyNow() {
         this.closed = true;
         destroy();
     }

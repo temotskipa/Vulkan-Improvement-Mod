@@ -50,6 +50,9 @@ augmenting vanilla terrain rendering through modern Vulkan capabilities.
 - `client.vulkan.terrain`: Owns terrain meshlet storage, GPU buffer layout,
   mesh shader dispatch, descriptor resources, terrain material records,
   fragment shading rate, and renderer debug flags.
+- `client.vulkan.gpu`: Owns what every GPU-driven pass shares: the mod's
+  buffers (`DeviceBuffer`), shader compilation, compute pipelines and debug
+  names for Vulkan objects.
 - `client.vulkan.gpuworld`: Owns the CPU-authoritative GPU-world mirror,
   section identity, revisions, page-kind metadata, residency-budget diagnostics,
   pipeline-stage contracts, and dirty-update contracts.
@@ -181,7 +184,7 @@ renderer code does not drift back into a catch-all root package.
   keyed by section node and chunk layer, not by vanilla draw objects, so later
   GPU visibility work can consume resident section-layer records without
   depending on transient render-pass draw slices.
-- `TerrainGpuBuffer.Placement` says where a terrain buffer lives. What the
+- `DeviceBuffer.Placement` says where a buffer of the mod's lives. What the
   pages hold is in device memory and written by copies; what the CPU writes
   each frame and the GPU reads or counts up in the same frame (visible page
   lists, mesh-task commands, the material table, counters, descriptors) is in
@@ -200,7 +203,7 @@ renderer code does not drift back into a catch-all root package.
   name them, and the mod writes them, and captured section data, through
   `MemorySegment`s. Only what LWJGL or Minecraft hands over or takes as a
   `ByteBuffer` stays one: push constants, SPIR-V, descriptors and Minecraft's
-  section buffers. `TerrainGpuBuffer` turns a buffer's mapped address into a
+  section buffers. `DeviceBuffer` turns a buffer's mapped address into a
   segment of the buffer's size once, the one unchecked step; every access after
   it is checked against that size and fails once the buffer is given back.
   Offsets into the payload buffers are 64 bits wide, so those buffers may grow

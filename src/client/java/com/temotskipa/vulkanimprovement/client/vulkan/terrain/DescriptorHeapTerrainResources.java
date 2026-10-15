@@ -9,6 +9,7 @@ import com.mojang.renderpearl.backend.vulkan.VulkanGpuSampler;
 import com.mojang.renderpearl.backend.vulkan.VulkanGpuTextureView;
 import com.mojang.renderpearl.backend.vulkan.VulkanUtils;
 import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanImprovementCapabilities;
+import com.temotskipa.vulkanimprovement.client.vulkan.gpu.DeviceBuffer;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldDatabase;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuRecords;
@@ -128,16 +129,16 @@ public final class DescriptorHeapTerrainResources {
         return new TextureInfo(true, binding.width(), binding.height(), binding.baseMipLevel(), binding.mipLevels());
     }
     
-    private static int visibleMeshletRecordCapacity(TerrainGpuBuffer visibleMeshlets) {
+    private static int visibleMeshletRecordCapacity(DeviceBuffer visibleMeshlets) {
         return (int) Math.min(Integer.MAX_VALUE, visibleMeshlets.size() / TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE);
     }
     
-    private static int workQueueRecordCapacity(TerrainGpuBuffer workQueue) {
+    private static int workQueueRecordCapacity(DeviceBuffer workQueue) {
         long payloadBytes = Math.max(0L, workQueue.size() - TerrainGpuLayout.TERRAIN_WORK_QUEUE_COUNTER_BYTES);
         return (int) Math.min(Integer.MAX_VALUE, payloadBytes / TerrainGpuLayout.TERRAIN_WORK_QUEUE_RECORD_STRIDE);
     }
     
-    private static int meshTaskCommandCapacity(TerrainGpuBuffer meshTaskCommands) {
+    private static int meshTaskCommandCapacity(DeviceBuffer meshTaskCommands) {
         return (int) Math.min(Integer.MAX_VALUE, meshTaskCommands.size() / TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_STRIDE);
     }
     
@@ -335,7 +336,7 @@ public final class DescriptorHeapTerrainResources {
         for (SectionMeshletStore.PageUpload upload : uploads) {
             stagingBytes += upload.bytes();
         }
-        TerrainGpuBuffer staging = stagingBytes > 0L ? new TerrainGpuBuffer(activeDevice, "VIM Terrain Page Staging", stagingBytes, VK10.VK_BUFFER_USAGE_TRANSFER_SRC_BIT, TerrainGpuBuffer.Placement.HOST) : null;
+        DeviceBuffer staging = stagingBytes > 0L ? new DeviceBuffer(activeDevice, "VIM Terrain Page Staging", stagingBytes, VK10.VK_BUFFER_USAGE_TRANSFER_SRC_BIT, DeviceBuffer.Placement.HOST) : null;
         VkBufferCopy.Buffer vertexRegions = VkBufferCopy.calloc(uploads.size());
         VkBufferCopy.Buffer indexRegions = VkBufferCopy.calloc(uploads.size());
         VkBufferCopy.Buffer headerRegions = VkBufferCopy.calloc(uploads.size());
@@ -384,7 +385,7 @@ public final class DescriptorHeapTerrainResources {
      * Those exclude every slot written below, so only clearing the whole table needs a barrier
      * before the records are written.
      */
-    private static void clearPageRecords(VkCommandBuffer commandBuffer, TerrainGpuBuffer pageTable, ResidentTerrainPages.TableChanges changes, MemoryStack stack) {
+    private static void clearPageRecords(VkCommandBuffer commandBuffer, DeviceBuffer pageTable, ResidentTerrainPages.TableChanges changes, MemoryStack stack) {
         if (changes.clearAll()) {
             VK10.vkCmdFillBuffer(commandBuffer, pageTable.vkBuffer(), 0L, VK10.VK_WHOLE_SIZE, 0);
             VulkanCommandEncoder.memoryBarrier(commandBuffer, stack);
@@ -410,7 +411,7 @@ public final class DescriptorHeapTerrainResources {
         return cursor + length;
     }
     
-    private static void copy(VkCommandBuffer commandBuffer, TerrainGpuBuffer staging, TerrainGpuBuffer target, VkBufferCopy.Buffer regions) {
+    private static void copy(VkCommandBuffer commandBuffer, DeviceBuffer staging, DeviceBuffer target, VkBufferCopy.Buffer regions) {
         regions.flip();
         if (regions.hasRemaining()) {
             VK10.vkCmdCopyBuffer(commandBuffer, staging.vkBuffer(), target.vkBuffer(), regions);
@@ -519,52 +520,52 @@ public final class DescriptorHeapTerrainResources {
     }
     
     public long sectionMetadataAddress() {
-        TerrainGpuBuffer buffer = this.resources.sectionMetadata();
+        DeviceBuffer buffer = this.resources.sectionMetadata();
         return buffer == null ? 0L : buffer.deviceAddress();
     }
     
     public long meshletHeaderAddress() {
-        TerrainGpuBuffer buffer = this.resources.meshletHeaders();
+        DeviceBuffer buffer = this.resources.meshletHeaders();
         return buffer == null ? 0L : buffer.deviceAddress();
     }
     
     public long meshletVertexPayloadAddress() {
-        TerrainGpuBuffer buffer = this.resources.meshletVertices();
+        DeviceBuffer buffer = this.resources.meshletVertices();
         return buffer == null ? 0L : buffer.deviceAddress();
     }
     
     public long meshletIndexPayloadAddress() {
-        TerrainGpuBuffer buffer = this.resources.meshletIndices();
+        DeviceBuffer buffer = this.resources.meshletIndices();
         return buffer == null ? 0L : buffer.deviceAddress();
     }
     
     public long visibleMeshletListAddress() {
-        TerrainGpuBuffer buffer = this.resources.visibleMeshlets();
+        DeviceBuffer buffer = this.resources.visibleMeshlets();
         return buffer == null ? 0L : buffer.deviceAddress();
     }
     
     public long terrainWorkQueueAddress() {
-        TerrainGpuBuffer buffer = this.resources.workQueue();
+        DeviceBuffer buffer = this.resources.workQueue();
         return buffer == null ? 0L : buffer.deviceAddress();
     }
     
     public long terrainMeshTaskCommandAddress() {
-        TerrainGpuBuffer buffer = this.resources.meshTaskCommands();
+        DeviceBuffer buffer = this.resources.meshTaskCommands();
         return buffer == null ? 0L : buffer.deviceAddress();
     }
     
     public long terrainDescriptorBufferAddress() {
-        TerrainGpuBuffer buffer = this.resources.resourceDescriptorBuffer();
+        DeviceBuffer buffer = this.resources.resourceDescriptorBuffer();
         return buffer == null ? 0L : buffer.deviceAddress();
     }
     
     public long materialTableAddress() {
-        TerrainGpuBuffer buffer = this.resources.materialTable();
+        DeviceBuffer buffer = this.resources.materialTable();
         return buffer == null ? 0L : buffer.deviceAddress();
     }
     
     public long terrainDebugCounterAddress() {
-        TerrainGpuBuffer buffer = this.resources.debugCounters();
+        DeviceBuffer buffer = this.resources.debugCounters();
         return buffer == null ? 0L : buffer.deviceAddress();
     }
     
@@ -613,7 +614,7 @@ public final class DescriptorHeapTerrainResources {
     }
     
     private void writeTerrainMaterialRecords(GpuResources activeResources, TextureBinding blockAtlas, TextureBinding lightmap) {
-        TerrainGpuBuffer materialTable = activeResources.materialTable();
+        DeviceBuffer materialTable = activeResources.materialTable();
         if (materialTable == null || !materialTable.hostVisible() || materialTable.size() < TerrainGpuLayout.MATERIAL_RECORD_STRIDE) {
             this.materialTableMissing.increment();
             return;
@@ -625,7 +626,7 @@ public final class DescriptorHeapTerrainResources {
     }
     
     public long terrainVisibilityCounterAddress() {
-        TerrainGpuBuffer buffer = this.resources.debugCounters();
+        DeviceBuffer buffer = this.resources.debugCounters();
         return buffer == null ? 0L : buffer.deviceAddress() + TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET;
     }
     
@@ -634,7 +635,7 @@ public final class DescriptorHeapTerrainResources {
      * since the buffers were created. The GPU may still be counting the last frames.
      */
     public synchronized long[] visibilityCounters() {
-        TerrainGpuBuffer buffer = this.resources.debugCounters();
+        DeviceBuffer buffer = this.resources.debugCounters();
         if (buffer == null) {
             return new long[3];
         }
@@ -650,7 +651,7 @@ public final class DescriptorHeapTerrainResources {
      * is all a frame uploads for a layer.
      */
     public synchronized VisiblePageUpload writeVisiblePageList(SectionMeshletStore.PageList pages, int from, int to) {
-        TerrainGpuBuffer ring = this.resources.visibleMeshlets();
+        DeviceBuffer ring = this.resources.visibleMeshlets();
         int count = 0;
         for (int page = from; page < to; page++) {
             count += pages.tasks(page);
@@ -701,7 +702,7 @@ public final class DescriptorHeapTerrainResources {
      * pass writes. A frame uploads a few kilobytes this way, however much terrain is in view.
      */
     synchronized GpuDrivenFrame writeGpuDrivenFrame(VisibleSectionGrid sections, int[] layerTasks) {
-        TerrainGpuBuffer ring = this.resources.visibleMeshlets();
+        DeviceBuffer ring = this.resources.visibleMeshlets();
         if (ring == null || ring.deviceAddress() == 0L || !ring.hostVisible()) {
             return GpuDrivenFrame.unavailable();
         }
@@ -752,7 +753,7 @@ public final class DescriptorHeapTerrainResources {
         }
         
         GpuResources activeResources = this.resources;
-        TerrainGpuBuffer visibleMeshlets = activeResources.visibleMeshlets();
+        DeviceBuffer visibleMeshlets = activeResources.visibleMeshlets();
         if (visibleMeshlets == null || visibleMeshlets.deviceAddress() == 0L || !visibleMeshlets.hostVisible()) {
             TerrainVisibleMeshletRing.Allocation allocation = new TerrainVisibleMeshletRing(0, 0).allocate(requiredRecords, true);
             this.lastVisibleMeshletUpload = VisibleMeshletStats.fromAllocation(0, requiredRecords, allocation);
@@ -808,7 +809,7 @@ public final class DescriptorHeapTerrainResources {
             return TerrainWorkQueueUpload.unavailable(0);
         }
         
-        TerrainGpuBuffer workQueue = this.resources.workQueue();
+        DeviceBuffer workQueue = this.resources.workQueue();
         if (workQueue == null || workQueue.deviceAddress() == 0L || !workQueue.hostVisible()) {
             this.lastWorkQueueUpload = TerrainWorkQueueStats.unavailable(requiredRecords, 0, this.workQueueCursor, "terrain work queue buffer unavailable", false);
             this.terrainWorkQueueRecordsDropped.add(requiredRecords);
@@ -866,7 +867,7 @@ public final class DescriptorHeapTerrainResources {
             return upload;
         }
         
-        TerrainGpuBuffer meshTaskCommands = this.resources.meshTaskCommands();
+        DeviceBuffer meshTaskCommands = this.resources.meshTaskCommands();
         writeMeshTaskCommand(meshTaskCommands.mapped(), upload.offsetBytes(), taskCount);
         meshTaskCommands.flush();
         this.terrainMeshTaskCommandUploads.increment();
@@ -881,7 +882,7 @@ public final class DescriptorHeapTerrainResources {
     public synchronized TerrainMeshTaskCommandUpload reserveMeshTaskCommand(int taskCount) {
         TerrainMeshTaskCommandUpload upload = allocateMeshTaskCommand(taskCount, true);
         if (upload.ready()) {
-            TerrainGpuBuffer meshTaskCommands = this.resources.meshTaskCommands();
+            DeviceBuffer meshTaskCommands = this.resources.meshTaskCommands();
             writeMeshTaskCommand(meshTaskCommands.mapped(), upload.offsetBytes(), 0);
             meshTaskCommands.flush();
             this.terrainMeshTaskCommandReservations.increment();
@@ -904,7 +905,7 @@ public final class DescriptorHeapTerrainResources {
             return TerrainMeshTaskCommandUpload.unavailable(0);
         }
         
-        TerrainGpuBuffer meshTaskCommands = this.resources.meshTaskCommands();
+        DeviceBuffer meshTaskCommands = this.resources.meshTaskCommands();
         if (meshTaskCommands == null || meshTaskCommands.vkBuffer() == 0L || !meshTaskCommands.hostVisible()) {
             this.lastMeshTaskCommandUpload = MeshTaskCommandStats.unavailable(1, 0, this.meshTaskCommandCursor, "terrain mesh-task command buffer unavailable", false, gpuGenerated);
             this.terrainMeshTaskCommandDrops.increment();
@@ -943,17 +944,17 @@ public final class DescriptorHeapTerrainResources {
     }
     
     private int visibleMeshletRecordCapacity() {
-        TerrainGpuBuffer visibleMeshlets = this.resources.visibleMeshlets();
+        DeviceBuffer visibleMeshlets = this.resources.visibleMeshlets();
         return visibleMeshlets == null ? 0 : visibleMeshletRecordCapacity(visibleMeshlets);
     }
     
     private int workQueueRecordCapacity() {
-        TerrainGpuBuffer workQueue = this.resources.workQueue();
+        DeviceBuffer workQueue = this.resources.workQueue();
         return workQueue == null ? 0 : workQueueRecordCapacity(workQueue);
     }
     
     private int meshTaskCommandCapacity() {
-        TerrainGpuBuffer meshTaskCommands = this.resources.meshTaskCommands();
+        DeviceBuffer meshTaskCommands = this.resources.meshTaskCommands();
         return meshTaskCommands == null ? 0 : meshTaskCommandCapacity(meshTaskCommands);
     }
     
@@ -1413,7 +1414,7 @@ public final class DescriptorHeapTerrainResources {
         }
     }
     
-    private record GpuResources(TerrainGpuBuffer samplerHeap, TerrainGpuBuffer resourceHeap, TerrainGpuBuffer samplerDescriptorBuffer, TerrainGpuBuffer resourceDescriptorBuffer, TerrainGpuBuffer sectionMetadata, TerrainGpuBuffer meshletHeaders, TerrainGpuBuffer meshletVertices, TerrainGpuBuffer meshletIndices, TerrainGpuBuffer visibleMeshlets, TerrainGpuBuffer workQueue, TerrainGpuBuffer meshTaskCommands, TerrainGpuBuffer materialTable, TerrainGpuBuffer debugCounters) {
+    private record GpuResources(DeviceBuffer samplerHeap, DeviceBuffer resourceHeap, DeviceBuffer samplerDescriptorBuffer, DeviceBuffer resourceDescriptorBuffer, DeviceBuffer sectionMetadata, DeviceBuffer meshletHeaders, DeviceBuffer meshletVertices, DeviceBuffer meshletIndices, DeviceBuffer visibleMeshlets, DeviceBuffer workQueue, DeviceBuffer meshTaskCommands, DeviceBuffer materialTable, DeviceBuffer debugCounters) {
         static GpuResources empty() {
             return new GpuResources(null, null, null, null, null, null, null, null, null, null, null, null, null);
         }
@@ -1427,27 +1428,27 @@ public final class DescriptorHeapTerrainResources {
             int resourceDescriptorBufferUsage = VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | EXTDescriptorBuffer.VK_BUFFER_USAGE_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT | EXTDescriptorBuffer.VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT;
             int storageUsage = VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK10.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
             int indirectStorageUsage = storageUsage | VK10.VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
-            TerrainGpuBuffer samplerHeap = layout.descriptorHeapEnabled ? new TerrainGpuBuffer(device, "VIM Terrain Sampler Descriptor Heap", layout.samplerHeapBytes, descriptorHeapUsage, TerrainGpuBuffer.Placement.DEVICE_MAPPED) : null;
-            TerrainGpuBuffer resourceHeap = layout.descriptorHeapEnabled ? new TerrainGpuBuffer(device, "VIM Terrain Resource Descriptor Heap", layout.resourceHeapBytes, descriptorHeapUsage, TerrainGpuBuffer.Placement.DEVICE_MAPPED) : null;
-            TerrainGpuBuffer samplerDescriptorBuffer = layout.descriptorBufferEnabled ? new TerrainGpuBuffer(device, "VIM Terrain Sampler Descriptor Buffer", layout.samplerDescriptorBufferBytes, samplerDescriptorBufferUsage, TerrainGpuBuffer.Placement.DEVICE_MAPPED) : null;
-            TerrainGpuBuffer resourceDescriptorBuffer = layout.descriptorBufferEnabled ? new TerrainGpuBuffer(device, "VIM Terrain Resource Descriptor Buffer", layout.resourceDescriptorBufferBytes, resourceDescriptorBufferUsage, TerrainGpuBuffer.Placement.DEVICE_MAPPED) : null;
+            DeviceBuffer samplerHeap = layout.descriptorHeapEnabled ? new DeviceBuffer(device, "VIM Terrain Sampler Descriptor Heap", layout.samplerHeapBytes, descriptorHeapUsage, DeviceBuffer.Placement.DEVICE_MAPPED) : null;
+            DeviceBuffer resourceHeap = layout.descriptorHeapEnabled ? new DeviceBuffer(device, "VIM Terrain Resource Descriptor Heap", layout.resourceHeapBytes, descriptorHeapUsage, DeviceBuffer.Placement.DEVICE_MAPPED) : null;
+            DeviceBuffer samplerDescriptorBuffer = layout.descriptorBufferEnabled ? new DeviceBuffer(device, "VIM Terrain Sampler Descriptor Buffer", layout.samplerDescriptorBufferBytes, samplerDescriptorBufferUsage, DeviceBuffer.Placement.DEVICE_MAPPED) : null;
+            DeviceBuffer resourceDescriptorBuffer = layout.descriptorBufferEnabled ? new DeviceBuffer(device, "VIM Terrain Resource Descriptor Buffer", layout.resourceDescriptorBufferBytes, resourceDescriptorBufferUsage, DeviceBuffer.Placement.DEVICE_MAPPED) : null;
             // The page table and what the pages hold live in device memory and are written by copies only.
-            TerrainGpuBuffer sectionMetadata = new TerrainGpuBuffer(device, "VIM Terrain Page Table", layout.sectionMetadataBytes, storageUsage, TerrainGpuBuffer.Placement.DEVICE);
-            TerrainGpuBuffer meshletHeaders = new TerrainGpuBuffer(device, "VIM Terrain Meshlet Headers", layout.meshletHeaderBytes, storageUsage, TerrainGpuBuffer.Placement.DEVICE);
-            TerrainGpuBuffer meshletVertices = new TerrainGpuBuffer(device, "VIM Terrain Meshlet Vertex Payload", layout.vertexPayloadBytes, storageUsage, TerrainGpuBuffer.Placement.DEVICE);
-            TerrainGpuBuffer meshletIndices = new TerrainGpuBuffer(device, "VIM Terrain Meshlet Index Payload", layout.indexPayloadBytes, storageUsage, TerrainGpuBuffer.Placement.DEVICE);
+            DeviceBuffer sectionMetadata = new DeviceBuffer(device, "VIM Terrain Page Table", layout.sectionMetadataBytes, storageUsage, DeviceBuffer.Placement.DEVICE);
+            DeviceBuffer meshletHeaders = new DeviceBuffer(device, "VIM Terrain Meshlet Headers", layout.meshletHeaderBytes, storageUsage, DeviceBuffer.Placement.DEVICE);
+            DeviceBuffer meshletVertices = new DeviceBuffer(device, "VIM Terrain Meshlet Vertex Payload", layout.vertexPayloadBytes, storageUsage, DeviceBuffer.Placement.DEVICE);
+            DeviceBuffer meshletIndices = new DeviceBuffer(device, "VIM Terrain Meshlet Index Payload", layout.indexPayloadBytes, storageUsage, DeviceBuffer.Placement.DEVICE);
             // What the CPU writes each frame and the GPU reads or counts up in the same frame. In host
             // memory every read and every atomic of the GPU crosses the bus: one atomic a meshlet
             // in host memory cost the opaque layers two milliseconds a frame.
-            TerrainGpuBuffer visibleMeshlets = new TerrainGpuBuffer(device, "VIM Terrain Visible Meshlet List", layout.visibleMeshletBytes, storageUsage, TerrainGpuBuffer.Placement.DEVICE_MAPPED);
-            TerrainGpuBuffer workQueue = new TerrainGpuBuffer(device, "VIM Terrain Work Queue", layout.workQueueBytes, storageUsage, TerrainGpuBuffer.Placement.DEVICE_MAPPED);
-            TerrainGpuBuffer meshTaskCommands = new TerrainGpuBuffer(device, "VIM Terrain Mesh Task Commands", layout.meshTaskCommandBytes, indirectStorageUsage, TerrainGpuBuffer.Placement.DEVICE_MAPPED);
-            TerrainGpuBuffer materialTable = new TerrainGpuBuffer(device, "VIM Terrain Material Table", layout.materialTableBytes, storageUsage, TerrainGpuBuffer.Placement.DEVICE_MAPPED);
-            TerrainGpuBuffer debugCounters = new TerrainGpuBuffer(device, "VIM Terrain Debug Counters", TerrainGpuLayout.DEBUG_COUNTER_BYTES, storageUsage, TerrainGpuBuffer.Placement.DEVICE_MAPPED);
+            DeviceBuffer visibleMeshlets = new DeviceBuffer(device, "VIM Terrain Visible Meshlet List", layout.visibleMeshletBytes, storageUsage, DeviceBuffer.Placement.DEVICE_MAPPED);
+            DeviceBuffer workQueue = new DeviceBuffer(device, "VIM Terrain Work Queue", layout.workQueueBytes, storageUsage, DeviceBuffer.Placement.DEVICE_MAPPED);
+            DeviceBuffer meshTaskCommands = new DeviceBuffer(device, "VIM Terrain Mesh Task Commands", layout.meshTaskCommandBytes, indirectStorageUsage, DeviceBuffer.Placement.DEVICE_MAPPED);
+            DeviceBuffer materialTable = new DeviceBuffer(device, "VIM Terrain Material Table", layout.materialTableBytes, storageUsage, DeviceBuffer.Placement.DEVICE_MAPPED);
+            DeviceBuffer debugCounters = new DeviceBuffer(device, "VIM Terrain Debug Counters", TerrainGpuLayout.DEBUG_COUNTER_BYTES, storageUsage, DeviceBuffer.Placement.DEVICE_MAPPED);
             return new GpuResources(samplerHeap, resourceHeap, samplerDescriptorBuffer, resourceDescriptorBuffer, sectionMetadata, meshletHeaders, meshletVertices, meshletIndices, visibleMeshlets, workQueue, meshTaskCommands, materialTable, debugCounters);
         }
         
-        private static Map<String, Object> bufferMap(TerrainGpuBuffer buffer) {
+        private static Map<String, Object> bufferMap(DeviceBuffer buffer) {
             Map<String, Object> map = new LinkedHashMap<>();
             map.put("allocated", buffer != null);
             if (buffer != null) {
@@ -1463,23 +1464,23 @@ public final class DescriptorHeapTerrainResources {
             return map;
         }
         
-        private static void close(TerrainGpuBuffer buffer) {
+        private static void close(DeviceBuffer buffer) {
             if (buffer != null) {
                 buffer.close();
             }
         }
         
-        private static void destroyNow(TerrainGpuBuffer buffer) {
+        private static void destroyNow(DeviceBuffer buffer) {
             if (buffer != null) {
                 buffer.destroyNow();
             }
         }
         
-        private static int bufferCount(TerrainGpuBuffer buffer) {
+        private static int bufferCount(DeviceBuffer buffer) {
             return buffer == null ? 0 : 1;
         }
         
-        private static long bufferBytes(TerrainGpuBuffer buffer) {
+        private static long bufferBytes(DeviceBuffer buffer) {
             return buffer == null ? 0L : buffer.size();
         }
         

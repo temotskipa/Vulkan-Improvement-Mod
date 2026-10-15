@@ -157,6 +157,7 @@ def vulkanSourceDir = layout.projectDirectory.dir("src/client/java/com/temotskip
 def vulkanPackageRoot = "com.temotskipa.vulkanimprovement.client.vulkan"
 def allowedVulkanPackages = [
         vulkanPackageRoot + ".device",
+        vulkanPackageRoot + ".gpu",
         vulkanPackageRoot + ".gpuworld",
         vulkanPackageRoot + ".presentation",
         vulkanPackageRoot + ".rtpt",

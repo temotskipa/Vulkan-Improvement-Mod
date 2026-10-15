@@ -284,7 +284,7 @@ A CPU profile (`jcmd <pid> JFR.start`) shows whether the render thread waits
 for the GPU (swapchain acquire and submit) or is busy itself.
 
 Any buffer the GPU reads or updates every frame lives in device memory
-(`TerrainGpuBuffer.Placement.DEVICE_MAPPED`); host memory is for staging and
+(`DeviceBuffer.Placement.DEVICE_MAPPED`); host memory is for staging and
 read-back. Two atomics per meshlet on a counter in host memory once made the
 opaque layers take 2.4 ms instead of 0.4 ms.
 

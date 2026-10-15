@@ -53,11 +53,11 @@ public final class GpuResidentTerrainArchitectureInvariantCheck {
         require(!store.contains("writeMetadataSnapshot"), "terrain must not be rewritten as a whole when one section changes");
         requireContains(resources, "SectionMeshletStore.collectPageUploads(PAGE_UPLOAD_BYTES_PER_FRAME, PAGE_UPLOADS_PER_FRAME)", "a frame must upload changed pages only, within a budget");
         requireContains(resources, "VK10.vkCmdCopyBuffer(commandBuffer, staging.vkBuffer(), target.vkBuffer(), regions);", "pages must reach the GPU through copies in the command stream");
-        requireContains(resources, "\"VIM Terrain Meshlet Vertex Payload\", layout.vertexPayloadBytes, storageUsage, TerrainGpuBuffer.Placement.DEVICE)", "the terrain payload must live in device memory");
+        requireContains(resources, "\"VIM Terrain Meshlet Vertex Payload\", layout.vertexPayloadBytes, storageUsage, DeviceBuffer.Placement.DEVICE)", "the terrain payload must live in device memory");
         // The GPU reads these or counts them up every frame; from host memory that crosses the bus.
-        requireContains(resources, "\"VIM Terrain Visible Meshlet List\", layout.visibleMeshletBytes, storageUsage, TerrainGpuBuffer.Placement.DEVICE_MAPPED)", "the visible page lists must live in device memory");
-        requireContains(resources, "\"VIM Terrain Mesh Task Commands\", layout.meshTaskCommandBytes, indirectStorageUsage, TerrainGpuBuffer.Placement.DEVICE_MAPPED)", "the mesh-task commands must live in device memory");
-        requireContains(resources, "\"VIM Terrain Debug Counters\", TerrainGpuLayout.DEBUG_COUNTER_BYTES, storageUsage, TerrainGpuBuffer.Placement.DEVICE_MAPPED)", "the counters the GPU counts up must live in device memory");
+        requireContains(resources, "\"VIM Terrain Visible Meshlet List\", layout.visibleMeshletBytes, storageUsage, DeviceBuffer.Placement.DEVICE_MAPPED)", "the visible page lists must live in device memory");
+        requireContains(resources, "\"VIM Terrain Mesh Task Commands\", layout.meshTaskCommandBytes, indirectStorageUsage, DeviceBuffer.Placement.DEVICE_MAPPED)", "the mesh-task commands must live in device memory");
+        requireContains(resources, "\"VIM Terrain Debug Counters\", TerrainGpuLayout.DEBUG_COUNTER_BYTES, storageUsage, DeviceBuffer.Placement.DEVICE_MAPPED)", "the counters the GPU counts up must live in device memory");
         requireContains(resources, "growTerrainResourcesIfNeeded(SectionMeshletStore.takePageShortage());", "a page that does not fit must grow the buffer that was short");
         requireContains(renderer, "SectionMeshletStore.visiblePages(layerOrdinal)", "a frame must list a layer's visible pages, not its meshlets");
         requireContains(renderer, "MeshShaderTerrainProgram.get().prepareVisiblePageCommands(prepared)", "a layer's mesh-task command must be written by the GPU visibility pass");
