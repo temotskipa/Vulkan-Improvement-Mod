@@ -93,7 +93,9 @@ the mod is idle (see `LevelRendererMixin` in
   names for Vulkan objects, and the mod's extensions of Minecraft's: the
   shader-storage buffer usage and buffer device addresses (`ShaderStorage`),
   compute dispatch on Minecraft's command encoder (`ComputeCommands`), and
-  framebuffers kept across frames for its render passes (`FramebufferCache`).
+  framebuffers kept across frames for its render passes (`FramebufferCache`)
+  and barriers held back after its transfers until a command needs them
+  (`TransferBarriers`).
 - `client.vulkan.model`: Owns the GPU model path: model cubes' faces kept on
   the GPU, the records a frame's model submits make, the draws they go into in
   Minecraft's draw groups, and the compute pass that writes their vertices.

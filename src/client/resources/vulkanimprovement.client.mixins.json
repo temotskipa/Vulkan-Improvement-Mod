@@ -23,6 +23,7 @@
     "StagedVertexBufferMixin",
     "VideoSettingsScreenMixin",
     "VulkanBackendMixin",
+    "VulkanCommandEncoderBarrierMixin",
     "VulkanCommandEncoderFramebufferMixin",
     "VulkanCommandEncoderMixin",
     "VulkanConstMixin",

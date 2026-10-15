@@ -145,6 +145,36 @@ inside a render pass the level renderer has already opened.
 - Purpose: keep framebuffers across frames (`FramebufferCache`), behind
   `vim.keepFramebuffers`.
 
+### VulkanCommandEncoderBarrierMixin
+
+- Target: `com.mojang.renderpearl.backend.vulkan.VulkanCommandEncoder`.
+- mcdev 26.4 surface: the transfers `clearColorTexture`,
+  `clearColorAndDepthTextures`, `clearDepthTexture`, `writeToBuffer`,
+  `copyToBuffer`, `writeToTexture`, `copyBufferToTexture`,
+  `copyTextureToBuffer` and `copyTextureToTexture` each record one copy or
+  clear into the command buffer the private `commandBuffer()` returns, then
+  call the private `memoryBarrier(MemoryStack)`, which records the public
+  static `VulkanCommandEncoder.memoryBarrier(VkCommandBuffer, MemoryStack)`
+  into it: all commands before and after, memory read and write.
+  `submitRenderPass` calls it too, after the render pass ends. Every other
+  command for the frame's command buffer fetches it through `commandBuffer()`
+  first, which opens `currentCommandBuffer` when none is open;
+  `endCommandBuffer()` ends and queues it, for `submit()`, `execute`,
+  `waitSemaphore` and `signalSemaphore`. Textures stay in the general layout,
+  so transfers record no layout transitions. Buffers are `VulkanGpuBuffer`
+  (public `vkBuffer()`), textures `VulkanGpuTexture` (public `vkImage()`).
+- Source tokens: `method = "commandBuffer"`, `method = "endCommandBuffer"`,
+  `method = "memoryBarrier(Lorg/lwjgl/system/MemoryStack;)V"`,
+  `VkCommandBuffer currentCommandBuffer`, `method = "clearColorTexture"`,
+  `method = "clearColorAndDepthTextures"`, `method = "clearDepthTexture"`,
+  `method = "writeToBuffer"`, `method = "copyToBuffer"`,
+  `method = "writeToTexture"`, `method = "copyBufferToTexture"`,
+  `method = "copyTextureToBuffer"`, `method = "copyTextureToTexture"`,
+  `VulkanCommandEncoder.memoryBarrier(`.
+- Purpose: barriers by resource (`TransferBarriers`), behind
+  `vim.barriersByResource`: hold back a transfer's barrier until a command
+  needs it.
+
 ### FrontendCommandEncoderMixin
 
 - Target: `com.mojang.renderpearl.frontend.FrontendCommandEncoder`.

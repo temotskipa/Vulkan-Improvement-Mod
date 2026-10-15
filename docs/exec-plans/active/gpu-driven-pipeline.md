@@ -133,6 +133,19 @@ Six runs of each in turn, 8 s each: 0.02 ms a frame shorter, about 1 %, inside
 the run-to-run spread. What it removes is 13 creations and 13 destructions of
 Vulkan objects a frame, not a measurable share of this scene's frame time.
 
+2026-10-16, barriers by resource (`vim.barriersByResource`, off by default).
+The barrier Minecraft records after each clear, upload and copy is held back
+until a command needs it: a transfer that conflicts with a held one, by
+buffer range or whole texture, gets a barrier before it; anything else
+recorded into the frame's command buffer, and the end of that command buffer,
+gets the held one first. A frame records about 7 transfers, and 4 of their 7
+barriers go. GPU time comes from Minecraft's own timer query. In the entity
+scene it is 0.676 ms a frame either way. In the overlook without mobs while
+every section reloads it falls from 0.58 to 0.53 ms and the frame rate rises
+from 961 to 987 FPS (medians of four runs each, better in every pair). Frames
+are identical. It stays off until a run with synchronization validation; the
+validation layer is not installed on the test machine.
+
 ## Decisions
 
 - The mod extends Minecraft's renderer instead of running its own beside it
