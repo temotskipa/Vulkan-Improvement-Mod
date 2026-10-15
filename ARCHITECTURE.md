@@ -81,7 +81,9 @@ the mod is idle (see `LevelRendererMixin` in
   fragment shading rate, and renderer debug flags.
 - `client.vulkan.gpu`: Owns what every GPU-driven pass shares: the mod's
   buffers (`DeviceBuffer`), shader compilation, compute pipelines and debug
-  names for Vulkan objects.
+  names for Vulkan objects, and the mod's extensions of Minecraft's: the
+  shader-storage buffer usage and buffer device addresses (`ShaderStorage`),
+  and compute dispatch on Minecraft's command encoder (`ComputeCommands`).
 - `client.vulkan.gpuworld`: Owns the CPU-authoritative GPU-world mirror,
   section identity, revisions, page-kind metadata, residency-budget diagnostics,
   pipeline-stage contracts, and dirty-update contracts.

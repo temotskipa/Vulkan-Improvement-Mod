@@ -110,11 +110,52 @@ inside a render pass the level renderer has already opened.
   the object-init one behind a barrier on all work before it; private
   `commandBuffer()` returns the command buffer the frame is recorded into,
   starting one if none is open, and throws while a render pass is open.
+  Final field `device`, whose `instance().debug()` is the `VulkanDebug` that
+  `createRenderPass` opens a debug group of the pass's label with; public
+  static `memoryBarrier(VkCommandBuffer, MemoryStack)`, the barrier on all
+  commands and memory that `copyToBuffer` records after its copy.
 - Source tokens: `VulkanRenderPass currentRenderPass`,
-  `private VkCommandBuffer commandBuffer()`.
+  `private VkCommandBuffer commandBuffer()`, `private VulkanDevice device`,
+  `VulkanCommandEncoder.memoryBarrier(`.
 - Purpose: let the terrain path refuse to record compute work while a render
   pass is open instead of failing the frame, and record its page uploads and
-  GPU-driven pass into the frame's own command buffer.
+  GPU-driven pass into the frame's own command buffer. Record the compute
+  dispatches of `ComputeCommands` into that command buffer, in a debug group
+  of their label, each followed by the barrier Minecraft records after a copy.
+
+### FrontendCommandEncoderMixin
+
+- Target: `com.mojang.renderpearl.frontend.FrontendCommandEncoder`.
+- mcdev 26.4 surface: final field `backend` of type `CommandEncoderBackend`,
+  which every command is handed to once checked; field `isInRenderPass`,
+  which `copyToBuffer` and the other commands throw on with "Close the
+  existing render pass before performing additional commands".
+- Source tokens: `private CommandEncoderBackend backend`,
+  `private boolean isInRenderPass`.
+- Purpose: add compute dispatch to Minecraft's command encoder the way it adds
+  its own commands: checked here, then recorded by the backend.
+
+### VulkanConstMixin
+
+- Target: `com.mojang.renderpearl.backend.vulkan.VulkanConst`.
+- mcdev 26.4 surface: public static `bufferUsageToVk(int)`, which turns the
+  `GpuBuffer` usage bits (1 to 512) into `VkBufferUsageFlags` for
+  `VulkanGpuBuffer.Direct`; `FrontendGpuDevice.createBuffer` passes the usage
+  through unchecked.
+- Source tokens: `method = "bufferUsageToVk"`.
+- Purpose: turn the usage the mod adds, `ShaderStorage.USAGE_SHADER_STORAGE`,
+  into storage-buffer and device-address use.
+
+### VulkanGpuBufferDirectMixin
+
+- Target: `com.mojang.renderpearl.backend.vulkan.VulkanGpuBuffer.Direct`.
+- mcdev 26.4 surface: the class `VulkanDevice.createBuffer` makes every buffer
+  of; protected final field `device`; `vkBuffer()`, inherited from
+  `VulkanGpuBuffer`. The allocator is created with buffer device addresses
+  (see `VulkanBackendMixin`).
+- Source tokens: `protected VulkanDevice device`, `vkBuffer()`.
+- Purpose: give a buffer made with `ShaderStorage.USAGE_SHADER_STORAGE` its
+  device address, asked of the driver once.
 
 ### FrontendRenderPassMixin
 

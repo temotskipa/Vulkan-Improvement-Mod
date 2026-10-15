@@ -16,7 +16,7 @@ import java.nio.LongBuffer;
  * A compute pipeline that reads everything through buffer addresses in its push constants, as all
  * of the mod's compute passes do, so it needs no descriptors.
  */
-public record ComputePipeline(long handle, long layout) {
+public record ComputePipeline(long handle, long layout, int pushConstantBytes) {
     public static ComputePipeline create(VulkanDevice device, long module, int pushConstantBytes, String name) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             VkPushConstantRange.Buffer pushConstantRanges = VkPushConstantRange.calloc(1, stack).stageFlags(VK10.VK_SHADER_STAGE_COMPUTE_BIT).offset(0).size(pushConstantBytes);
@@ -32,7 +32,7 @@ public record ComputePipeline(long handle, long layout) {
             long pipeline = pipelineHandle.get(0);
             VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_PIPELINE_LAYOUT, pipelineLayout, name + " Pipeline Layout");
             VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_PIPELINE, pipeline, name + " Pipeline");
-            return new ComputePipeline(pipeline, pipelineLayout);
+            return new ComputePipeline(pipeline, pipelineLayout, pushConstantBytes);
         }
     }
     
