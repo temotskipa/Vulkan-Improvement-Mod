@@ -2,15 +2,21 @@ package com.temotskipa.vulkanimprovement.client.vulkan.model;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.buffers.GpuBuffer;
-import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice.MappedView;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ShaderStorage;
-import net.minecraft.client.model.geom.ModelPart;
+import net.minecraft.client.model.geom.ModelPart.Cube;
+import net.minecraft.client.model.geom.ModelPart.Polygon;
+import net.minecraft.client.model.geom.ModelPart.Vertex;
 import net.minecraft.core.Direction;
 import org.joml.Vector3fc;
 import org.jspecify.annotations.Nullable;
 
 import java.lang.foreign.MemorySegment;
+import java.lang.ref.Reference;
+import java.lang.ref.ReferenceQueue;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -18,8 +24,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  * the vertex pass reads by address. A cube never changes once its model is baked, and a cube
  * remembers where its faces are (see {@link ModelCubeResidency}), so this is looked at once per
  * cube. Faces are only ever added; a buffer that runs out is replaced by one twice its size, filled
- * from a copy kept in native memory, so a face keeps its index for the store's life. Used from the
- * render thread only.
+ * from a copy kept in native memory, so a face keeps its index for the store's life. A cube
+ * Minecraft drops, as every cube is when a resource reload bakes the models again, leaves its faces
+ * behind; once such faces are most of the store, the GPU path starts a new one
+ * ({@link #mostlyCollected}). Used from the render thread only.
  */
 final class ModelCubeStore {
     /**
@@ -33,47 +41,19 @@ final class ModelCubeStore {
     
     private final int id = NEXT_ID.getAndIncrement();
     private final GrowingSegment copy = new GrowingSegment(INITIAL_POLYGONS * ModelGpuRecords.Polygon.BYTES);
+    /**
+     * The cubes whose faces are in the store, each held weakly, so that one Minecraft drops shows
+     * up in {@link #collected} once it is collected.
+     */
+    private final Set<ResidentCube> residentCubes = new HashSet<>();
+    private final ReferenceQueue<Cube> collected = new ReferenceQueue<>();
     private int polygonCount;
-    private int residentCubes;
+    private int collectedPolygons;
     private int cpuOnlyCubes;
     private @Nullable GpuBuffer buffer;
-    private GpuBufferSlice.@Nullable MappedView mapping;
+    private @Nullable MappedView mapping;
     private @Nullable MemorySegment mapped;
     private long capacity;
-    
-    /**
-     * The cube's first face in the store, uploaded first if it is not there yet, or
-     * {@link #CPU_ONLY}.
-     */
-    int firstPolygon(ModelPart.Cube cube) {
-        if (cube.getClass() != ModelPart.Cube.class) {
-            return CPU_ONLY;
-        }
-        ModelCubeResidency residency = residency(cube);
-        if (residency.vim$residentStore() == this.id) {
-            return residency.vim$firstPolygon();
-        }
-        int directionMask = directionMask(cube.polygons);
-        if (directionMask < 0) {
-            residency.vim$makeResident(this.id, CPU_ONLY, 0);
-            this.cpuOnlyCubes++;
-            return CPU_ONLY;
-        }
-        int first = this.polygonCount;
-        int count = cube.polygons.length;
-        long start = first * ModelGpuRecords.Polygon.BYTES;
-        long end = (long) (first + count) * ModelGpuRecords.Polygon.BYTES;
-        ensureCapacity(first + count);
-        MemorySegment records = this.copy.reserve(start, end);
-        for (int i = 0; i < count; i++) {
-            writePolygon(records, start + i * ModelGpuRecords.Polygon.BYTES, cube.polygons[i]);
-        }
-        MemorySegment.copy(records, start, Objects.requireNonNull(this.mapped), start, end - start);
-        this.polygonCount += count;
-        this.residentCubes++;
-        residency.vim$makeResident(this.id, first, directionMask);
-        return first;
-    }
     
     /**
      * What a mixin adds to every cube.
@@ -83,35 +63,15 @@ final class ModelCubeStore {
     }
     
     /**
-     * The device address of the faces, valid until the next cube is added.
-     */
-    long address() {
-        ensureCapacity(this.polygonCount);
-        return ShaderStorage.address(Objects.requireNonNull(this.buffer));
-    }
-    
-    int residentCubes() {
-        return this.residentCubes;
-    }
-    
-    int cpuOnlyCubes() {
-        return this.cpuOnlyCubes;
-    }
-    
-    long residentBytes() {
-        return this.polygonCount * ModelGpuRecords.Polygon.BYTES;
-    }
-    
-    /**
      * One bit for the direction of each face, or -1 when a face is not a quad facing one of the six
      * directions.
      */
-    private static int directionMask(ModelPart.Polygon[] polygons) {
+    private static int directionMask(Polygon[] polygons) {
         if (polygons.length > ModelGpuRecords.MAX_CUBE_POLYGONS) {
             return -1;
         }
         int mask = 0;
-        for (ModelPart.Polygon polygon : polygons) {
+        for (Polygon polygon : polygons) {
             int direction = direction(polygon.normal());
             if (direction < 0 || polygon.vertices().length != ModelGpuRecords.POLYGON_VERTICES) {
                 return -1;
@@ -135,10 +95,10 @@ final class ModelCubeStore {
         return -1;
     }
     
-    static void writePolygon(MemorySegment records, long offset, ModelPart.Polygon polygon) {
-        ModelPart.Vertex[] vertices = polygon.vertices();
+    static void writePolygon(MemorySegment records, long offset, Polygon polygon) {
+        Vertex[] vertices = polygon.vertices();
         for (int corner = 0; corner < ModelGpuRecords.POLYGON_VERTICES; corner++) {
-            ModelPart.Vertex vertex = vertices[corner];
+            Vertex vertex = vertices[corner];
             long base = offset + ModelGpuRecords.Polygon.CORNERS + corner * ModelGpuRecords.Polygon.CORNER_BYTES;
             records.set(ModelGpuRecords.FLOAT, base + ModelGpuRecords.Polygon.CORNER_X, vertex.worldX());
             records.set(ModelGpuRecords.FLOAT, base + ModelGpuRecords.Polygon.CORNER_Y, vertex.worldY());
@@ -147,6 +107,77 @@ final class ModelCubeStore {
             records.set(ModelGpuRecords.FLOAT, base + ModelGpuRecords.Polygon.CORNER_V, vertex.v());
         }
         records.set(ModelGpuRecords.INT, offset + ModelGpuRecords.Polygon.DIRECTION, direction(polygon.normal()));
+    }
+    
+    /**
+     * The cube's first face in the store, uploaded first if it is not there yet, or
+     * {@link #CPU_ONLY}.
+     */
+    int firstPolygon(Cube cube) {
+        if (cube.getClass() != Cube.class) {
+            return CPU_ONLY;
+        }
+        ModelCubeResidency residency = residency(cube);
+        if (residency.vim$residentStore() == this.id) {
+            return residency.vim$firstPolygon();
+        }
+        int directionMask = directionMask(cube.polygons);
+        if (directionMask < 0) {
+            residency.vim$makeResident(this.id, CPU_ONLY, 0);
+            this.cpuOnlyCubes++;
+            return CPU_ONLY;
+        }
+        int first = this.polygonCount;
+        int count = cube.polygons.length;
+        long start = first * ModelGpuRecords.Polygon.BYTES;
+        long end = (long) (first + count) * ModelGpuRecords.Polygon.BYTES;
+        ensureCapacity(first + count);
+        MemorySegment records = this.copy.reserve(start, end);
+        for (int i = 0; i < count; i++) {
+            writePolygon(records, start + i * ModelGpuRecords.Polygon.BYTES, cube.polygons[i]);
+        }
+        MemorySegment.copy(records, start, Objects.requireNonNull(this.mapped), start, end - start);
+        this.polygonCount += count;
+        this.residentCubes.add(new ResidentCube(cube, count, this.collected));
+        residency.vim$makeResident(this.id, first, directionMask);
+        return first;
+    }
+    
+    /**
+     * The device address of the faces, valid until the next cube is added.
+     */
+    long address() {
+        ensureCapacity(this.polygonCount);
+        return ShaderStorage.address(Objects.requireNonNull(this.buffer));
+    }
+    
+    /**
+     * Whether most of the faces belong to cubes Minecraft no longer has, so that a new store would
+     * hold only the faces still drawn.
+     */
+    boolean mostlyCollected() {
+        for (Reference<? extends Cube> reference = this.collected.poll(); reference != null; reference = this.collected.poll()) {
+            if (reference instanceof ResidentCube cube && this.residentCubes.remove(cube)) {
+                this.collectedPolygons += cube.polygons();
+            }
+        }
+        return this.collectedPolygons * 2 > this.polygonCount;
+    }
+    
+    int residentCubes() {
+        return this.residentCubes.size();
+    }
+    
+    int collectedPolygons() {
+        return this.collectedPolygons;
+    }
+    
+    int cpuOnlyCubes() {
+        return this.cpuOnlyCubes;
+    }
+    
+    long residentBytes() {
+        return this.polygonCount * ModelGpuRecords.Polygon.BYTES;
     }
     
     /**
@@ -161,7 +192,7 @@ final class ModelCubeStore {
         long grown = Math.max(Math.max(polygons, INITIAL_POLYGONS), this.capacity * 2L);
         long bytes = grown * ModelGpuRecords.Polygon.BYTES;
         GpuBuffer next = RenderSystem.getDevice().createBuffer(() -> "VIM Model Polygons", GpuBuffer.USAGE_MAP_WRITE | ShaderStorage.USAGE_SHADER_STORAGE, bytes);
-        GpuBufferSlice.MappedView nextMapping = next.map(false, true);
+        MappedView nextMapping = next.map(false, true);
         MemorySegment nextMapped = MemorySegment.ofBuffer(nextMapping.data());
         long used = this.polygonCount * ModelGpuRecords.Polygon.BYTES;
         if (used > 0L) {

@@ -100,6 +100,7 @@ public final class ModelGpuVertices {
      */
     private long framesLeftOut;
     private boolean warnedLeftOut;
+    private long storesRenewed;
     
     private ModelGpuVertices() {
     }
@@ -229,6 +230,21 @@ public final class ModelGpuVertices {
      */
     public void beginLevelPrepare() {
         this.preparingLevel = TerrainRendererDebugConfig.gpuModelVerticesEnabled() && !insideRenderPass() && untouchedByOtherMods() && ready();
+        if (this.preparingLevel && frame().isEmpty() && store().mostlyCollected()) {
+            renewStore();
+        }
+    }
+    
+    /**
+     * Starts a new cube store in place of one whose faces are mostly those of cubes Minecraft
+     * dropped, as after a resource reload. The cubes still drawn upload their faces to it as they
+     * are drawn; the old store's buffer goes back to Minecraft, which destroys it once the frames
+     * that read it are done.
+     */
+    private void renewStore() {
+        store().close();
+        this.store = new ModelCubeStore();
+        this.storesRenewed++;
     }
     
     public void endLevelPrepare() {
@@ -434,7 +450,9 @@ public final class ModelGpuVertices {
             map.put("residentCubes", this.store.residentCubes());
             map.put("cpuOnlyCubes", this.store.cpuOnlyCubes());
             map.put("residentPolygonBytes", this.store.residentBytes());
+            map.put("collectedPolygons", this.store.collectedPolygons());
         }
+        map.put("storesRenewed", this.storesRenewed);
         return map;
     }
 }

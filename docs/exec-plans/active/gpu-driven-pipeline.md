@@ -194,6 +194,18 @@ path. A run whose draws are left out draws no models and is faster for it, so
 step 2's 778 FPS, above the 650 FPS measured with every model drawn, may come
 from such frames.
 
+2026-10-16, model cubes after a resource reload. A reload bakes every model
+again, and Minecraft's elder guardian curse particle bakes one each time it
+appears, so the cube store kept the faces of cubes Minecraft had dropped beside
+those of the new ones. The store now holds its cubes weakly and counts the
+faces of those collected; once they are most of its faces, the GPU path starts
+a new store, and the cubes still drawn upload their faces to it as they are
+drawn. In the entity scene the store held 93 cubes in 53,568 bytes; the first
+reload doubled it, with the old cubes' 558 faces collected, and the second
+renewed it to 93 cubes in 53,568 bytes. Every model was drawn on the vertex
+pass and on the mesh stage throughout, in frames identical to Minecraft's
+path.
+
 ## Decisions
 
 - The mod extends Minecraft's renderer instead of running its own beside it
@@ -228,6 +240,4 @@ from such frames.
 
 ## Follow-Up
 
-- Cubes stay resident across resource reloads: a reload bakes new models, and
-  the cube store adds their cubes beside the old ones.
 - A task stage for step 3, to cull models outside the view on the GPU.
