@@ -847,6 +847,15 @@ tasks.register("checkModelShadersCompile", JavaExec) {
     inputs.dir(modelShaderSourceDir)
 }
 
+tasks.register("checkModelMeshShader", JavaExec) {
+    group = "verification"
+    description = "Checks that the mesh stage made from Minecraft's entity vertex shader compiles and writes every output."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.model.ModelMeshShaderCheck"
+}
+
 tasks.register("checkModelVertexInvariants", JavaExec) {
     group = "verification"
     description = "Checks that the model vertex pass reads its records as laid out and writes Minecraft's own model vertices."
@@ -940,6 +949,7 @@ tasks.named("check") {
     dependsOn tasks.named("checkTerrainShadersCompile")
     dependsOn tasks.named("checkModelShadersCompile")
     dependsOn tasks.named("checkModelVertexInvariants")
+    dependsOn tasks.named("checkModelMeshShader")
     dependsOn tasks.named("checkTerrainRenderPassStateInvariants")
     dependsOn tasks.named("checkVulkanVideoOptionsInvariants")
     dependsOn tasks.named("checkAcceleratedWorldgenProviderIntegrationInvariants")

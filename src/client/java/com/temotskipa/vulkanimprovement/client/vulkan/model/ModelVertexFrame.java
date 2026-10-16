@@ -3,19 +3,27 @@ package com.temotskipa.vulkanimprovement.client.vulkan.model;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.renderpearl.api.buffers.GpuBuffer;
-import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice.MappedView;
 import com.mojang.renderpearl.api.commands.CommandEncoder;
 import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
+import com.mojang.renderpearl.backend.vulkan.VulkanRenderPipeline;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ComputeCommands;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ComputePipeline;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ShaderStorage;
-import net.minecraft.client.renderer.StagedVertexBuffer;
+import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelGpuRecords.EntityVertex;
+import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelGpuRecords.Job;
+import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelGpuRecords.Part;
+import net.minecraft.client.renderer.StagedVertexBuffer.ExecuteInfo;
+import net.minecraft.client.renderer.rendertype.PreparedRenderType;
 import net.minecraft.core.Direction;
 import net.minecraft.util.ARGB;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.jspecify.annotations.Nullable;
 import org.lwjgl.system.MemoryStack;
+import org.lwjgl.vulkan.EXTMeshShader;
+import org.lwjgl.vulkan.VK10;
+import org.lwjgl.vulkan.VkCommandBuffer;
 
 import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
@@ -25,8 +33,10 @@ import java.util.List;
 /**
  * What one preparation of Minecraft's features hands the GPU: a record per posed part, one per
  * cube, and the GPU draws they go into. Once Minecraft has uploaded its own vertices, the records
- * go into a Minecraft buffer and one compute pass writes every cube's vertices; the draws then read
- * them until Minecraft ends the draw. Used from the render thread only.
+ * go into a Minecraft buffer, the cubes sorted by draw. A draw the mesh stage can draw reads them
+ * there when Minecraft draws it ({@link ModelMeshShader}); for the others one compute pass writes
+ * the cubes' vertices, which their draws then read until Minecraft ends the draw. Used from the
+ * render thread only.
  */
 final class ModelVertexFrame {
     static final int WORKGROUP_SIZE = 64;
@@ -39,14 +49,42 @@ final class ModelVertexFrame {
     private static final long RECORD_ALIGNMENT = 16L;
     private static final Direction[] DIRECTIONS = Direction.values();
     
-    private final GrowingSegment parts = new GrowingSegment(4096L * ModelGpuRecords.Part.BYTES);
-    private final GrowingSegment jobs = new GrowingSegment(16_384L * ModelGpuRecords.Job.BYTES);
+    private final GrowingSegment parts = new GrowingSegment(4096L * Part.BYTES);
+    private final GrowingSegment jobs = new GrowingSegment(16_384L * Job.BYTES);
+    private final GrowingSegment sortedJobs = new GrowingSegment(16_384L * Job.BYTES);
     private final List<ModelVertexDraw> draws = new ArrayList<>();
     private int partCount;
     private int jobCount;
     private long vertexCount;
     private @Nullable Object stagedBuffer;
     private @Nullable GpuBuffer vertices;
+    private boolean written;
+    private int meshDraws;
+    private int meshJobs;
+    /**
+     * The device addresses the mesh stage reads: the resident polygons, the frame's parts, its
+     * sorted cubes and the 8-bit conversion table.
+     */
+    private long meshPolygons;
+    private long meshParts;
+    private long meshJobRecords;
+    private long meshConversions;
+    
+    /**
+     * A normal as {@code BufferBuilder} writes it: three signed bytes, x first, then a byte it
+     * leaves alone, written here as 0.
+     */
+    static int packNormal(float x, float y, float z) {
+        return normalByte(x) | normalByte(y) << 8 | normalByte(z) << 16;
+    }
+    
+    private static int normalByte(float component) {
+        return (int) (Math.clamp(component, -1.0F, 1.0F) * 127.0F) & 0xFF;
+    }
+    
+    private static long align(long offset) {
+        return Math.ceilDiv(offset, RECORD_ALIGNMENT) * RECORD_ALIGNMENT;
+    }
     
     boolean isEmpty() {
         return this.jobCount == 0;
@@ -54,6 +92,13 @@ final class ModelVertexFrame {
     
     boolean belongsTo(Object stagedVertexBuffer) {
         return this.stagedBuffer == stagedVertexBuffer;
+    }
+    
+    /**
+     * The frame's contents, and whether its draws are of a staged vertex buffer, for a report.
+     */
+    String describe(Object stagedVertexBuffer) {
+        return this.draws.size() + " draws, " + this.partCount + " parts, " + this.jobCount + " cubes, " + (this.stagedBuffer == null ? "no staged vertex buffer" : belongsTo(stagedVertexBuffer) ? "of the staged vertex buffer Minecraft uploads" : "of another staged vertex buffer");
     }
     
     int partCount() {
@@ -66,6 +111,14 @@ final class ModelVertexFrame {
     
     int drawCount() {
         return this.draws.size();
+    }
+    
+    int meshDrawCount() {
+        return this.meshDraws;
+    }
+    
+    int meshJobCount() {
+        return this.meshJobs;
     }
     
     long vertexCount() {
@@ -89,16 +142,17 @@ final class ModelVertexFrame {
     /**
      * A new GPU draw of the staged vertex buffer the frame's draws all belong to.
      */
-    ModelVertexDraw addDraw(Object stagedVertexBuffer) {
+    ModelVertexDraw addDraw(Object stagedVertexBuffer, PreparedRenderType renderType) {
         if (this.stagedBuffer == null) {
             this.stagedBuffer = stagedVertexBuffer;
-        } else if (this.stagedBuffer != stagedVertexBuffer) {
+        }
+        else if (this.stagedBuffer != stagedVertexBuffer) {
             throw new IllegalStateException("GPU model draws of two staged vertex buffers in one frame");
         }
-        if (this.draws.size() >= ModelGpuRecords.Job.MAX_DRAWS) {
-            throw new IllegalStateException("More than " + ModelGpuRecords.Job.MAX_DRAWS + " GPU model draws in one frame");
+        if (this.draws.size() >= Job.MAX_DRAWS) {
+            throw new IllegalStateException("More than " + Job.MAX_DRAWS + " GPU model draws in one frame");
         }
-        ModelVertexDraw draw = new ModelVertexDraw(this.draws.size());
+        ModelVertexDraw draw = new ModelVertexDraw(this.draws.size(), renderType);
         this.draws.add(draw);
         return draw;
     }
@@ -108,10 +162,10 @@ final class ModelVertexFrame {
      * its vertices. Its normals are written as its cubes need them.
      */
     int addPart(PoseStack.Pose pose, int color, int overlay, int light) {
-        long offset = (long) this.partCount * ModelGpuRecords.Part.BYTES;
-        MemorySegment records = this.parts.reserve(offset, offset + ModelGpuRecords.Part.BYTES);
+        long offset = (long) this.partCount * Part.BYTES;
+        MemorySegment records = this.parts.reserve(offset, offset + Part.BYTES);
         Matrix4f matrix = pose.pose();
-        long poseOffset = offset + ModelGpuRecords.Part.POSE;
+        long poseOffset = offset + Part.POSE;
         records.set(ModelGpuRecords.FLOAT, poseOffset, matrix.m00());
         records.set(ModelGpuRecords.FLOAT, poseOffset + 4L, matrix.m01());
         records.set(ModelGpuRecords.FLOAT, poseOffset + 8L, matrix.m02());
@@ -124,9 +178,9 @@ final class ModelVertexFrame {
         records.set(ModelGpuRecords.FLOAT, poseOffset + 36L, matrix.m30());
         records.set(ModelGpuRecords.FLOAT, poseOffset + 40L, matrix.m31());
         records.set(ModelGpuRecords.FLOAT, poseOffset + 44L, matrix.m32());
-        records.set(ModelGpuRecords.INT, offset + ModelGpuRecords.Part.COLOR, ARGB.toABGR(color));
-        records.set(ModelGpuRecords.INT, offset + ModelGpuRecords.Part.OVERLAY, overlay);
-        records.set(ModelGpuRecords.INT, offset + ModelGpuRecords.Part.LIGHT, light);
+        records.set(ModelGpuRecords.INT, offset + Part.COLOR, ARGB.toABGR(color));
+        records.set(ModelGpuRecords.INT, offset + Part.OVERLAY, overlay);
+        records.set(ModelGpuRecords.INT, offset + Part.LIGHT, light);
         return this.partCount++;
     }
     
@@ -135,7 +189,7 @@ final class ModelVertexFrame {
      * pose as {@code ModelPart.Cube.compile} transforms it, packed as {@code BufferBuilder} packs it.
      */
     void writeNormals(int part, PoseStack.Pose pose, int directions, Vector3f scratch) {
-        long offset = (long) part * ModelGpuRecords.Part.BYTES + ModelGpuRecords.Part.NORMALS;
+        long offset = (long) part * Part.BYTES + Part.NORMALS;
         MemorySegment records = this.parts.segment();
         for (Direction direction : DIRECTIONS) {
             if ((directions & 1 << direction.ordinal()) != 0) {
@@ -146,58 +200,71 @@ final class ModelVertexFrame {
     }
     
     /**
-     * A normal as {@code BufferBuilder} writes it: three signed bytes, x first, then a byte it
-     * leaves alone, written here as 0.
-     */
-    static int packNormal(float x, float y, float z) {
-        return normalByte(x) | normalByte(y) << 8 | normalByte(z) << 16;
-    }
-    
-    private static int normalByte(float component) {
-        return (int) (Math.clamp(component, -1.0F, 1.0F) * 127.0F) & 0xFF;
-    }
-    
-    /**
      * Records a cube the GPU writes into the draw, after the draw's vertices so far.
      */
     void addJob(int part, int firstPolygon, int polygons, ModelVertexDraw draw) {
-        long offset = (long) this.jobCount * ModelGpuRecords.Job.BYTES;
-        MemorySegment records = this.jobs.reserve(offset, offset + ModelGpuRecords.Job.BYTES);
-        records.set(ModelGpuRecords.INT, offset + ModelGpuRecords.Job.PART, part);
-        records.set(ModelGpuRecords.INT, offset + ModelGpuRecords.Job.FIRST_POLYGON, firstPolygon);
-        records.set(ModelGpuRecords.INT, offset + ModelGpuRecords.Job.DRAW_AND_POLYGONS, draw.index | polygons << ModelGpuRecords.Job.DRAW_BITS);
-        records.set(ModelGpuRecords.INT, offset + ModelGpuRecords.Job.FIRST_VERTEX, draw.vertexCount);
+        long offset = (long) this.jobCount * Job.BYTES;
+        MemorySegment records = this.jobs.reserve(offset, offset + Job.BYTES);
+        records.set(ModelGpuRecords.INT, offset + Job.PART, part);
+        records.set(ModelGpuRecords.INT, offset + Job.FIRST_POLYGON, firstPolygon);
+        records.set(ModelGpuRecords.INT, offset + Job.DRAW_AND_POLYGONS, draw.index | polygons << Job.DRAW_BITS);
+        records.set(ModelGpuRecords.INT, offset + Job.FIRST_VERTEX, draw.vertexCount);
         int vertices = polygons * ModelGpuRecords.POLYGON_VERTICES;
         draw.vertexCount += vertices;
+        draw.jobCount++;
         this.vertexCount += vertices;
         this.jobCount++;
     }
     
     /**
-     * Places the draws one after another in a vertex buffer, puts the records in a buffer of their
-     * own, and records the pass that writes the vertices, outside any render pass.
+     * Sorts the cubes by draw, the vertex pass's draws first, puts the records in a buffer of their
+     * own, places the vertex pass's draws one after another in a vertex buffer, and records the
+     * pass that writes their vertices, outside any render pass.
+     *
+     * @param conversions the mesh stage's 8-bit conversion table, or null when the mesh stage draws
+     *                    nothing
      */
-    void write(ModelBufferPool inputs, ModelBufferPool outputs, ComputePipeline pipeline, long polygonAddress) {
+    void write(ModelBufferPool inputs, ModelBufferPool outputs, ComputePipeline pipeline, long polygonAddress, @Nullable GpuBuffer conversions) {
+        this.meshDraws = 0;
+        this.meshJobs = 0;
+        for (ModelVertexDraw draw : this.draws) {
+            draw.mesh = conversions != null && ModelMeshPipelines.drawsWithMesh(draw.renderType);
+            if (draw.mesh) {
+                this.meshDraws++;
+                this.meshJobs += draw.jobCount;
+            }
+        }
+        MemorySegment jobRecords = this.meshDraws == 0 ? this.jobs.segment() : sortJobs();
         long base = 0L;
         for (ModelVertexDraw draw : this.draws) {
-            draw.baseVertex = Math.toIntExact(base);
-            base += draw.vertexCount;
+            draw.baseVertex = draw.mesh ? 0 : Math.toIntExact(base);
+            base += draw.mesh ? 0 : draw.vertexCount;
         }
-        GpuBuffer output = outputs.acquire(base * ModelGpuRecords.EntityVertex.BYTES);
-        long partBytes = (long) this.partCount * ModelGpuRecords.Part.BYTES;
+        long partBytes = (long) this.partCount * Part.BYTES;
         long jobOffset = align(partBytes);
-        long jobBytes = (long) this.jobCount * ModelGpuRecords.Job.BYTES;
+        long jobBytes = (long) this.jobCount * Job.BYTES;
         long drawBaseOffset = align(jobOffset + jobBytes);
         GpuBuffer input = inputs.acquire(drawBaseOffset + (long) this.draws.size() * Integer.BYTES);
-        try (GpuBufferSlice.MappedView view = input.map(false, true)) {
+        try (MappedView view = input.map(false, true)) {
             MemorySegment target = MemorySegment.ofBuffer(view.data());
             MemorySegment.copy(this.parts.segment(), 0L, target, 0L, partBytes);
-            MemorySegment.copy(this.jobs.segment(), 0L, target, jobOffset, jobBytes);
+            MemorySegment.copy(jobRecords, 0L, target, jobOffset, jobBytes);
             for (ModelVertexDraw draw : this.draws) {
                 target.set(ModelGpuRecords.INT, drawBaseOffset + (long) draw.index * Integer.BYTES, draw.baseVertex);
             }
         }
         long inputAddress = ShaderStorage.address(input);
+        this.meshPolygons = polygonAddress;
+        this.meshParts = inputAddress;
+        this.meshJobRecords = inputAddress + jobOffset;
+        this.meshConversions = conversions == null ? 0L : ShaderStorage.address(conversions);
+        this.written = true;
+        
+        int vertexPassJobs = this.jobCount - this.meshJobs;
+        if (vertexPassJobs == 0) {
+            return;
+        }
+        GpuBuffer output = outputs.acquire(base * EntityVertex.BYTES);
         CommandEncoder encoder = RenderSystem.getDevice().createCommandEncoder();
         try (MemoryStack stack = MemoryStack.stackPush()) {
             ByteBuffer pushConstants = stack.malloc(PUSH_CONSTANT_BYTES);
@@ -206,8 +273,8 @@ final class ModelVertexFrame {
             pushConstants.putLong(16, inputAddress + jobOffset);
             pushConstants.putLong(24, inputAddress + drawBaseOffset);
             pushConstants.putLong(32, ShaderStorage.address(output));
-            for (int firstJob = 0; firstJob < this.jobCount; firstJob += MAX_JOBS_PER_DISPATCH) {
-                int jobs = Math.min(MAX_JOBS_PER_DISPATCH, this.jobCount - firstJob);
+            for (int firstJob = 0; firstJob < vertexPassJobs; firstJob += MAX_JOBS_PER_DISPATCH) {
+                int jobs = Math.min(MAX_JOBS_PER_DISPATCH, vertexPassJobs - firstJob);
                 pushConstants.putInt(40, firstJob);
                 pushConstants.putInt(44, jobs);
                 int workgroups = Math.ceilDiv(jobs * ModelGpuRecords.MAX_CUBE_POLYGONS, WORKGROUP_SIZE);
@@ -217,23 +284,98 @@ final class ModelVertexFrame {
         this.vertices = output;
     }
     
-    private static long align(long offset) {
-        return Math.ceilDiv(offset, RECORD_ALIGNMENT) * RECORD_ALIGNMENT;
+    /**
+     * The cube records sorted by draw, keeping each draw's order: first those of the vertex pass's
+     * draws, then those of the mesh stage's. Gives each draw the index of its first cube.
+     */
+    private MemorySegment sortJobs() {
+        int next = 0;
+        for (ModelVertexDraw draw : this.draws) {
+            if (!draw.mesh) {
+                draw.firstJob = next;
+                next += draw.jobCount;
+            }
+        }
+        for (ModelVertexDraw draw : this.draws) {
+            if (draw.mesh) {
+                draw.firstJob = next;
+                next += draw.jobCount;
+            }
+        }
+        int[] placed = new int[this.draws.size()];
+        MemorySegment source = this.jobs.segment();
+        MemorySegment sorted = this.sortedJobs.reserve(0L, (long) this.jobCount * Job.BYTES);
+        for (int job = 0; job < this.jobCount; job++) {
+            long offset = (long) job * Job.BYTES;
+            int drawIndex = source.get(ModelGpuRecords.INT, offset + Job.DRAW_AND_POLYGONS) & Job.MAX_DRAWS - 1;
+            ModelVertexDraw draw = this.draws.get(drawIndex);
+            MemorySegment.copy(source, offset, sorted, (long) (draw.firstJob + placed[drawIndex]++) * Job.BYTES, Job.BYTES);
+        }
+        return sorted;
     }
     
     /**
-     * What Minecraft draws a GPU draw with: the frame's vertex buffer from the draw's first vertex,
-     * and Minecraft's own index buffer for quads, as it draws its unsorted quad draws. Null before
-     * the frame is written, and Minecraft then skips the draw.
+     * What Minecraft draws a GPU draw with. For a draw of the vertex pass: the frame's vertex buffer
+     * from the draw's first vertex, and Minecraft's own index buffer for quads, as it draws its
+     * unsorted quad draws. For one of the mesh stage: the marker vertex buffer, with the draw's
+     * index as its vertex offset, which the mesh draw takes its place by. Null before the frame is
+     * written, and Minecraft then skips the draw.
      */
-    StagedVertexBuffer.@Nullable ExecuteInfo executeInfo(ModelVertexDraw draw) {
-        if (this.vertices == null || draw.vertexCount == 0) {
+    @Nullable ExecuteInfo executeInfo(ModelVertexDraw draw, @Nullable GpuBuffer meshMarker) {
+        if (!this.written || draw.vertexCount == 0) {
+            return null;
+        }
+        if (draw.mesh) {
+            if (meshMarker == null) {
+                return null;
+            }
+            int indexCount = PrimitiveTopology.QUADS.indexCount(ModelGpuRecords.POLYGON_VERTICES);
+            RenderSystem.AutoStorageIndexBuffer autoIndices = RenderSystem.getSequentialBuffer(PrimitiveTopology.QUADS);
+            autoIndices.requestIndexCount(indexCount);
+            return new ExecuteInfo(meshMarker, null, autoIndices.type(), draw.index, 0, indexCount, PrimitiveTopology.QUADS);
+        }
+        if (this.vertices == null) {
             return null;
         }
         int indexCount = PrimitiveTopology.QUADS.indexCount(draw.vertexCount);
         RenderSystem.AutoStorageIndexBuffer autoIndices = RenderSystem.getSequentialBuffer(PrimitiveTopology.QUADS);
         autoIndices.requestIndexCount(indexCount);
-        return new StagedVertexBuffer.ExecuteInfo(this.vertices, null, autoIndices.type(), draw.baseVertex, 0, indexCount, PrimitiveTopology.QUADS);
+        return new ExecuteInfo(this.vertices, null, autoIndices.type(), draw.baseVertex, 0, indexCount, PrimitiveTopology.QUADS);
+    }
+    
+    /**
+     * Records the mesh draw that takes the place of the indexed draw Minecraft records for a draw of
+     * the mesh stage, inside Minecraft's render pass with its pipeline and descriptors bound, and
+     * binds Minecraft's pipeline again. Returns false, recording nothing, when the draw is not one
+     * of this frame's mesh draws or the bound pipeline has no mesh pipeline.
+     */
+    boolean drawMesh(VkCommandBuffer commandBuffer, VulkanRenderPipeline pipeline, int drawIndex) {
+        if (!this.written || drawIndex < 0 || drawIndex >= this.draws.size()) {
+            return false;
+        }
+        ModelVertexDraw draw = this.draws.get(drawIndex);
+        ModelMeshPipelines.MeshPipeline meshPipeline = ModelMeshPipelines.of(pipeline);
+        if (!draw.mesh || meshPipeline == null) {
+            return false;
+        }
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            ByteBuffer pushConstants = stack.malloc(ModelMeshShader.PUSH_CONSTANT_BYTES);
+            pushConstants.putLong(0, this.meshPolygons);
+            pushConstants.putLong(8, this.meshParts);
+            pushConstants.putLong(16, this.meshJobRecords);
+            pushConstants.putLong(24, this.meshConversions);
+            VK10.vkCmdBindPipeline(commandBuffer, VK10.VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline.pipeline());
+            for (int first = 0; first < draw.jobCount; first += MAX_WORKGROUPS) {
+                int cubes = Math.min(MAX_WORKGROUPS, draw.jobCount - first);
+                pushConstants.putInt(32, draw.firstJob + first);
+                pushConstants.putInt(36, cubes);
+                // Minecraft's push constant range covers every stage, so its updates name every stage.
+                VK10.vkCmdPushConstants(commandBuffer, pipeline.pipelineLayout(), Integer.MAX_VALUE, meshPipeline.pushConstantOffset(), pushConstants);
+                EXTMeshShader.vkCmdDrawMeshTasksEXT(commandBuffer, cubes, 1, 1);
+            }
+            VK10.vkCmdBindPipeline(commandBuffer, VK10.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.vkPipeline());
+        }
+        return true;
     }
     
     /**
@@ -247,11 +389,15 @@ final class ModelVertexFrame {
         this.vertexCount = 0L;
         this.stagedBuffer = null;
         this.vertices = null;
+        this.written = false;
+        this.meshDraws = 0;
+        this.meshJobs = 0;
     }
     
     void close() {
         reset();
         this.parts.close();
         this.jobs.close();
+        this.sortedJobs.close();
     }
 }

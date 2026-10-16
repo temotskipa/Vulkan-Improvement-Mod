@@ -13,11 +13,14 @@
     "FrontendCommandEncoderMixin",
     "FrontendRenderPassMixin",
     "GlBackendMixin",
+    "GlslCompilerMixin",
     "LevelRendererMixin",
     "ModelFeatureRendererMixin",
     "ModelPartCubeMixin",
     "ModelPartMixin",
+    "PipelineBuilderMixin",
     "RenderTypeFeatureRendererGroupMixin",
+    "SPIRVModuleMixin",
     "SectionRenderDispatcherRenderSectionMixin",
     "StagedVertexBufferDrawMixin",
     "StagedVertexBufferMixin",
@@ -34,6 +37,8 @@
     "VulkanGpuTextureViewMixin",
     "VulkanInstanceMixin",
     "VulkanRenderPassMixin",
+    "VulkanRenderPassModelMeshMixin",
+    "VulkanRenderPipelineMeshMixin",
     "VulkanRenderPipelineMixin"
   ],
   "injectors": {

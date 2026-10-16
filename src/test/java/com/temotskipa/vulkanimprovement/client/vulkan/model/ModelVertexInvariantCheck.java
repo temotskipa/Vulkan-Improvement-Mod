@@ -1,12 +1,6 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.model;
 
-import com.mojang.blaze3d.vertex.BufferBuilder;
-import com.mojang.blaze3d.vertex.ByteBufferBuilder;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.blaze3d.vertex.MeshData;
-import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexFormat;
-import com.mojang.blaze3d.vertex.VertexFormatElement;
+import com.mojang.blaze3d.vertex.*;
 import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ShaderCompileChecks;
 import net.minecraft.client.model.geom.ModelPart;
@@ -20,13 +14,7 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.EnumSet;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
-import java.util.Set;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -181,13 +169,7 @@ public final class ModelVertexInvariantCheck {
      */
     private static List<ModelPart.Cube> cubes() {
         Set<Direction> all = EnumSet.allOf(Direction.class);
-        return List.of(
-                new ModelPart.Cube(0, 0, -4.0F, -8.0F, -2.0F, 8.0F, 12.0F, 4.0F, 0.0F, 0.0F, 0.0F, false, 64.0F, 64.0F, all),
-                new ModelPart.Cube(16, 16, -3.5F, 0.0F, -2.0F, 7.0F, 5.0F, 4.0F, 0.25F, 0.5F, 0.25F, false, 64.0F, 32.0F, all),
-                new ModelPart.Cube(40, 16, -1.0F, -2.0F, -2.0F, 4.0F, 12.0F, 4.0F, 0.0F, 0.0F, 0.0F, true, 64.0F, 64.0F, all),
-                new ModelPart.Cube(0, 32, -2.0F, 0.0F, 0.0F, 4.0F, 0.0F, 6.0F, 0.0F, 0.0F, 0.0F, false, 128.0F, 64.0F, all),
-                new ModelPart.Cube(3, 7, -0.5F, -0.5F, -0.5F, 1.0F, 1.0F, 1.0F, -0.1F, 0.2F, 0.0F, true, 16.0F, 16.0F, EnumSet.of(Direction.UP, Direction.NORTH, Direction.WEST)),
-                new ModelPart.Cube(24, 0, -6.0F, 1.0F, -6.0F, 12.0F, 2.0F, 12.0F, 0.0F, 0.0F, 0.0F, false, 64.0F, 64.0F, EnumSet.of(Direction.DOWN)));
+        return List.of(new ModelPart.Cube(0, 0, -4.0F, -8.0F, -2.0F, 8.0F, 12.0F, 4.0F, 0.0F, 0.0F, 0.0F, false, 64.0F, 64.0F, all), new ModelPart.Cube(16, 16, -3.5F, 0.0F, -2.0F, 7.0F, 5.0F, 4.0F, 0.25F, 0.5F, 0.25F, false, 64.0F, 32.0F, all), new ModelPart.Cube(40, 16, -1.0F, -2.0F, -2.0F, 4.0F, 12.0F, 4.0F, 0.0F, 0.0F, 0.0F, true, 64.0F, 64.0F, all), new ModelPart.Cube(0, 32, -2.0F, 0.0F, 0.0F, 4.0F, 0.0F, 6.0F, 0.0F, 0.0F, 0.0F, false, 128.0F, 64.0F, all), new ModelPart.Cube(3, 7, -0.5F, -0.5F, -0.5F, 1.0F, 1.0F, 1.0F, -0.1F, 0.2F, 0.0F, true, 16.0F, 16.0F, EnumSet.of(Direction.UP, Direction.NORTH, Direction.WEST)), new ModelPart.Cube(24, 0, -6.0F, 1.0F, -6.0F, 12.0F, 2.0F, 12.0F, 0.0F, 0.0F, 0.0F, false, 64.0F, 64.0F, EnumSet.of(Direction.DOWN)));
     }
     
     private static List<PoseStack.Pose> fixedPoses() {
@@ -258,7 +240,8 @@ public final class ModelVertexInvariantCheck {
         try (Arena arena = Arena.ofConfined()) {
             int polygonCount = cubes.stream().mapToInt(cube -> cube.polygons.length).sum();
             MemorySegment polygons = arena.allocate(polygonCount * ModelGpuRecords.Polygon.BYTES, 16L);
-            ModelVertexDraw draw = frame.addDraw(new Object());
+            // The check writes no frame, so the draw is drawn with no render type.
+            ModelVertexDraw draw = frame.addDraw(new Object(), null);
             int part = frame.addPart(pose, color, overlay, light);
             int directions = 0;
             int firstPolygon = 0;

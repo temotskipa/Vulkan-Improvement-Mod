@@ -6,28 +6,32 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.logging.LogUtils;
 import com.mojang.renderpearl.api.buffers.GpuBuffer;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice.MappedView;
 import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
+import com.mojang.renderpearl.backend.vulkan.VulkanRenderPipeline;
+import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanImprovementCapabilities;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ComputeCommands;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ComputePipeline;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ShaderCompiler;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ShaderStorage;
+import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelVertexDraw.Holder;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.model.geom.ModelPart;
+import net.minecraft.client.model.geom.ModelPart.Cube;
 import net.minecraft.client.renderer.StagedVertexBuffer;
-import net.minecraft.client.renderer.feature.ModelFeatureRenderer;
+import net.minecraft.client.renderer.StagedVertexBuffer.Draw;
+import net.minecraft.client.renderer.feature.ModelFeatureRenderer.Submit;
+import net.minecraft.client.renderer.rendertype.PreparedRenderType;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import org.jspecify.annotations.Nullable;
 import org.lwjgl.util.shaderc.Shaderc;
 import org.lwjgl.vulkan.VK10;
+import org.lwjgl.vulkan.VkCommandBuffer;
 import org.slf4j.Logger;
 
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.lang.foreign.MemorySegment;
+import java.util.*;
 
 /**
  * Model vertices written by the GPU instead of the CPU (step 2 of the GPU-driven pipeline plan).
@@ -36,7 +40,9 @@ import java.util.Set;
  * poses the model as always, and each posed part's cubes become records instead of vertices. Once
  * Minecraft has uploaded its own vertices, one compute pass writes the cubes' vertices into a
  * Minecraft buffer, and Minecraft draws them with its own render types as draws of its staged
- * vertex buffer.
+ * vertex buffer. With {@code vim.gpuModelMeshShaders} on as well, a draw whose pipelines all have a
+ * mesh pipeline ({@link ModelMeshPipelines}) is drawn by the mesh stage instead, straight from the
+ * records, and no vertices are written for it.
  *
  * <p>The path is switched with {@code vim.gpuModelVertices}, between frames; its vertex pass is
  * built the first time it is on. A submit stays on Minecraft's path when the GPU could not write the same bytes: a decal or a
@@ -62,6 +68,16 @@ public final class ModelGpuVertices {
     private @Nullable ModelVertexFrame frame;
     private @Nullable ModelBufferPool inputBuffers;
     private @Nullable ModelBufferPool vertexBuffers;
+    /**
+     * Whether the device has mesh shaders, so that GPU model draws may be drawn by them. Read on the
+     * threads Minecraft compiles pipelines on.
+     */
+    private volatile boolean meshShadersAvailable;
+    /**
+     * The vertex buffer Minecraft draws a mesh draw from, which marks the draw as one.
+     */
+    private @Nullable GpuBuffer meshMarker;
+    private @Nullable GpuBuffer meshConversions;
     private @Nullable List<String> otherModMixins;
     private @Nullable RenderType offeredRenderType;
     private @Nullable Object stagedBufferUsed;
@@ -74,6 +90,20 @@ public final class ModelGpuVertices {
     private long lastFrameCubes;
     private long lastFrameVertices;
     private long lastFrameDraws;
+    private long lastFrameMeshDraws;
+    private long lastFrameMeshCubes;
+    private long meshDraws;
+    private long meshDrawsLeftOut;
+    /**
+     * Model submits the GPU path took while Minecraft prepares the level's features this frame.
+     */
+    private int levelSubmits;
+    /**
+     * Frames whose GPU model draws Minecraft uploaded without the GPU having written them, which it
+     * then skips. Should stay 0.
+     */
+    private long framesLeftOut;
+    private boolean warnedLeftOut;
     
     private ModelGpuVertices() {
     }
@@ -82,12 +112,33 @@ public final class ModelGpuVertices {
         return INSTANCE;
     }
     
+    private static boolean insideRenderPass() {
+        return ComputeCommands.insideRenderPass(RenderSystem.getDevice().createCommandEncoder());
+    }
+    
+    /**
+     * Whether the GPU writes the bytes Minecraft would: no decal or texture remapping wraps the
+     * builder, the render type's vertices are Minecraft's entity format in quads, and Minecraft
+     * does not sort them as it uploads them.
+     */
+    private static boolean writesExactly(Submit<?> submit) {
+        if (submit.sheetedDecalPose() != null || submit.uvMapping() != null) {
+            return false;
+        }
+        RenderType renderType = submit.renderType();
+        if (renderType.format() != DefaultVertexFormat.ENTITY || renderType.primitiveTopology() != PrimitiveTopology.QUADS) {
+            return false;
+        }
+        return !renderType.sortOnUpload() || Minecraft.getInstance().gameRenderer.useImprovedTransparency();
+    }
+    
     /**
      * Takes Minecraft's new device, and builds the vertex pass for it at once when the path is on.
      */
     public synchronized void configure(VulkanDevice vulkanDevice) {
         shutdownNow();
         this.device = vulkanDevice;
+        this.meshShadersAvailable = VulkanImprovementCapabilities.snapshot().meshShaderExtension();
         if (TerrainRendererDebugConfig.gpuModelVerticesEnabled()) {
             ready();
         }
@@ -117,7 +168,26 @@ public final class ModelGpuVertices {
         this.frame = new ModelVertexFrame();
         this.inputBuffers = new ModelBufferPool(() -> "VIM Model Records", GpuBuffer.USAGE_MAP_WRITE | ShaderStorage.USAGE_SHADER_STORAGE);
         this.vertexBuffers = new ModelBufferPool(() -> "VIM Model Vertices", GpuBuffer.USAGE_VERTEX | ShaderStorage.USAGE_SHADER_STORAGE);
+        if (this.meshShadersAvailable) {
+            this.meshMarker = RenderSystem.getDevice().createBuffer(() -> "VIM Model Mesh Marker", GpuBuffer.USAGE_VERTEX, 16L);
+            this.meshConversions = createConversionTable();
+        }
         return true;
+    }
+    
+    /**
+     * The mesh stage's 8-bit conversion table, in a buffer it reads by address.
+     */
+    private static GpuBuffer createConversionTable() {
+        float[] table = ModelMeshShader.conversionTable();
+        GpuBuffer buffer = RenderSystem.getDevice().createBuffer(() -> "VIM Model Mesh Conversions", GpuBuffer.USAGE_MAP_WRITE | ShaderStorage.USAGE_SHADER_STORAGE, (long) table.length * Float.BYTES);
+        try (MappedView view = buffer.map(false, true)) {
+            MemorySegment target = MemorySegment.ofBuffer(view.data());
+            for (int i = 0; i < table.length; i++) {
+                target.set(ModelGpuRecords.FLOAT, (long) i * Float.BYTES, table[i]);
+            }
+        }
+        return buffer;
     }
     
     public synchronized void shutdownNow() {
@@ -139,6 +209,15 @@ public final class ModelGpuVertices {
             this.vertexBuffers.close();
             this.vertexBuffers = null;
         }
+        if (this.meshMarker != null) {
+            this.meshMarker.close();
+            this.meshMarker = null;
+        }
+        if (this.meshConversions != null) {
+            this.meshConversions.close();
+            this.meshConversions = null;
+        }
+        this.meshShadersAvailable = false;
         if (this.pipeline != null && this.device != null) {
             this.pipeline.destroy(this.device);
         }
@@ -154,6 +233,7 @@ public final class ModelGpuVertices {
      */
     public void beginLevelPrepare() {
         this.preparingLevel = TerrainRendererDebugConfig.gpuModelVerticesEnabled() && !insideRenderPass() && untouchedByOtherMods() && ready();
+        this.levelSubmits = 0;
     }
     
     public void endLevelPrepare() {
@@ -161,13 +241,9 @@ public final class ModelGpuVertices {
         this.offeredRenderType = null;
     }
     
-    private static boolean insideRenderPass() {
-        return ComputeCommands.insideRenderPass(RenderSystem.getDevice().createCommandEncoder());
-    }
-    
     private boolean untouchedByOtherMods() {
         if (this.otherModMixins == null) {
-            this.otherModMixins = OtherModMixins.targeting(REPLACED_CLASSES);
+            this.otherModMixins = OtherModMixins.targeting();
             if (!this.otherModMixins.isEmpty()) {
                 LOGGER.warn("[Vulkan Improvement] GPU model vertices stay off: other mods change what they replace: {}", this.otherModMixins);
             }
@@ -179,7 +255,7 @@ public final class ModelGpuVertices {
      * Whether the GPU writes the vertices of a model submit Minecraft is about to render. When it
      * does, the vertex builder Minecraft asks for next is the GPU path's.
      */
-    public boolean offer(ModelFeatureRenderer.Submit<?> submit) {
+    public boolean offer(Submit<?> submit) {
         if (!this.preparingLevel) {
             return false;
         }
@@ -189,22 +265,6 @@ public final class ModelGpuVertices {
         }
         this.offeredRenderType = submit.renderType();
         return true;
-    }
-    
-    /**
-     * Whether the GPU writes the bytes Minecraft would: no decal or texture remapping wraps the
-     * builder, the render type's vertices are Minecraft's entity format in quads, and Minecraft
-     * does not sort them as it uploads them.
-     */
-    private static boolean writesExactly(ModelFeatureRenderer.Submit<?> submit) {
-        if (submit.sheetedDecalPose() != null || submit.uvMapping() != null) {
-            return false;
-        }
-        RenderType renderType = submit.renderType();
-        if (renderType.format() != DefaultVertexFormat.ENTITY || renderType.primitiveTopology() != PrimitiveTopology.QUADS) {
-            return false;
-        }
-        return !renderType.sortOnUpload() || Minecraft.getInstance().gameRenderer.useImprovedTransparency();
     }
     
     public void clearOffer() {
@@ -221,6 +281,7 @@ public final class ModelGpuVertices {
         }
         this.offeredRenderType = null;
         this.gpuSubmits++;
+        this.levelSubmits++;
         this.sink.begin(group, renderType);
         return this.sink;
     }
@@ -229,7 +290,7 @@ public final class ModelGpuVertices {
      * Takes a part's cubes where Minecraft would compile them, when it renders into the GPU path's
      * builder; false otherwise.
      */
-    public boolean compileOnGpu(VertexConsumer buffer, List<ModelPart.Cube> cubes, PoseStack.Pose pose, int lightCoords, int overlayCoords, int color) {
+    public boolean compileOnGpu(VertexConsumer buffer, List<Cube> cubes, PoseStack.Pose pose, int lightCoords, int overlayCoords, int color) {
         if (buffer != this.sink) {
             return false;
         }
@@ -240,8 +301,8 @@ public final class ModelGpuVertices {
     /**
      * Makes a draw Minecraft's draw group just added a GPU draw of the frame.
      */
-    public void adopt(Object stagedVertexBuffer, StagedVertexBuffer.Draw draw) {
-        ((ModelVertexDraw.Holder) draw).vim$setModelDraw(frame().addDraw(stagedVertexBuffer));
+    public void adopt(Object stagedVertexBuffer, Draw draw, PreparedRenderType renderType) {
+        ((Holder) draw).vim$setModelDraw(frame().addDraw(stagedVertexBuffer, renderType));
         this.stagedBufferUsed = stagedVertexBuffer;
     }
     
@@ -252,15 +313,33 @@ public final class ModelGpuVertices {
     public void upload(Object stagedVertexBuffer) {
         ModelVertexFrame current = this.frame;
         if (current == null || !current.belongsTo(stagedVertexBuffer) || current.isEmpty()) {
+            if (this.preparingLevel && this.levelSubmits > 0) {
+                leftOut(current, stagedVertexBuffer);
+            }
             return;
         }
-        current.write(Objects.requireNonNull(this.inputBuffers), Objects.requireNonNull(this.vertexBuffers), Objects.requireNonNull(this.pipeline), store().address());
+        GpuBuffer conversions = TerrainRendererDebugConfig.gpuModelMeshShadersEnabled() ? this.meshConversions : null;
+        current.write(Objects.requireNonNull(this.inputBuffers), Objects.requireNonNull(this.vertexBuffers), Objects.requireNonNull(this.pipeline), store().address(), conversions);
         this.frameWritten = true;
         this.writtenFrames++;
         this.lastFrameParts = current.partCount();
         this.lastFrameCubes = current.jobCount();
         this.lastFrameVertices = current.vertexCount();
         this.lastFrameDraws = current.drawCount();
+        this.lastFrameMeshDraws = current.meshDrawCount();
+        this.lastFrameMeshCubes = current.meshJobCount();
+    }
+    
+    /**
+     * Counts a frame whose model submits the GPU path took but whose vertices it is not writing, and
+     * says once what the frame held: Minecraft skips those draws, and the models go missing.
+     */
+    private void leftOut(@Nullable ModelVertexFrame current, Object stagedVertexBuffer) {
+        this.framesLeftOut++;
+        if (!this.warnedLeftOut) {
+            this.warnedLeftOut = true;
+            LOGGER.warn("[Vulkan Improvement] GPU model vertices took {} model submits but are not writing them; Minecraft skips their draws. Frame: {}", this.levelSubmits, current == null ? "none" : current.describe(stagedVertexBuffer));
+        }
     }
     
     /**
@@ -268,7 +347,35 @@ public final class ModelGpuVertices {
      */
     public StagedVertexBuffer.@Nullable ExecuteInfo executeInfo(ModelVertexDraw draw) {
         ModelVertexFrame current = this.frame;
-        return current == null || !this.frameWritten ? null : current.executeInfo(draw);
+        return current == null || !this.frameWritten ? null : current.executeInfo(draw, this.meshMarker);
+    }
+    
+    /**
+     * Whether a vertex buffer is the marker Minecraft draws a mesh draw from.
+     */
+    public boolean isMeshMarker(GpuBuffer buffer) {
+        return this.meshMarker != null && buffer == this.meshMarker;
+    }
+    
+    /**
+     * Whether GPU model draws can be drawn by mesh shaders on Minecraft's device.
+     */
+    public boolean meshShadersAvailable() {
+        return this.meshShadersAvailable;
+    }
+    
+    /**
+     * Draws a mesh draw with the mesh pipeline of the pipeline Minecraft bound, where Minecraft
+     * records its indexed draw. One the mesh pipeline cannot draw is left out, and counted.
+     */
+    public void drawMesh(VkCommandBuffer commandBuffer, VulkanRenderPipeline pipeline, int drawIndex) {
+        ModelVertexFrame current = this.frame;
+        if (current != null && current.drawMesh(commandBuffer, pipeline, drawIndex)) {
+            this.meshDraws++;
+        }
+        else {
+            this.meshDrawsLeftOut++;
+        }
     }
     
     /**
@@ -319,6 +426,14 @@ public final class ModelGpuVertices {
         map.put("lastFrameCubes", this.lastFrameCubes);
         map.put("lastFrameVertices", this.lastFrameVertices);
         map.put("lastFrameDraws", this.lastFrameDraws);
+        map.put("meshShaders", TerrainRendererDebugConfig.gpuModelMeshShadersEnabled());
+        map.put("meshShadersAvailable", this.meshShadersAvailable);
+        map.put("lastFrameMeshDraws", this.lastFrameMeshDraws);
+        map.put("lastFrameMeshCubes", this.lastFrameMeshCubes);
+        map.put("meshDraws", this.meshDraws);
+        map.put("meshDrawsLeftOut", this.meshDrawsLeftOut);
+        map.put("framesLeftOut", this.framesLeftOut);
+        map.put("meshPipelines", ModelMeshPipelines.asMap());
         if (this.store != null) {
             map.put("residentCubes", this.store.residentCubes());
             map.put("cpuOnlyCubes", this.store.cpuOnlyCubes());

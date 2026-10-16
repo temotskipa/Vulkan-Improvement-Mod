@@ -398,7 +398,10 @@ inside a render pass the level renderer has already opened.
 These hooks let the GPU write the vertices of Minecraft's entity models into
 Minecraft's own draws (see `client.vulkan.model.ModelGpuVertices`). They change
 nothing unless `vim.gpuModelVertices` is on, and nothing while another
-mod's mixins target one of the classes below.
+mod's mixins target one of the classes below. The mesh-stage hooks
+(`PipelineBuilderMixin` to `VulkanRenderPassModelMeshMixin`) change nothing
+unless `vim.gpuModelMeshShaders` was on as well when Minecraft built its
+pipelines.
 
 ### ModelPartMixin
 
@@ -482,3 +485,83 @@ mod's mixins target one of the classes below.
 - Purpose: mark a draw as a GPU model draw and count the vertices the GPU
   writes into it, so Minecraft sizes its index buffer for them and does not
   skip the draw as empty.
+
+### PipelineBuilderMixin
+
+- Target: `com.mojang.blaze3d.pipeline.PipelineBuilder`.
+- mcdev 26.4 surface: private `generateBackendCreateInfo(RenderPipeline,
+  ShaderSource)` compiles each shader of the pipeline with
+  `GlslCompiler.compileToSpv(String, String, ShaderType, ShaderDefines,
+  ShaderSource, DeviceInfo)`, vertex before fragment, then reflects the
+  modules and numbers their uniforms by name across the stages;
+  `compilePipeline(RenderPipeline, ShaderSource)` hands the create info to the
+  device on the same thread, one of the threads Minecraft compiles pipelines
+  on.
+- Source tokens: `method = "generateBackendCreateInfo"`,
+  `GlslCompiler;compileToSpv(`, `RenderPipeline pipeline`.
+- Purpose: compile the GPU model mesh stage of an entity pipeline's vertex
+  shader with Minecraft's compiler, defines and includes
+  (`ModelMeshPipelines`).
+
+### GlslCompilerMixin
+
+- Target: `com.mojang.blaze3d.pipeline.GlslCompiler`.
+- mcdev 26.4 surface: `compileToSpv` targets Vulkan 1.2 (SPIR-V 1.5), binds
+  uniforms automatically, resolves Minecraft's includes through the
+  `ShaderSource`, and passes `Shaderc.shaderc_compile_into_spv` the shader
+  kind as its third argument: fragment for a fragment shader, vertex for any
+  other.
+- Source tokens: `method = "compileToSpv"`, `Shaderc;shaderc_compile_into_spv(`,
+  `index = 2`.
+- Purpose: compile the mesh stage as a mesh shader.
+
+### SPIRVModuleMixin
+
+- Target: `com.mojang.renderpearl.frontend.shaders.SPIRVModule`.
+- mcdev 26.4 surface: final field `name`; private `doReflection()`, run by
+  `reflect()`, sets the SPIRV-Cross entry point with
+  `Spvc.spvc_compiler_set_entry_point(long, CharSequence, int)` and the
+  execution model `SpvUtil.executionModel(ShaderType)` gives, vertex or
+  fragment. Its descriptors rewrite their binding and set decorations in the
+  module's SPIR-V, which `close()` frees.
+- Source tokens: `private String name`, `method = "doReflection"`,
+  `Spvc;spvc_compiler_set_entry_point(`.
+- Purpose: reflect the mesh stage with Minecraft's reflection, to give its
+  uniforms Minecraft's bindings.
+
+### VulkanRenderPipelineMeshMixin
+
+- Target: `com.mojang.renderpearl.backend.vulkan.VulkanRenderPipeline`.
+- mcdev 26.4 surface: static `compile(VulkanDevice,
+  CompiledRenderPipeline.CreateInfo)` gives every descriptor of its one set
+  layout the stage flags 17 (vertex and fragment) through
+  `VkDescriptorSetLayoutBinding.stageFlags(int)`; reads
+  `CreateInfo.pushConstantsSize()` twice and, when it is not 0, adds one push
+  constant range of that size for every stage; creates one shader module per
+  stage into `shaderModules`, in the order of `CreateInfo.shaders()`; and
+  builds the pipeline for the `RenderPassCache` render pass of its attachment
+  formats, viewport and scissor dynamic, front faces clockwise, depth bias
+  when either factor is not 0, and blending from private static
+  `applyBlendInformation(VkPipelineColorBlendAttachmentState.Buffer,
+  BlendFunction)`. `destroy()` destroys what `compile` created. Final fields
+  `device` and `shaderModules`.
+- Source tokens: `method = "compile"`, `VkDescriptorSetLayoutBinding;stageFlags(`,
+  `CreateInfo;pushConstantsSize()`, `method = "destroy"`,
+  `private LongList shaderModules`, `private static void applyBlendInformation`.
+- Purpose: open an entity pipeline's layout to the mesh stage, build the GPU
+  model mesh pipeline beside it with its layout, fragment module and state,
+  and destroy the mesh pipeline with it.
+
+### VulkanRenderPassModelMeshMixin
+
+- Target: `com.mojang.renderpearl.backend.vulkan.VulkanRenderPass`.
+- mcdev 26.4 surface: `setVertexBuffer(int, GpuBufferSlice)` binds the
+  slice's Vulkan buffer at the slot; `drawIndexed(int, int, int, int, int)`
+  writes and binds the pipeline's descriptors, then records
+  `VK12.vkCmdDrawIndexed`; field `pipeline`, which `setPipeline` binds.
+  `PreparedRenderType.draw` sets the pipeline, uniforms, vertex buffer 0 and
+  index buffer before each `drawIndexed`.
+- Source tokens: `VulkanRenderPipeline pipeline`, `method = "setVertexBuffer"`,
+  `method = "drawIndexed"`, `VK12;vkCmdDrawIndexed(`.
+- Purpose: draw a GPU model mesh draw, marked by its vertex buffer, with the
+  mesh pipeline where Minecraft records its indexed draw.

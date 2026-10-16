@@ -1,0 +1,88 @@
+package com.temotskipa.vulkanimprovement.mixin.client;
+
+import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
+import com.llamalad7.mixinextras.sugar.Local;
+import com.mojang.renderpearl.api.pipeline.BlendFunction;
+import com.mojang.renderpearl.api.pipeline.CompiledRenderPipeline;
+import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
+import com.mojang.renderpearl.backend.vulkan.VulkanRenderPipeline;
+import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelMeshPipelines;
+import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelMeshShader;
+import it.unimi.dsi.fastutil.longs.LongList;
+import org.jspecify.annotations.Nullable;
+import org.lwjgl.vulkan.EXTMeshShader;
+import org.lwjgl.vulkan.VkPipelineColorBlendAttachmentState;
+import org.spongepowered.asm.mixin.Final;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyArg;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+
+/**
+ * Builds the GPU model mesh pipeline beside a Minecraft pipeline that has a mesh stage, and destroys
+ * it with Minecraft's ({@link ModelMeshPipelines}). Such a pipeline's descriptors are made visible
+ * to the mesh stage and its push constant range grows by the mesh stage's constants, so the mesh
+ * pipeline shares its layout.
+ */
+@Mixin(VulkanRenderPipeline.class)
+public abstract class VulkanRenderPipelineMeshMixin implements ModelMeshPipelines.Holder {
+    @Shadow
+    @Final
+    private VulkanDevice device;
+    
+    @Shadow
+    @Final
+    private LongList shaderModules;
+    
+    @Unique
+    private ModelMeshPipelines.@Nullable MeshPipeline vim$meshPipeline;
+    
+    @Shadow
+    private static void applyBlendInformation(VkPipelineColorBlendAttachmentState.Buffer blendAttachments, BlendFunction blendFunction) {
+        throw new AssertionError();
+    }
+    
+    @ModifyArg(method = "compile", at = @At(value = "INVOKE", target = "Lorg/lwjgl/vulkan/VkDescriptorSetLayoutBinding;stageFlags(I)Lorg/lwjgl/vulkan/VkDescriptorSetLayoutBinding;"))
+    private static int vim$showDescriptorsToMeshStage(int stageFlags, @Local(argsOnly = true, name = "pipelineCreateInfo") CompiledRenderPipeline.CreateInfo pipelineCreateInfo) {
+        return ModelMeshPipelines.pending(pipelineCreateInfo.name()) == null ? stageFlags : stageFlags | EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT;
+    }
+    
+    @ModifyExpressionValue(method = "compile", at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/api/pipeline/CompiledRenderPipeline$CreateInfo;pushConstantsSize()I"))
+    private static int vim$makeRoomForMeshConstants(int pushConstantsSize, @Local(argsOnly = true, name = "pipelineCreateInfo") CompiledRenderPipeline.CreateInfo pipelineCreateInfo) {
+        ModelMeshPipelines.Pending pending = ModelMeshPipelines.pending(pipelineCreateInfo.name());
+        return pending == null ? pushConstantsSize : pending.pushConstantOffset() + ModelMeshShader.PUSH_CONSTANT_BYTES;
+    }
+    
+    @Inject(method = "compile", at = @At("RETURN"))
+    private static void vim$buildMeshPipeline(VulkanDevice device, CompiledRenderPipeline.CreateInfo pipelineCreateInfo, CallbackInfoReturnable<VulkanRenderPipeline> cir) {
+        VulkanRenderPipeline pipeline = cir.getReturnValue();
+        ModelMeshPipelines.build(device, pipelineCreateInfo, pipeline, pipeline.pipelineLayout(), VulkanRenderPipelineMeshMixin::applyBlendInformation);
+    }
+    
+    @Inject(method = "destroy", at = @At("HEAD"))
+    private void vim$destroyMeshPipeline(CallbackInfo ci) {
+        if (this.vim$meshPipeline != null) {
+            this.vim$meshPipeline.destroy(this.device);
+            this.vim$meshPipeline = null;
+        }
+    }
+    
+    @Override
+    public ModelMeshPipelines.@Nullable MeshPipeline vim$meshPipeline() {
+        return this.vim$meshPipeline;
+    }
+    
+    @Override
+    public void vim$setMeshPipeline(ModelMeshPipelines.MeshPipeline meshPipeline) {
+        this.vim$meshPipeline = meshPipeline;
+    }
+    
+    @Override
+    public long vim$shaderModule(int stage) {
+        return this.shaderModules.getLong(stage);
+    }
+}

@@ -146,6 +146,40 @@ from 961 to 987 FPS (medians of four runs each, better in every pair). Frames
 are identical. It stays off until a run with synchronization validation; the
 validation layer is not installed on the test machine.
 
+2026-10-16, step 3 (`vim.gpuModelMeshShaders`, off by default). While
+Minecraft compiles a pipeline that draws the entity format in quads, its
+vertex shader is compiled a second time, by Minecraft's compiler with the
+pipeline's defines and includes, wrapped in a mesh stage: one workgroup per
+cube, each vertex's inputs read from the cube's faces and its part's pose,
+colour, overlay and light, then the vertex shader's own `main`, then its
+outputs written for the vertex. Minecraft's reflection binds the mesh stage's
+uniforms as it binds the pipeline's, the pipeline's descriptors and push
+constants are opened to the mesh stage, and the mesh pipeline is built with
+the pipeline's layout, fragment module and state for its render pass. A GPU
+model draw whose pipelines all have one is drawn by it where Minecraft records
+the draw, from the records alone; the others keep the vertex pass.
+`checkModelMeshShader` compiles the mesh stage of Minecraft's entity shader
+under the defines its pipelines use on every build.
+
+In the entity scene, after a resource reload with both flags on, every one of
+the 18 GPU model draws of a frame went through the mesh stage, and frames on
+Minecraft's path, the vertex pass and the mesh stage are identical below the
+debug overlay. Four runs of each in turn, medians:
+
+| Path        | FPS | Frame    | Render thread | GPU time |
+|-------------|-----|----------|---------------|----------|
+| Minecraft   | 437 | 2.29 ms  | 2.10 ms       | 0.70 ms  |
+| Vertex pass | 650 | 1.54 ms  | 1.35 ms       | 0.54 ms  |
+| Mesh stage  | 647 | 1.54 ms  | 1.35 ms       | 0.52 ms  |
+
+The mesh stage takes 0.02 ms less of the GPU than the vertex pass, less in
+every pair, and the frame does not change: the render thread sets this
+scene's pace. GPU time comes from Minecraft's timer query. These are the first
+entity-scene numbers taken with every model confirmed drawn; the step 2
+figures above (778 against 404 FPS) were not checked for that, and three of
+the day's first five clients drew no GPU model at all (see Follow-Up). Step 3
+has no task stage yet, so models outside the view are not culled on the GPU.
+
 ## Decisions
 
 - The mod extends Minecraft's renderer instead of running its own beside it
@@ -165,7 +199,24 @@ validation layer is not installed on the test machine.
   Minecraft: the allocator, debug names, the shaderc library and the frame's
   command buffer. Step 3 should include Minecraft's shader includes at runtime
   for lighting and fog rather than rewrite them.
+- Step 3 takes Minecraft's own vertex shader instead. The mesh stage wraps the
+  shader a pipeline already compiles, its inputs fed from the records and its
+  outputs written per vertex, and Minecraft's compiler compiles it with the
+  pipeline's defines and includes. Every entity shader, and one a resource
+  pack replaces, keeps working; one the wrapper cannot take (another input, a
+  vertex-only built-in) keeps the vertex pass. Mesh pipelines are built only
+  when both flags are on as Minecraft builds its pipelines, so Minecraft's
+  pipelines are untouched otherwise.
 
 ## Follow-Up
 
-Nothing yet.
+- GPU model draws left out. In three of the first five clients of
+  2026-10-16, with the entity scene in view, the GPU model path took every
+  model submit, Minecraft added and executed its draws, and the frame never
+  reached the vertex pass or the mesh stage, so no mob was drawn; no error was
+  logged. The ten clients after that drew every model, and the cause is not
+  found. `framesLeftOut` counts such frames and the first is logged with what
+  the frame held.
+- Cubes stay resident across resource reloads: a reload bakes new models, and
+  the cube store adds their cubes beside the old ones.
+- A task stage for step 3, to cull models outside the view on the GPU.

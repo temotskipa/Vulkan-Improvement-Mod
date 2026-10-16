@@ -110,7 +110,7 @@ public abstract class RenderTypeFeatureRendererGroupMixin implements ModelDrawGr
             }
         }
         StagedVertexBuffer.Draw draw = this.stagedBuffer.appendDraw(renderType.format(), renderType.primitiveTopology());
-        ModelGpuVertices.get().adopt(this.stagedBuffer, draw);
+        ModelGpuVertices.get().adopt(this.stagedBuffer, draw, preparedRenderType);
         this.draws.add(draw);
         this.drawRenderTypes.add(preparedRenderType);
         return draw;

@@ -66,7 +66,13 @@ the mod is idle (see `LevelRendererMixin` in
    light per part and a record per cube, for draws it adds to Minecraft's draw
    group. Once Minecraft has uploaded its own vertices, one compute pass on
    Minecraft's command encoder writes the model vertices into a Minecraft
-   vertex buffer, and Minecraft draws them with its render types.
+   vertex buffer, and Minecraft draws them with its render types. With
+   `vim.gpuModelMeshShaders` as well, an entity pipeline Minecraft builds gets
+   a mesh pipeline beside it: Minecraft's compiler compiles the pipeline's
+   vertex shader a second time, wrapped in a mesh stage that reads the cube and
+   part records, and the mesh pipeline shares the pipeline's layout, fragment
+   module and state. Where Minecraft records a GPU model draw whose pipelines
+   all have one, the mesh pipeline draws it, and no vertices are written.
 
 ## Source Sets
 
@@ -98,7 +104,8 @@ the mod is idle (see `LevelRendererMixin` in
   (`TransferBarriers`).
 - `client.vulkan.model`: Owns the GPU model path: model cubes' faces kept on
   the GPU, the records a frame's model submits make, the draws they go into in
-  Minecraft's draw groups, and the compute pass that writes their vertices.
+  Minecraft's draw groups, the compute pass that writes their vertices, and
+  the mesh pipelines that draw them from the records instead.
 - `client.vulkan.gpuworld`: Owns the CPU-authoritative GPU-world mirror,
   section identity, revisions, page-kind metadata, residency-budget diagnostics,
   pipeline-stage contracts, and dirty-update contracts.
