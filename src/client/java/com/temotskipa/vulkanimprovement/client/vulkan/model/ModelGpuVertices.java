@@ -95,12 +95,8 @@ public final class ModelGpuVertices {
     private long meshDraws;
     private long meshDrawsLeftOut;
     /**
-     * Model submits the GPU path took while Minecraft prepares the level's features this frame.
-     */
-    private int levelSubmits;
-    /**
-     * Frames whose GPU model draws Minecraft uploaded without the GPU having written them, which it
-     * then skips. Should stay 0.
+     * Frames whose GPU model draws Minecraft ended without the GPU having written them, so that it
+     * skipped them. Should stay 0.
      */
     private long framesLeftOut;
     private boolean warnedLeftOut;
@@ -233,7 +229,6 @@ public final class ModelGpuVertices {
      */
     public void beginLevelPrepare() {
         this.preparingLevel = TerrainRendererDebugConfig.gpuModelVerticesEnabled() && !insideRenderPass() && untouchedByOtherMods() && ready();
-        this.levelSubmits = 0;
     }
     
     public void endLevelPrepare() {
@@ -281,7 +276,6 @@ public final class ModelGpuVertices {
         }
         this.offeredRenderType = null;
         this.gpuSubmits++;
-        this.levelSubmits++;
         this.sink.begin(group, renderType);
         return this.sink;
     }
@@ -307,15 +301,13 @@ public final class ModelGpuVertices {
     }
     
     /**
-     * Minecraft has uploaded the staged vertex buffer's own vertices: records the pass that writes
-     * the GPU draws' vertices, which runs before the draws as Minecraft's uploads do.
+     * Minecraft has uploaded the staged vertex buffer's own vertices, if it has any: records the
+     * pass that writes the GPU draws' vertices, which runs before the draws as Minecraft's uploads
+     * do.
      */
     public void upload(Object stagedVertexBuffer) {
         ModelVertexFrame current = this.frame;
         if (current == null || !current.belongsTo(stagedVertexBuffer) || current.isEmpty()) {
-            if (this.preparingLevel && this.levelSubmits > 0) {
-                leftOut(current, stagedVertexBuffer);
-            }
             return;
         }
         GpuBuffer conversions = TerrainRendererDebugConfig.gpuModelMeshShadersEnabled() ? this.meshConversions : null;
@@ -331,14 +323,15 @@ public final class ModelGpuVertices {
     }
     
     /**
-     * Counts a frame whose model submits the GPU path took but whose vertices it is not writing, and
-     * says once what the frame held: Minecraft skips those draws, and the models go missing.
+     * Counts a frame whose GPU model draws Minecraft ended without their vertices having been
+     * written, and says once what the frame held: Minecraft skipped those draws, and the models went
+     * missing.
      */
-    private void leftOut(@Nullable ModelVertexFrame current, Object stagedVertexBuffer) {
+    private void leftOut(ModelVertexFrame current) {
         this.framesLeftOut++;
         if (!this.warnedLeftOut) {
             this.warnedLeftOut = true;
-            LOGGER.warn("[Vulkan Improvement] GPU model vertices took {} model submits but are not writing them; Minecraft skips their draws. Frame: {}", this.levelSubmits, current == null ? "none" : current.describe(stagedVertexBuffer));
+            LOGGER.warn("[Vulkan Improvement] GPU model draws were never written, so Minecraft skipped them. Frame: {}", current.describe());
         }
     }
     
@@ -384,6 +377,9 @@ public final class ModelGpuVertices {
     public void endDraw(Object stagedVertexBuffer) {
         ModelVertexFrame current = this.frame;
         if (current != null && current.belongsTo(stagedVertexBuffer)) {
+            if (!this.frameWritten && !current.isEmpty()) {
+                leftOut(current);
+            }
             current.reset();
             this.frameWritten = false;
         }

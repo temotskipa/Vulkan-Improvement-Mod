@@ -466,15 +466,20 @@ pipelines.
 
 - Target: `net.minecraft.client.renderer.StagedVertexBuffer`.
 - mcdev 26.4 surface: public `upload()`, which puts the frame's vertices and
-  sorted indices into Minecraft buffers outside a render pass;
+  sorted indices into Minecraft buffers outside a render pass and has three
+  returns in its bytecode: early when there are no draws, early when the
+  draws hold no vertices of Minecraft's own, and at the end;
   `getExecuteInfo(Draw)`, which returns null for an empty draw and otherwise
   the vertex buffer, index buffer and counts to draw it with, using the
   sequential index buffer for a draw without quad sorting; `endDraw()` and
   `endFrame()`.
-- Source tokens: `method = "upload"`, `method = "getExecuteInfo"`,
-  `method = "endDraw"`, `method = "endFrame"`.
+- Source tokens: `method = "upload", at = @At("RETURN")`,
+  `method = "getExecuteInfo"`, `method = "endDraw"`, `method = "endFrame"`.
 - Purpose: write the GPU model vertices once Minecraft has uploaded its own,
-  draw a GPU draw from them, and recycle their buffers with Minecraft's.
+  draw a GPU draw from them, and recycle their buffers with Minecraft's. The
+  upload hook runs at every return: a frame whose only draws are GPU model
+  draws leaves at the second, and a hook at the last return alone would leave
+  them unwritten.
 
 ### StagedVertexBufferDrawMixin
 

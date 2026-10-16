@@ -95,10 +95,10 @@ final class ModelVertexFrame {
     }
     
     /**
-     * The frame's contents, and whether its draws are of a staged vertex buffer, for a report.
+     * The frame's contents, for a report.
      */
-    String describe(Object stagedVertexBuffer) {
-        return this.draws.size() + " draws, " + this.partCount + " parts, " + this.jobCount + " cubes, " + (this.stagedBuffer == null ? "no staged vertex buffer" : belongsTo(stagedVertexBuffer) ? "of the staged vertex buffer Minecraft uploads" : "of another staged vertex buffer");
+    String describe() {
+        return this.draws.size() + " draws, " + this.partCount + " parts, " + this.jobCount + " cubes";
     }
     
     int partCount() {

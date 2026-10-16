@@ -16,7 +16,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  */
 @Mixin(StagedVertexBuffer.class)
 public abstract class StagedVertexBufferMixin {
-    @Inject(method = "upload", at = @At("TAIL"))
+    // Every return: Minecraft returns early when it has no vertices of its own, as when every model in view is a GPU one.
+    @Inject(method = "upload", at = @At("RETURN"))
     private void vim$writeModelVertices(CallbackInfo ci) {
         ModelGpuVertices.get().upload(this);
     }

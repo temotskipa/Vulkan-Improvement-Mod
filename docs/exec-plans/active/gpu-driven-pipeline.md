@@ -177,8 +177,22 @@ every pair, and the frame does not change: the render thread sets this
 scene's pace. GPU time comes from Minecraft's timer query. These are the first
 entity-scene numbers taken with every model confirmed drawn; the step 2
 figures above (778 against 404 FPS) were not checked for that, and three of
-the day's first five clients drew no GPU model at all (see Follow-Up). Step 3
-has no task stage yet, so models outside the view are not culled on the GPU.
+the day's first five clients drew no GPU model at all (below). Step 3 has no
+task stage yet, so models outside the view are not culled on the GPU.
+
+2026-10-16, GPU model draws left out, fixed. Minecraft's
+`StagedVertexBuffer.upload()` returns early when its draws hold no vertices of
+its own, and the hook that writes the GPU model draws ran only at its last
+return. With every model in view on the GPU path and nothing else in view
+drawn from Minecraft's vertices, the draws were never written and Minecraft
+skipped them all. Whether a natural mob holding an item, a dropped item or a
+particle happened to be in view decided whether the entity scene passed. The
+hook now runs at every return; the entity scene with no other entity and no
+particle, which left every draw out each time before, draws every model on
+the vertex pass and on the mesh stage, in frames identical to Minecraft's
+path. A run whose draws are left out draws no models and is faster for it, so
+step 2's 778 FPS, above the 650 FPS measured with every model drawn, may come
+from such frames.
 
 ## Decisions
 
@@ -207,16 +221,13 @@ has no task stage yet, so models outside the view are not culled on the GPU.
   vertex-only built-in) keeps the vertex pass. Mesh pipelines are built only
   when both flags are on as Minecraft builds its pipelines, so Minecraft's
   pipelines are untouched otherwise.
+- A hook that must run when a Minecraft method ends injects at every return
+  (`@At("RETURN")`), not at the last (`@At("TAIL")`), unless the method's
+  bytecode has one return: the decompiled source can hide early returns, as
+  it did in `StagedVertexBuffer.upload()`.
 
 ## Follow-Up
 
-- GPU model draws left out. In three of the first five clients of
-  2026-10-16, with the entity scene in view, the GPU model path took every
-  model submit, Minecraft added and executed its draws, and the frame never
-  reached the vertex pass or the mesh stage, so no mob was drawn; no error was
-  logged. The ten clients after that drew every model, and the cause is not
-  found. `framesLeftOut` counts such frames and the first is logged with what
-  the frame held.
 - Cubes stay resident across resource reloads: a reload bakes new models, and
   the cube store adds their cubes beside the old ones.
 - A task stage for step 3, to cull models outside the view on the GPU.
