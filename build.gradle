@@ -3,7 +3,7 @@ import groovy.json.JsonSlurper
 import java.util.concurrent.TimeUnit
 
 plugins {
-    id 'net.fabricmc.fabric-loom' version '1.19.1'
+    id 'net.fabricmc.fabric-loom' version '1.19.3'
     id 'maven-publish'
 }
 

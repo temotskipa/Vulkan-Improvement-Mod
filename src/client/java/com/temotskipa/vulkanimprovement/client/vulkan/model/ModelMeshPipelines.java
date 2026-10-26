@@ -16,7 +16,7 @@ import com.mojang.renderpearl.frontend.FrontendRenderPipeline;
 import com.mojang.renderpearl.util.ShaderCompileException;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.VulkanObjectNames;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
-import net.minecraft.client.renderer.oit.OitPipelineSet;
+import net.minecraft.client.renderer.oit.OitStage;
 import net.minecraft.client.renderer.rendertype.PreparedRenderType;
 import org.jspecify.annotations.Nullable;
 import org.lwjgl.system.MemoryStack;
@@ -27,10 +27,7 @@ import org.slf4j.Logger;
 
 import java.nio.ByteBuffer;
 import java.nio.LongBuffer;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.BiConsumer;
@@ -260,15 +257,14 @@ public final class ModelMeshPipelines {
      * its order-independent transparency stages.
      */
     static boolean drawsWithMesh(PreparedRenderType renderType) {
-        if (!hasMeshPipeline(renderType.pipeline())) {
-            return false;
-        }
-        OitPipelineSet oit = renderType.oitPipelineSet();
-        return oit == null || hasMeshPipeline(oit.depthBoundsPipeline()) && hasMeshPipeline(oit.transmittancePipeline()) && hasMeshPipeline(oit.accumulatePipeline());
+        // As Minecraft draws a render type: the pipeline for no stage, and the pipeline of each
+        // stage it has one for.
+        Function<OitStage, RenderPipeline> pipelines = renderType.pipelineProvider();
+        return hasMeshPipeline(pipelines.apply(null)) && Arrays.stream(OitStage.values()).map(pipelines).allMatch(pipeline -> pipeline == null || hasMeshPipeline(pipeline));
     }
     
-    private static boolean hasMeshPipeline(RenderPipeline pipeline) {
-        return RenderSystem.getCompiledPipelineNullable(pipeline) instanceof FrontendRenderPipeline compiled && of(compiled.backendRenderPipeline()) != null;
+    private static boolean hasMeshPipeline(@Nullable RenderPipeline pipeline) {
+        return pipeline != null && RenderSystem.getCompiledPipelineNullable(pipeline) instanceof FrontendRenderPipeline compiled && of(compiled.backendRenderPipeline()) != null;
     }
     
     public static Map<String, Object> asMap() {

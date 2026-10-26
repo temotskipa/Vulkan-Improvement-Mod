@@ -1,6 +1,5 @@
 package com.temotskipa.vulkanimprovement.mixin.client;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.renderpearl.api.buffers.GpuBuffer;
 import com.mojang.renderpearl.api.commands.RenderPass;
 import com.mojang.renderpearl.api.pipeline.IndexType;
@@ -8,6 +7,7 @@ import com.temotskipa.vulkanimprovement.client.vulkan.runtime.VulkanImprovementR
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.MeshTerrainRenderer;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.chunk.ChunkSectionsToRender.DrawSeparate;
+import net.minecraft.client.renderer.oit.OitStage;
 import org.jspecify.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -22,7 +22,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(DrawSeparate.class)
 public abstract class ChunkSectionsToRenderDrawSeparateMixin {
     @Inject(method = "render", at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/api/commands/RenderPass;setPipeline(Lcom/mojang/renderpearl/api/pipeline/CompiledRenderPipeline;)V", shift = At.Shift.AFTER), cancellable = true)
-    private void vim$drawMeshTerrainLayer(ChunkSectionLayer layer, RenderPass renderPass, @Nullable GpuBuffer defaultIndexBuffer, @Nullable IndexType defaultIndexType, boolean cloudsInFog, @Nullable RenderPipeline renderPipelineOverride, @Nullable RenderPipeline renderPipelineOverrideMultidraw, CallbackInfo ci) {
+    private void vim$drawMeshTerrainLayer(ChunkSectionLayer layer, RenderPass renderPass, @Nullable GpuBuffer defaultIndexBuffer, @Nullable IndexType defaultIndexType, boolean improvedFog, boolean wireframe, @Nullable OitStage oitStage, CallbackInfo ci) {
         if (VulkanImprovementRuntime.isVulkanBackendActive() && MeshTerrainRenderer.get().drawTerrainLayer(layer, renderPass)) {
             ci.cancel();
         }

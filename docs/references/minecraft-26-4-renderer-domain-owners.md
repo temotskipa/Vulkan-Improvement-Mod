@@ -1,7 +1,7 @@
 # Minecraft 26.4 Renderer Domain Owners
 
-Verified with mcdev static analysis for Minecraft `26.4-snapshot-4` on
-2026-10-15.
+Verified with mcdev static analysis for Minecraft `26.4-snapshot-5` on
+2026-10-26.
 
 Each renderer domain in `RendererDomainContract` names the Mojang class that
 owns the vanilla path for it. This file records what mcdev shows for those
@@ -20,7 +20,7 @@ the same change.
 | particles          | `net.minecraft.client.particle.ParticleEngine`                          | 8 fields, 15 methods; `createParticle`, `add`, `tick`, `extract`.                                                                                          |
 | sky                | `net.minecraft.client.renderer.SkyRenderer`                             | 35 fields, 27 methods; `extractRenderState`, `prepare`, `render`.                                                                                          |
 | clouds             | `net.minecraft.client.renderer.CloudRenderer`                           | 23 fields, 20 methods; `prepare`, `render`.                                                                                                                |
-| weather            | `net.minecraft.client.renderer.WeatherEffectRenderer`                   | 14 fields, 12 methods; `extractRenderState`, `prepare`, `render`, `renderOit`.                                                                             |
+| weather            | `net.minecraft.client.renderer.WeatherEffectRenderer`                   | 14 fields, 10 methods; `extractRenderState`, `prepare`, `render`, which takes the OIT stage.                                                               |
 | translucentEffects | `net.minecraft.client.renderer.LevelRenderer`                           | 40 fields, 62 methods; `render` builds the frame graph, with `executeClassicTransparency` and `executeOit` for translucent terrain and effects.            |
 | postProcessing     | `net.minecraft.client.renderer.PostPass`                                | 7 fields, 3 methods; `addToFrame`, called by `PostChain.addToFrame`. `net.minecraft.client.renderer.PostChainConfig` is the record a chain is loaded from. |
 

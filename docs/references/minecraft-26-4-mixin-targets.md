@@ -1,10 +1,13 @@
 # Minecraft 26.4 Mixin Targets
 
-Verified with mcdev static analysis for Minecraft `26.4-snapshot-4` on
-2026-10-15, and at runtime by starting the client with every mixin applied.
-From `26.4-snapshot-3` only `SectionRenderDispatcher.RenderSection` and
-`VulkanGpuSurface` changed among the target classes, and none of the members
-or invocation points below changed.
+Verified with mcdev static analysis for Minecraft `26.4-snapshot-5` on
+2026-10-26, and at runtime by starting the client with every mixin applied.
+From `26.4-snapshot-4` eight of the target classes changed. In
+`ChunkSectionsToRender.DrawIndirect` and `DrawSeparate`, `render` takes a
+wireframe flag and an `OitStage` where it took two override pipelines, and the
+two mixins take the new parameters. In `ChunkSectionsToRender`, `VulkanDevice`,
+`VulkanGpuSurface`, `LevelRenderer`, `VideoSettingsScreen` and `FogRenderer`
+none of the members or invocation points below changed.
 
 This manifest records the Mojang classes, fields, methods, and invocation
 points touched by the client mixins.
@@ -71,9 +74,10 @@ inside a render pass the level renderer has already opened.
 
 - Target: `com.mojang.renderpearl.backend.vulkan.VulkanGpuSurface`.
 - mcdev 26.4 surface: fields `device` and `swapchain`; method `present`; call
-  to `KHRSwapchain.vkQueuePresentKHR`. With the `DXGI Surface` feature set
-  Minecraft presents through `D3D12GpuSurface` instead and this class is not
-  used.
+  to `KHRSwapchain.vkQueuePresentKHR`. With the experimental Prefer DXGI
+  Present video option on at startup, Minecraft presents through
+  `D3D12GpuSurface` instead and this class is not used. The option is off by
+  default.
 - Source tokens: `private VulkanDevice device`, `private long swapchain`,
   `method = "present"`, `vkQueuePresentKHR`.
 - Purpose: route present-id/present-wait pacing through
@@ -357,7 +361,7 @@ inside a render pass the level renderer has already opened.
 - Target:
   `net.minecraft.client.renderer.chunk.ChunkSectionsToRender.DrawIndirect`.
 - mcdev 26.4 surface: protected
-  `render(ChunkSectionLayer, RenderPass, GpuBuffer, IndexType, boolean, RenderPipeline, RenderPipeline)`
+  `render(ChunkSectionLayer, RenderPass, GpuBuffer, IndexType, boolean, boolean, OitStage)`
   binds the layer's multi-draw pipeline with `RenderPass.setPipeline` and then
   issues `drawIndexedIndirect` over the frame's command buffer.
 - Source tokens: `method = "render"`, `RenderPass;setPipeline(`.
