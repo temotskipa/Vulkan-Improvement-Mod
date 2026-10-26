@@ -6,7 +6,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelDrawGroup;
 import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelGpuVertices;
-import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelVertexDraw;
+import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelVertexDrawHolder;
 import net.minecraft.client.renderer.StagedVertexBuffer;
 import net.minecraft.client.renderer.rendertype.PreparedRenderType;
 import net.minecraft.client.renderer.rendertype.RenderType;
@@ -118,6 +118,6 @@ public abstract class RenderTypeFeatureRendererGroupMixin implements ModelDrawGr
     
     @Unique
     private boolean vim$isModelDraw(int index) {
-        return ((ModelVertexDraw.Holder) this.draws.get(index)).vim$modelDraw() != null;
+        return ((ModelVertexDrawHolder) this.draws.get(index)).vim$modelDraw() != null;
     }
 }

@@ -3,12 +3,7 @@ package com.temotskipa.vulkanimprovement.client.vulkan.gpu;
 import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
 import com.mojang.renderpearl.backend.vulkan.VulkanUtils;
 import org.lwjgl.system.MemoryStack;
-import org.lwjgl.vulkan.VK10;
-import org.lwjgl.vulkan.VK12;
-import org.lwjgl.vulkan.VkComputePipelineCreateInfo;
-import org.lwjgl.vulkan.VkPipelineLayoutCreateInfo;
-import org.lwjgl.vulkan.VkPipelineShaderStageCreateInfo;
-import org.lwjgl.vulkan.VkPushConstantRange;
+import org.lwjgl.vulkan.*;
 
 import java.nio.LongBuffer;
 

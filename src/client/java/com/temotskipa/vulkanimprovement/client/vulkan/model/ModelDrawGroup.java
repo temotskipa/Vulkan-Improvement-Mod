@@ -1,7 +1,7 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.model;
 
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import net.minecraft.client.renderer.StagedVertexBuffer;
+import net.minecraft.client.renderer.StagedVertexBuffer.Draw;
 import net.minecraft.client.renderer.rendertype.RenderType;
 
 /**
@@ -14,7 +14,7 @@ public interface ModelDrawGroup {
      * The draw the next GPU-written cubes of the render type go into, chosen and consolidated as
      * Minecraft chooses its own draws.
      */
-    StagedVertexBuffer.Draw vim$modelDraw(RenderType renderType);
+    Draw vim$modelDraw(RenderType renderType);
     
     /**
      * Minecraft's own vertex builder for the render type, for geometry the GPU path does not write.

@@ -1,6 +1,6 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
-import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanImprovementCapabilities;
+import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanCapabilitySnapshot;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.KHRFragmentShadingRate;
 import org.lwjgl.vulkan.VkCommandBuffer;
@@ -29,7 +29,7 @@ public final class FragmentShadingRateController {
         return this.available;
     }
     
-    public void configure(VulkanImprovementCapabilities.Snapshot capabilities) {
+    public void configure(VulkanCapabilitySnapshot capabilities) {
         this.available = capabilities.fragmentShadingRateExtension();
         this.disabled = !TerrainRendererDebugConfig.fragmentShadingRateEnabled();
         this.maxWidth = Math.max(capabilities.maxFragmentWidth(), 1);

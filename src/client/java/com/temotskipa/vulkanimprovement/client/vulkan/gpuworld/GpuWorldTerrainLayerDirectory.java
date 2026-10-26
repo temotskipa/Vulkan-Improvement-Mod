@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class GpuWorldTerrainLayerDirectory {
     private static final GpuWorldTerrainLayerDirectory INSTANCE = new GpuWorldTerrainLayerDirectory();
     
-    private final Map<Key, GpuWorldTerrainLayerRecord> records = new LinkedHashMap<>();
+    private final Map<GpuWorldTerrainLayerKey, GpuWorldTerrainLayerRecord> records = new LinkedHashMap<>();
     private final AtomicLong publicationCount = new AtomicLong();
     private final AtomicLong replacementCount = new AtomicLong();
     private final AtomicLong removedSectionCount = new AtomicLong();
@@ -33,11 +33,11 @@ public final class GpuWorldTerrainLayerDirectory {
     }
     
     public synchronized Optional<GpuWorldTerrainLayerRecord> recordFor(long sectionNode, int layerOrdinal) {
-        return Optional.ofNullable(this.records.get(new Key(sectionNode, layerOrdinal)));
+        return Optional.ofNullable(this.records.get(new GpuWorldTerrainLayerKey(sectionNode, layerOrdinal)));
     }
     
     public synchronized void removeLayer(long sectionNode, int layerOrdinal) {
-        this.records.remove(new Key(sectionNode, layerOrdinal));
+        this.records.remove(new GpuWorldTerrainLayerKey(sectionNode, layerOrdinal));
     }
     
     public synchronized void removeSection(long sectionNode) {
@@ -78,7 +78,7 @@ public final class GpuWorldTerrainLayerDirectory {
     }
     
     private void publish(GpuWorldTerrainLayerRecord record) {
-        Key key = new Key(record.section().sectionNode(), record.layerOrdinal());
+        GpuWorldTerrainLayerKey key = new GpuWorldTerrainLayerKey(record.section().sectionNode(), record.layerOrdinal());
         GpuWorldTerrainLayerRecord previous = this.records.put(key, record);
         this.publicationCount.incrementAndGet();
         if (previous != null) {
@@ -97,8 +97,5 @@ public final class GpuWorldTerrainLayerDirectory {
             }
         }
         return map;
-    }
-    
-    private record Key(long sectionNode, int layerOrdinal) {
     }
 }

@@ -19,21 +19,29 @@ import java.util.*;
  * @param <K> what identifies a section layer
  */
 final class ResidentTerrainPages<K> {
-    private final Map<K, Page> pages = new HashMap<>();
+    private final Map<K, ResidentTerrainPage> pages = new HashMap<>();
     private final Set<K> pending = new LinkedHashSet<>();
     private final TerrainRangeAllocator slots = new TerrainRangeAllocator(0L);
     private final TerrainRangeAllocator meshlets = new TerrainRangeAllocator(0L);
     private final TerrainRangeAllocator vertexBytes = new TerrainRangeAllocator(0L);
     private final TerrainRangeAllocator indexBytes = new TerrainRangeAllocator(0L);
+    private final BitSet freedSlots = new BitSet();
+    private final int[] tasksByLayer = new int[16];
     private long pagesAllocated;
     private long pagesFreed;
     private long allocationRefusals;
     private long revision;
-    private Shortage shortage = Shortage.NONE;
-    private final BitSet freedSlots = new BitSet();
+    private ResidentPageShortage shortage = ResidentPageShortage.NONE;
     private boolean clearTable = true;
     private int slotHighWater;
-    private final int[] tasksByLayer = new int[16];
+    
+    /**
+     * How many tasks the GPU-driven draw launches for a page: one per
+     * {@link TerrainGpuLayout#MESHLETS_PER_TASK} of its meshlets, none for a page it cannot draw.
+     */
+    private static int gpuTasks(int meshletCount) {
+        return meshletCount > 0 && meshletCount <= TerrainGpuLayout.MAX_PAGE_MESHLETS ? (meshletCount + TerrainGpuLayout.MESHLETS_PER_TASK - 1) / TerrainGpuLayout.MESHLETS_PER_TASK : 0;
+    }
     
     /**
      * Drops every page and sizes the allocators for a new set of GPU buffers. Section layers that
@@ -46,7 +54,7 @@ final class ResidentTerrainPages<K> {
         this.meshlets.reset(meshletCapacity);
         this.vertexBytes.reset(vertexPayloadBytes);
         this.indexBytes.reset(indexPayloadBytes);
-        this.shortage = Shortage.NONE;
+        this.shortage = ResidentPageShortage.NONE;
         this.freedSlots.clear();
         this.clearTable = true;
         this.slotHighWater = 0;
@@ -68,7 +76,7 @@ final class ResidentTerrainPages<K> {
         free(key);
     }
     
-    synchronized @Nullable Page page(K key) {
+    synchronized @Nullable ResidentTerrainPage page(K key) {
         return this.pages.get(key);
     }
     
@@ -76,7 +84,7 @@ final class ResidentTerrainPages<K> {
         return new ArrayList<>(this.pending);
     }
     
-    synchronized Map<K, Page> snapshot() {
+    synchronized Map<K, ResidentTerrainPage> snapshot() {
         return new HashMap<>(this.pages);
     }
     
@@ -86,7 +94,7 @@ final class ResidentTerrainPages<K> {
      * @return the page, or {@code null} when a buffer has no room for it; the shortage is then
      * remembered so the buffers can be grown, and the section layer stays pending
      */
-    synchronized @Nullable Page allocate(K key, long sectionNode, int layerOrdinal, int pageVertexBytes, int pageIndexBytes, int meshletCount, boolean customIndexBuffer) {
+    synchronized @Nullable ResidentTerrainPage allocate(K key, long sectionNode, int layerOrdinal, int pageVertexBytes, int pageIndexBytes, int meshletCount, boolean customIndexBuffer) {
         free(key);
         long slot = this.slots.allocate(1L);
         long firstMeshlet = slot == TerrainRangeAllocator.NO_SPACE ? TerrainRangeAllocator.NO_SPACE : this.meshlets.allocate(meshletCount);
@@ -118,7 +126,7 @@ final class ResidentTerrainPages<K> {
             }
             return null;
         }
-        Page page = new Page((int) slot, sectionNode, layerOrdinal, vertexOffset, pageVertexBytes, indexOffset, pageIndexBytes, (int) firstMeshlet, meshletCount, customIndexBuffer, ++this.revision);
+        ResidentTerrainPage page = new ResidentTerrainPage((int) slot, sectionNode, layerOrdinal, vertexOffset, pageVertexBytes, indexOffset, pageIndexBytes, (int) firstMeshlet, meshletCount, customIndexBuffer, ++this.revision);
         this.pages.put(key, page);
         this.pending.remove(key);
         this.pagesAllocated++;
@@ -132,17 +140,17 @@ final class ResidentTerrainPages<K> {
     /**
      * What did not fit since this was last asked, so the buffers can be grown by that much.
      */
-    synchronized Shortage takeShortage() {
-        Shortage taken = this.shortage;
-        this.shortage = Shortage.NONE;
+    synchronized ResidentPageShortage takeShortage() {
+        ResidentPageShortage taken = this.shortage;
+        this.shortage = ResidentPageShortage.NONE;
         return taken;
     }
     
-    synchronized Stats stats() {
+    synchronized ResidentPageStats stats() {
         int[] meshletsByLayer = new int[16];
         int[] customIndexMeshletsByLayer = new int[16];
         int totalMeshlets = 0;
-        for (Page page : this.pages.values()) {
+        for (ResidentTerrainPage page : this.pages.values()) {
             totalMeshlets += page.meshletCount();
             if (page.layerOrdinal() >= 0 && page.layerOrdinal() < meshletsByLayer.length) {
                 meshletsByLayer[page.layerOrdinal()] += page.meshletCount();
@@ -151,11 +159,11 @@ final class ResidentTerrainPages<K> {
                 }
             }
         }
-        return new Stats(this.pages.size(), this.pending.size(), totalMeshlets, meshletsByLayer, customIndexMeshletsByLayer, this.pagesAllocated, this.pagesFreed, this.allocationRefusals, this.slots.used(), this.slots.capacity(), this.meshlets.used(), this.meshlets.capacity(), this.meshlets.freeRangeCount(), this.vertexBytes.used(), this.vertexBytes.capacity(), this.vertexBytes.largestFreeRange(), this.vertexBytes.freeRangeCount(), this.indexBytes.used(), this.indexBytes.capacity(), this.indexBytes.largestFreeRange(), this.indexBytes.freeRangeCount());
+        return new ResidentPageStats(this.pages.size(), this.pending.size(), totalMeshlets, meshletsByLayer, customIndexMeshletsByLayer, this.pagesAllocated, this.pagesFreed, this.allocationRefusals, this.slots.used(), this.slots.capacity(), this.meshlets.used(), this.meshlets.capacity(), this.meshlets.freeRangeCount(), this.vertexBytes.used(), this.vertexBytes.capacity(), this.vertexBytes.largestFreeRange(), this.vertexBytes.freeRangeCount(), this.indexBytes.used(), this.indexBytes.capacity(), this.indexBytes.largestFreeRange(), this.indexBytes.freeRangeCount());
     }
     
     private void free(K key) {
-        Page page = this.pages.remove(key);
+        ResidentTerrainPage page = this.pages.remove(key);
         if (page == null) {
             return;
         }
@@ -169,20 +177,12 @@ final class ResidentTerrainPages<K> {
     }
     
     /**
-     * How many tasks the GPU-driven draw launches for a page: one per
-     * {@link TerrainGpuLayout#MESHLETS_PER_TASK} of its meshlets, none for a page it cannot draw.
-     */
-    private static int gpuTasks(int meshletCount) {
-        return meshletCount > 0 && meshletCount <= TerrainGpuLayout.MAX_PAGE_MESHLETS ? (meshletCount + TerrainGpuLayout.MESHLETS_PER_TASK - 1) / TerrainGpuLayout.MESHLETS_PER_TASK : 0;
-    }
-    
-    /**
      * What the GPU page table has to be told before it is read again: whether every record is to
      * be cleared, and the slots given back since it was last told. Taken after the frame's pages
      * were handed out, so a slot handed out again is not among them.
      */
-    synchronized TableChanges takeTableChanges() {
-        TableChanges changes = new TableChanges(this.clearTable, this.freedSlots.stream().toArray());
+    synchronized ResidentPageTableChanges takeTableChanges() {
+        ResidentPageTableChanges changes = new ResidentPageTableChanges(this.clearTable, this.freedSlots.stream().toArray());
         this.clearTable = false;
         this.freedSlots.clear();
         return changes;
@@ -201,48 +201,5 @@ final class ResidentTerrainPages<K> {
      */
     synchronized int tasks(int layerOrdinal) {
         return this.tasksByLayer[layerOrdinal];
-    }
-    
-    record TableChanges(boolean clearAll, int[] freedSlots) {
-        boolean any() {
-            return this.clearAll || this.freedSlots.length > 0;
-        }
-    }
-    
-    /**
-     * @param slot     the page's index in the GPU page table
-     * @param revision grows with every page handed out, so a page can be told from the one that
-     *                 held the same slot before it
-     */
-    record Page(int slot, long sectionNode, int layerOrdinal, long vertexOffset, int vertexBytes, long indexOffset, int indexBytes, int firstMeshlet, int meshletCount, boolean customIndexBuffer, long revision) {
-    }
-    
-    record Shortage(int pages, long meshlets, long vertexBytes, long indexBytes) {
-        static final Shortage NONE = new Shortage(0, 0L, 0L, 0L);
-        
-        boolean any() {
-            return this.pages > 0 || this.meshlets > 0L || this.vertexBytes > 0L || this.indexBytes > 0L;
-        }
-        
-        private Shortage plus(int morePages, long moreMeshlets, long moreVertexBytes, long moreIndexBytes) {
-            return new Shortage(this.pages + morePages, this.meshlets + moreMeshlets, this.vertexBytes + moreVertexBytes, this.indexBytes + moreIndexBytes);
-        }
-    }
-    
-    record Stats(int livePages, int pendingPages, int meshlets, int[] meshletsByLayer, int[] customIndexMeshletsByLayer, long pagesAllocated, long pagesFreed, long allocationRefusals, long slotsUsed, long slotCapacity, long meshletsUsed, long meshletCapacity, int meshletFreeRanges, long vertexBytesUsed, long vertexByteCapacity, long largestFreeVertexRange, int vertexFreeRanges, long indexBytesUsed, long indexByteCapacity, long largestFreeIndexRange, int indexFreeRanges) {
-        Map<String, Object> asMap() {
-            Map<String, Object> map = new LinkedHashMap<>();
-            map.put("livePages", this.livePages);
-            map.put("pendingPages", this.pendingPages);
-            map.put("meshlets", this.meshlets);
-            map.put("pagesAllocated", this.pagesAllocated);
-            map.put("pagesFreed", this.pagesFreed);
-            map.put("allocationRefusals", this.allocationRefusals);
-            map.put("pageSlots", Map.of("used", this.slotsUsed, "capacity", this.slotCapacity));
-            map.put("meshletHeaders", Map.of("used", this.meshletsUsed, "capacity", this.meshletCapacity, "freeRanges", this.meshletFreeRanges));
-            map.put("vertexPayload", Map.of("usedBytes", this.vertexBytesUsed, "capacityBytes", this.vertexByteCapacity, "largestFreeRangeBytes", this.largestFreeVertexRange, "freeRanges", this.vertexFreeRanges));
-            map.put("indexPayload", Map.of("usedBytes", this.indexBytesUsed, "capacityBytes", this.indexByteCapacity, "largestFreeRangeBytes", this.largestFreeIndexRange, "freeRanges", this.indexFreeRanges));
-            return map;
-        }
     }
 }

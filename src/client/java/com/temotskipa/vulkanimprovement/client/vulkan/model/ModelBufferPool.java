@@ -23,7 +23,7 @@ final class ModelBufferPool implements AutoCloseable {
     private final int usage;
     private final List<GpuBuffer> available = new ArrayList<>();
     private final List<GpuBuffer> usedThisFrame = new ArrayList<>();
-    private final List<PendingRecycle> pendingRecycle = new ArrayList<>();
+    private final List<ModelBufferRecycle> pendingRecycle = new ArrayList<>();
     
     ModelBufferPool(Supplier<String> label, int usage) {
         this.label = label;
@@ -60,7 +60,7 @@ final class ModelBufferPool implements AutoCloseable {
     void endFrame() {
         if (!this.usedThisFrame.isEmpty()) {
             GpuFence fence = RenderSystem.getDevice().createCommandEncoder().createFence();
-            this.pendingRecycle.add(new PendingRecycle(List.copyOf(this.usedThisFrame), fence));
+            this.pendingRecycle.add(new ModelBufferRecycle(List.copyOf(this.usedThisFrame), fence));
             this.usedThisFrame.clear();
         }
         this.available.forEach(GpuBuffer::close);
@@ -79,22 +79,12 @@ final class ModelBufferPool implements AutoCloseable {
     public void close() {
         this.available.forEach(GpuBuffer::close);
         this.usedThisFrame.forEach(GpuBuffer::close);
-        for (PendingRecycle pending : this.pendingRecycle) {
+        for (ModelBufferRecycle pending : this.pendingRecycle) {
             pending.buffers().forEach(GpuBuffer::close);
             pending.release();
         }
         this.available.clear();
         this.usedThisFrame.clear();
         this.pendingRecycle.clear();
-    }
-    
-    private record PendingRecycle(List<GpuBuffer> buffers, GpuFence fence) {
-        boolean completed() {
-            return this.fence.awaitCompletion(0L);
-        }
-        
-        void release() {
-            this.fence.close();
-        }
     }
 }

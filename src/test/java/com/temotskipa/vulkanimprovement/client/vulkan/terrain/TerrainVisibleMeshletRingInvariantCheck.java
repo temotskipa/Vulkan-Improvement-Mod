@@ -17,7 +17,7 @@ public final class TerrainVisibleMeshletRingInvariantCheck {
     }
     
     private static void checkLinearAllocation() {
-        TerrainVisibleMeshletRing.Allocation allocation = new TerrainVisibleMeshletRing(16, 4).allocate(6, false);
+        VisibleMeshletAllocation allocation = new TerrainVisibleMeshletRing(16, 4).allocate(6, false);
         
         require(allocation.ready(), "linear allocation must be ready");
         require(allocation.offset() == 4, "linear allocation must start at cursor");
@@ -28,7 +28,7 @@ public final class TerrainVisibleMeshletRingInvariantCheck {
     }
     
     private static void checkWrapBlockedUntilFenceAllowsReuse() {
-        TerrainVisibleMeshletRing.Allocation allocation = new TerrainVisibleMeshletRing(16, 14).allocate(4, false);
+        VisibleMeshletAllocation allocation = new TerrainVisibleMeshletRing(16, 14).allocate(4, false);
         
         require(!allocation.ready(), "wrap allocation must block when reuse is not allowed");
         require(allocation.wrapBlocked(), "wrap allocation must report fence-blocked reuse");
@@ -37,7 +37,7 @@ public final class TerrainVisibleMeshletRingInvariantCheck {
     }
     
     private static void checkWrapAllocation() {
-        TerrainVisibleMeshletRing.Allocation allocation = new TerrainVisibleMeshletRing(16, 14).allocate(4, true);
+        VisibleMeshletAllocation allocation = new TerrainVisibleMeshletRing(16, 14).allocate(4, true);
         
         require(allocation.ready(), "wrap allocation must be ready when reuse is allowed");
         require(allocation.offset() == 0, "wrap allocation must restart at zero");
@@ -47,19 +47,19 @@ public final class TerrainVisibleMeshletRingInvariantCheck {
     }
     
     private static void checkCapacityFailures() {
-        TerrainVisibleMeshletRing.Allocation empty = new TerrainVisibleMeshletRing(16, 4).allocate(0, true);
+        VisibleMeshletAllocation empty = new TerrainVisibleMeshletRing(16, 4).allocate(0, true);
         require(!empty.ready(), "empty allocation must not be ready");
         
-        TerrainVisibleMeshletRing.Allocation noCapacity = new TerrainVisibleMeshletRing(0, 0).allocate(1, true);
+        VisibleMeshletAllocation noCapacity = new TerrainVisibleMeshletRing(0, 0).allocate(1, true);
         require(!noCapacity.ready(), "allocation without capacity must not be ready");
         
-        TerrainVisibleMeshletRing.Allocation tooLarge = new TerrainVisibleMeshletRing(16, 0).allocate(17, true);
+        VisibleMeshletAllocation tooLarge = new TerrainVisibleMeshletRing(16, 0).allocate(17, true);
         require(!tooLarge.ready(), "allocation larger than capacity must not be ready");
         require(!tooLarge.reason().isBlank(), "capacity failure must include reason");
     }
     
     private static void checkDiagnostics() {
-        TerrainVisibleMeshletRing.Allocation allocation = new TerrainVisibleMeshletRing(16, 14).allocate(4, true);
+        VisibleMeshletAllocation allocation = new TerrainVisibleMeshletRing(16, 14).allocate(4, true);
         Map<String, Object> map = allocation.asMap();
         
         require(map.get("requestedRecords").equals(4), "diagnostics must include requested records");

@@ -902,6 +902,15 @@ tasks.register("checkDependencyBaselineInvariants", JavaExec) {
     mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.runtime.DependencyBaselineInvariantCheck"
 }
 
+tasks.register("checkNestedTypes", JavaExec) {
+    group = "verification"
+    description = "Fails when a type is declared inside another type or a method instead of a file of its own."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.runtime.NestedTypeInvariantCheck"
+}
+
 tasks.register("checkMinecraft26MixinTargetManifest", JavaExec) {
     group = "verification"
     description = "Runs pure Java 26.2 mcdev mixin target manifest invariant checks."
@@ -955,6 +964,7 @@ tasks.named("check") {
     dependsOn tasks.named("checkAcceleratedWorldgenProviderIntegrationInvariants")
     dependsOn tasks.named("checkDependencyBaselineInvariants")
     dependsOn tasks.named("checkMinecraft26MixinTargetManifest")
+    dependsOn tasks.named("checkNestedTypes")
 }
 
 def targetJavaVersion = 25

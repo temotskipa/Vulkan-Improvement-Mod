@@ -51,6 +51,8 @@ manual.
 - Treat system properties in `TerrainRendererDebugConfig` as an operational API:
   document new flags in [docs/RELIABILITY.md](docs/RELIABILITY.md).
 - Do not commit generated runtime state from `run/`, Gradle caches, or IDE files.
+- Give every type a file of its own: no nested or local classes, records,
+  interfaces or enums (`checkNestedTypes`).
 
 ## Local Tooling Notes
 

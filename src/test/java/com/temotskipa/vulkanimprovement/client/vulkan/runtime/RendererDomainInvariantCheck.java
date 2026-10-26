@@ -181,7 +181,7 @@ public final class RendererDomainInvariantCheck {
     private static void checkTerrainMeshPathKeepsOtherDomainsVanilla() {
         RendererDomainRegistry registry = RendererDomainRegistry.get();
         registry.reset();
-        registry.set(RendererDomain.TERRAIN, RendererDomainRegistry.DomainState.meshTerrainGpu("test terrain path"));
+        registry.set(RendererDomain.TERRAIN, RendererDomainState.meshTerrainGpu("test terrain path"));
         
         Map<String, Object> domains = registry.asMap();
         Map<?, ?> terrain = state(domains, RendererDomain.TERRAIN);

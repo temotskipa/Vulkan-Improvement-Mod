@@ -6,6 +6,8 @@ import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.logging.LogUtils;
 import com.mojang.renderpearl.api.pipeline.*;
+import com.mojang.renderpearl.api.pipeline.CompiledRenderPipeline.CreateInfo;
+import com.mojang.renderpearl.api.pipeline.CompiledRenderPipeline.CreateInfo.Uniform;
 import com.mojang.renderpearl.backend.api.BackendRenderPipeline;
 import com.mojang.renderpearl.backend.vulkan.VulkanConst;
 import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
@@ -53,7 +55,7 @@ public final class ModelMeshPipelines {
     /**
      * Mesh stages compiled for pipelines Minecraft is about to build, by pipeline name.
      */
-    private static final Map<String, Pending> PENDING = new ConcurrentHashMap<>();
+    private static final Map<String, PendingModelMeshStage> PENDING = new ConcurrentHashMap<>();
     private static final ThreadLocal<Boolean> COMPILING_MESH_STAGE = ThreadLocal.withInitial(() -> false);
     private static final LongAdder BUILT = new LongAdder();
     private static final LongAdder UNSUPPORTED = new LongAdder();
@@ -109,7 +111,7 @@ public final class ModelMeshPipelines {
         }
         COMPILING_MESH_STAGE.set(true);
         try {
-            PENDING.put(name, new Pending(compiler.apply(meshSource), pushConstantOffset));
+            PENDING.put(name, new PendingModelMeshStage(compiler.apply(meshSource), pushConstantOffset));
         } catch (Exception e) {
             FAILED.increment();
             LOGGER.warn("[Vulkan Improvement] Couldn't compile the mesh stage for {}", name, e);
@@ -121,12 +123,12 @@ public final class ModelMeshPipelines {
     /**
      * The mesh stage compiled for a pipeline Minecraft is building, if any.
      */
-    public static @Nullable Pending pending(String pipelineName) {
+    public static @Nullable PendingModelMeshStage pending(String pipelineName) {
         return PENDING.get(pipelineName);
     }
     
     private static void discard(String pipelineName) {
-        Pending pending = PENDING.remove(pipelineName);
+        PendingModelMeshStage pending = PENDING.remove(pipelineName);
         if (pending != null) {
             MemoryUtil.memFree(pending.spirv());
         }
@@ -140,18 +142,18 @@ public final class ModelMeshPipelines {
      * @param pipelineLayout its layout, which the mesh pipeline shares
      * @param blend          applies a blend function to a color attachment as Minecraft does
      */
-    public static void build(VulkanDevice device, CompiledRenderPipeline.CreateInfo createInfo, BackendRenderPipeline pipeline, long pipelineLayout, BiConsumer<Buffer, BlendFunction> blend) {
-        Pending pending = PENDING.remove(createInfo.name());
+    public static void build(VulkanDevice device, CreateInfo createInfo, BackendRenderPipeline pipeline, long pipelineLayout, BiConsumer<Buffer, BlendFunction> blend) {
+        PendingModelMeshStage pending = PENDING.remove(createInfo.name());
         if (pending == null) {
             return;
         }
         try (SpvModule module = RenderSystem.getDevice().createSpvModule(createInfo.name() + ModelMeshShader.MODULE_SUFFIX, pending.spirv(), ShaderType.VERTEX, "main")) {
-            Holder holder = (Holder) pipeline;
+            ModelMeshPipelineHolder holder = (ModelMeshPipelineHolder) pipeline;
             bindAsMinecraft(module, createInfo.uniforms());
             long shaderModule = createShaderModule(device, module.spv(), createInfo.name());
             try {
                 long meshPipeline = createPipeline(device, createInfo, pipelineLayout, holder, shaderModule, blend);
-                holder.vim$setMeshPipeline(new MeshPipeline(meshPipeline, shaderModule, pending.pushConstantOffset()));
+                holder.vim$setMeshPipeline(new ModelMeshPipeline(meshPipeline, shaderModule, pending.pushConstantOffset()));
                 BUILT.increment();
             } catch (RuntimeException e) {
                 VK10.vkDestroyShaderModule(device.vkDevice(), shaderModule, null);
@@ -167,7 +169,7 @@ public final class ModelMeshPipelines {
      * Gives the mesh stage's descriptors the bindings Minecraft gave the same uniforms in the
      * pipeline's own stages.
      */
-    private static void bindAsMinecraft(SpvModule module, List<CompiledRenderPipeline.CreateInfo.Uniform> uniforms) throws ShaderCompileException {
+    private static void bindAsMinecraft(SpvModule module, List<Uniform> uniforms) throws ShaderCompileException {
         Map<String, CompiledRenderPipeline.CreateInfo.Uniform> uniformsByName = new HashMap<>();
         for (CompiledRenderPipeline.CreateInfo.Uniform uniform : uniforms) {
             uniformsByName.put(uniform.name(), uniform);
@@ -196,7 +198,7 @@ public final class ModelMeshPipelines {
      * The mesh pipeline: the mesh stage and Minecraft's fragment stage, with the rasterization,
      * depth and blend state Minecraft built its pipeline with, its layout and its render pass.
      */
-    private static long createPipeline(VulkanDevice device, CompiledRenderPipeline.CreateInfo createInfo, long pipelineLayout, Holder pipeline, long meshModule, BiConsumer<VkPipelineColorBlendAttachmentState.Buffer, BlendFunction> blend) {
+    private static long createPipeline(VulkanDevice device, CompiledRenderPipeline.CreateInfo createInfo, long pipelineLayout, ModelMeshPipelineHolder pipeline, long meshModule, BiConsumer<VkPipelineColorBlendAttachmentState.Buffer, BlendFunction> blend) {
         int fragmentStage = -1;
         for (int i = 0; i < createInfo.shaders().size(); i++) {
             if (createInfo.shaders().get(i).type() == ShaderType.FRAGMENT) {
@@ -249,8 +251,8 @@ public final class ModelMeshPipelines {
     /**
      * The mesh pipeline kept on a Minecraft pipeline, if any.
      */
-    public static @Nullable MeshPipeline of(@Nullable BackendRenderPipeline pipeline) {
-        return pipeline instanceof Holder holder ? holder.vim$meshPipeline() : null;
+    public static @Nullable ModelMeshPipeline of(@Nullable BackendRenderPipeline pipeline) {
+        return pipeline instanceof ModelMeshPipelineHolder holder ? holder.vim$meshPipeline() : null;
     }
     
     /**
@@ -275,36 +277,5 @@ public final class ModelMeshPipelines {
         map.put("unsupported", UNSUPPORTED.sum());
         map.put("failed", FAILED.sum());
         return map;
-    }
-    
-    /**
-     * A mesh stage compiled for a pipeline, its push constants starting at
-     * {@code pushConstantOffset}, where Minecraft's own end.
-     */
-    public record Pending(ByteBuffer spirv, int pushConstantOffset) {
-    }
-    
-    /**
-     * A built mesh pipeline and its mesh module.
-     */
-    public record MeshPipeline(long pipeline, long module, int pushConstantOffset) {
-        public void destroy(VulkanDevice device) {
-            VK10.vkDestroyPipeline(device.vkDevice(), this.pipeline, null);
-            VK10.vkDestroyShaderModule(device.vkDevice(), this.module, null);
-        }
-    }
-    
-    /**
-     * Implemented on Minecraft's Vulkan pipeline by a mixin.
-     */
-    public interface Holder {
-        @Nullable MeshPipeline vim$meshPipeline();
-        
-        void vim$setMeshPipeline(MeshPipeline meshPipeline);
-        
-        /**
-         * The shader module of the pipeline's stage at this index of the stages it was built with.
-         */
-        long vim$shaderModule(int stage);
     }
 }

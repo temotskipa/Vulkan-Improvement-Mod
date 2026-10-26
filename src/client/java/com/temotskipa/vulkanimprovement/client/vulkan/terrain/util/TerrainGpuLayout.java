@@ -1,9 +1,6 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain.util;
 
 public final class TerrainGpuLayout {
-    private TerrainGpuLayout() {
-    }
-    
     public static final int SECTION_METADATA_STRIDE = 80;
     /**
      * A meshlet header: where its vertices or indices are, its section and material, the box
@@ -53,25 +50,21 @@ public final class TerrainGpuLayout {
     public static final int VISIBILITY_COUNTER_OFFSET = 16;
     public static final int MATERIAL_RECORD_STRIDE = 64;
     public static final int MATERIAL_TABLE_CAPACITY = 256;
-    
     /**
      * The task and mesh stages' push constants: eight buffer addresses, four integers,
      * the camera's block and its offset inside that block, and four rows of the view-projection matrix.
      */
     public static final int TERRAIN_PUSH_CONSTANT_BYTES = 176;
-    
     /**
      * The fragment stage's push constants follow the other stages' at the next offset a
      * {@code vec4} may start at: the frame's fog colour, its four distances, and its mode.
      */
     public static final int TERRAIN_FOG_PUSH_CONSTANT_OFFSET = 176;
     public static final int TERRAIN_FOG_PUSH_CONSTANT_BYTES = 48;
-    
     /**
      * What every Vulkan 1.4 device accepts, and the mod requires Vulkan 1.4.
      */
     public static final int VULKAN_1_4_MIN_PUSH_CONSTANT_BYTES = 256;
-    
     /**
      * A meshlet's size: sixteen quads, or 21 triangles whose 63 corners fit the mesh stage's
      * output. Meshlets of 128 vertices cost the GPU about a twentieth more on the same terrain.
@@ -115,4 +108,6 @@ public final class TerrainGpuLayout {
     public static final int CULL_BACK_FACING_MESHLETS = 2;
     public static final int CULL_MESHLETS_OUTSIDE_VIEW = 4;
     public static final int NORMALIZED_INDEX_STRIDE = Integer.BYTES;
+    private TerrainGpuLayout() {
+    }
 }

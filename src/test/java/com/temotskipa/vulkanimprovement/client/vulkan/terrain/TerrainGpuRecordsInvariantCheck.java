@@ -1,7 +1,6 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
-import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
-import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuRecords;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.*;
 
 import java.io.IOException;
 import java.lang.foreign.MemoryLayout;
@@ -33,21 +32,21 @@ public final class TerrainGpuRecordsInvariantCheck {
                 shaders.add(Files.readString(file));
             }
         }
-        checkMatchesShaders(TerrainGpuRecords.ResidentPage.LAYOUT, shaders, 3);
-        checkMatchesShaders(TerrainGpuRecords.MeshletHeader.LAYOUT, shaders, 2);
-        checkMatchesShaders(TerrainGpuRecords.MaterialRecord.LAYOUT, shaders, 1);
-        checkMatchesShaders(TerrainGpuRecords.VisibleRecord.LAYOUT, shaders, 2);
-        checkMatchesShaders(TerrainGpuRecords.WorkQueueRecord.LAYOUT, shaders, 1);
-        checkMatchesShaders(TerrainGpuRecords.MeshTaskCommand.LAYOUT, shaders, 2);
+        checkMatchesShaders(TerrainResidentPageRecord.LAYOUT, shaders, 3);
+        checkMatchesShaders(TerrainMeshletHeaderRecord.LAYOUT, shaders, 2);
+        checkMatchesShaders(TerrainMaterialRecord.LAYOUT, shaders, 1);
+        checkMatchesShaders(TerrainVisibleRecord.LAYOUT, shaders, 2);
+        checkMatchesShaders(TerrainWorkQueueRecord.LAYOUT, shaders, 1);
+        checkMatchesShaders(TerrainMeshTaskCommandRecord.LAYOUT, shaders, 2);
     }
     
     private static void checkStrides() {
-        require(TerrainGpuRecords.ResidentPage.LAYOUT.byteSize() == TerrainGpuLayout.SECTION_METADATA_STRIDE, "a page's record must be as large as the page table's stride");
-        require(TerrainGpuRecords.MeshletHeader.LAYOUT.byteSize() == TerrainGpuLayout.MESHLET_HEADER_STRIDE, "a meshlet's header must be as large as the header stride");
-        require(TerrainGpuRecords.MaterialRecord.LAYOUT.byteSize() == TerrainGpuLayout.MATERIAL_RECORD_STRIDE, "a material's record must be as large as the material table's stride");
-        require(TerrainGpuRecords.VisibleRecord.LAYOUT.byteSize() == TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE, "a task's record must be as large as the visible list's stride");
-        require(TerrainGpuRecords.WorkQueueRecord.LAYOUT.byteSize() == TerrainGpuLayout.TERRAIN_WORK_QUEUE_RECORD_STRIDE, "a work queue record must be as large as the work queue's stride");
-        require(TerrainGpuRecords.MeshTaskCommand.LAYOUT.byteSize() == TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_STRIDE, "a mesh-task command must be as large as the command stride");
+        require(TerrainResidentPageRecord.LAYOUT.byteSize() == TerrainGpuLayout.SECTION_METADATA_STRIDE, "a page's record must be as large as the page table's stride");
+        require(TerrainMeshletHeaderRecord.LAYOUT.byteSize() == TerrainGpuLayout.MESHLET_HEADER_STRIDE, "a meshlet's header must be as large as the header stride");
+        require(TerrainMaterialRecord.LAYOUT.byteSize() == TerrainGpuLayout.MATERIAL_RECORD_STRIDE, "a material's record must be as large as the material table's stride");
+        require(TerrainVisibleRecord.LAYOUT.byteSize() == TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE, "a task's record must be as large as the visible list's stride");
+        require(TerrainWorkQueueRecord.LAYOUT.byteSize() == TerrainGpuLayout.TERRAIN_WORK_QUEUE_RECORD_STRIDE, "a work queue record must be as large as the work queue's stride");
+        require(TerrainMeshTaskCommandRecord.LAYOUT.byteSize() == TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_STRIDE, "a mesh-task command must be as large as the command stride");
     }
     
     /**
@@ -72,10 +71,10 @@ public final class TerrainGpuRecordsInvariantCheck {
     private static void checkMembers(StructLayout layout, String body) {
         String name = layout.name().orElseThrow();
         List<MemoryLayout> expected = layout.memberLayouts();
-        List<GlslSource.Member> declared = GlslSource.members(body);
+        List<GlslMember> declared = GlslSource.members(body);
         require(declared.size() == expected.size(), name + " declares " + declared.size() + " members in a shader but " + expected.size() + " in Java");
         for (int index = 0; index < declared.size(); index++) {
-            GlslSource.Member member = declared.get(index);
+            GlslMember member = declared.get(index);
             MemoryLayout java = expected.get(index);
             require(java.name().orElseThrow().equals(member.name()), name + " member " + index + " is " + member.name() + " in a shader but " + java.name().orElseThrow() + " in Java");
             require(member.bytes() == java.byteSize(), name + "." + member.name() + " has " + member.bytes() + " bytes in a shader but " + java.byteSize() + " in Java");

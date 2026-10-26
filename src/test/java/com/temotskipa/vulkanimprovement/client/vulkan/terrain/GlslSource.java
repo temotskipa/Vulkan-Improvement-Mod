@@ -40,8 +40,8 @@ final class GlslSource {
     /**
      * A block's members, up to a runtime-sized array, which takes no room of the block's own.
      */
-    static List<Member> members(String body) {
-        List<Member> members = new ArrayList<>();
+    static List<GlslMember> members(String body) {
+        List<GlslMember> members = new ArrayList<>();
         Matcher member = MEMBER.matcher(body.replaceAll("//[^\n]*", ""));
         while (member.find()) {
             if (member.group(3) != null) {
@@ -49,7 +49,7 @@ final class GlslSource {
             }
             Integer bytes = BYTES.get(member.group(1));
             require(bytes != null, "unknown GLSL type " + member.group(1) + " of " + member.group(2));
-            members.add(new Member(member.group(1), member.group(2), bytes));
+            members.add(new GlslMember(member.group(1), member.group(2), bytes));
         }
         return members;
     }
@@ -58,7 +58,7 @@ final class GlslSource {
      * How many bytes a block's members take, laid out one after another as the scalar layout does.
      */
     static int bytes(String body) {
-        return members(body).stream().mapToInt(Member::bytes).sum();
+        return members(body).stream().mapToInt(GlslMember::bytes).sum();
     }
     
     /**
@@ -74,8 +74,5 @@ final class GlslSource {
         if (!condition) {
             throw new AssertionError(message);
         }
-    }
-    
-    record Member(String type, String name, int bytes) {
     }
 }

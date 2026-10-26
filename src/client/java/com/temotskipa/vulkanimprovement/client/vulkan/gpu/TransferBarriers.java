@@ -43,17 +43,17 @@ public final class TransferBarriers {
      * transfer held since the last barrier must finish first, in which case the caller records a
      * barrier before this one.
      */
-    public boolean transfer(Access... accesses) {
+    public boolean transfer(TransferAccess... accesses) {
         transfers++;
         boolean hazard = false;
-        for (Access access : accesses) {
+        for (TransferAccess access : accesses) {
             hazard |= conflicts(access);
         }
         if (hazard) {
             clear();
             hazardBarriers++;
         }
-        for (Access access : accesses) {
+        for (TransferAccess access : accesses) {
             add(access);
         }
         held = true;
@@ -89,14 +89,14 @@ public final class TransferBarriers {
         return map;
     }
     
-    private boolean conflicts(Access access) {
+    private boolean conflicts(TransferAccess access) {
         if (access.image()) {
             return imageWrites.contains(access.handle()) || access.write() && imageReads.contains(access.handle());
         }
         return overlaps(bufferWrites, access) || access.write() && overlaps(bufferReads, access);
     }
     
-    private void add(Access access) {
+    private void add(TransferAccess access) {
         if (access.image()) {
             (access.write() ? imageWrites : imageReads).add(access.handle());
         }
@@ -117,7 +117,7 @@ public final class TransferBarriers {
      * Whether the access overlaps one of its buffer's ranges. The ranges are disjoint and keyed by
      * their start, so only the last one starting before the access ends can overlap it.
      */
-    private static boolean overlaps(Map<Long, NavigableMap<Long, Long>> ranges, Access access) {
+    private static boolean overlaps(Map<Long, NavigableMap<Long, Long>> ranges, TransferAccess access) {
         NavigableMap<Long, Long> buffer = ranges.get(access.handle());
         if (buffer == null || access.end() <= access.start()) {
             return false;
@@ -142,27 +142,5 @@ public final class TransferBarriers {
             ranges.remove(next.getKey());
         }
         ranges.put(from, to);
-    }
-    
-    /**
-     * What a transfer reads or writes: a byte range of a buffer, from {@code start} to before
-     * {@code end}, or a whole texture.
-     */
-    public record Access(long handle, long start, long end, boolean image, boolean write) {
-        public static Access readBuffer(long vkBuffer, long start, long end) {
-            return new Access(vkBuffer, start, end, false, false);
-        }
-        
-        public static Access writeBuffer(long vkBuffer, long start, long end) {
-            return new Access(vkBuffer, start, end, false, true);
-        }
-        
-        public static Access readImage(long vkImage) {
-            return new Access(vkImage, 0L, 0L, true, false);
-        }
-        
-        public static Access writeImage(long vkImage) {
-            return new Access(vkImage, 0L, 0L, true, true);
-        }
     }
 }

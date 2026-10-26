@@ -1,7 +1,6 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.model;
 
 import net.minecraft.client.renderer.rendertype.PreparedRenderType;
-import org.jspecify.annotations.Nullable;
 
 /**
  * A draw of Minecraft's staged vertex buffer whose vertices the GPU makes: its index in the frame,
@@ -21,20 +20,5 @@ public final class ModelVertexDraw {
     ModelVertexDraw(int index, PreparedRenderType renderType) {
         this.index = index;
         this.renderType = renderType;
-    }
-    
-    /**
-     * Implemented on Minecraft's {@code StagedVertexBuffer.Draw} by a mixin: the GPU draw a draw
-     * is, if any, and the vertex count Minecraft sizes its index buffer and draw by.
-     */
-    public interface Holder {
-        @Nullable ModelVertexDraw vim$modelDraw();
-        
-        void vim$setModelDraw(ModelVertexDraw draw);
-        
-        /**
-         * Counts vertices the GPU writes into the draw, and the indices Minecraft draws them with.
-         */
-        void vim$addQuadVertices(int vertices);
     }
 }

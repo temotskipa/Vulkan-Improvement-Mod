@@ -4,7 +4,6 @@ import org.jspecify.annotations.Nullable;
 import org.lwjgl.vulkan.VK10;
 import org.lwjgl.vulkan.VkFramebufferCreateInfo;
 
-import java.nio.LongBuffer;
 import java.util.*;
 import java.util.function.LongConsumer;
 
@@ -22,8 +21,8 @@ public final class FramebufferCache {
     private static volatile @Nullable FramebufferCache latest;
     
     private final LongConsumer destroyLater;
-    private final Map<Key, Long> framebuffers = new HashMap<>();
-    private final Map<Long, List<Key>> keysByView = new HashMap<>();
+    private final Map<FramebufferKey, Long> framebuffers = new HashMap<>();
+    private final Map<Long, List<FramebufferKey>> keysByView = new HashMap<>();
     private long created;
     private long reused;
     private long released;
@@ -48,7 +47,7 @@ public final class FramebufferCache {
      * The framebuffer kept for what this create info describes, or {@code VK_NULL_HANDLE}.
      */
     public long find(VkFramebufferCreateInfo createInfo) {
-        Long framebuffer = framebuffers.get(Key.of(createInfo));
+        Long framebuffer = framebuffers.get(FramebufferKey.of(createInfo));
         if (framebuffer == null) {
             return VK10.VK_NULL_HANDLE;
         }
@@ -60,7 +59,7 @@ public final class FramebufferCache {
      * Keeps a framebuffer just created from this create info.
      */
     public void keep(VkFramebufferCreateInfo createInfo, long framebuffer) {
-        Key key = Key.of(createInfo);
+        FramebufferKey key = FramebufferKey.of(createInfo);
         Long replaced = framebuffers.put(key, framebuffer);
         if (replaced != null) {
             destroyLater.accept(replaced);
@@ -77,11 +76,11 @@ public final class FramebufferCache {
      * Releases every framebuffer with this view as an attachment. Called as the view closes.
      */
     public void release(long view) {
-        List<Key> keys = keysByView.remove(view);
+        List<FramebufferKey> keys = keysByView.remove(view);
         if (keys == null) {
             return;
         }
-        for (Key key : keys) {
+        for (FramebufferKey key : keys) {
             Long framebuffer = framebuffers.remove(key);
             if (framebuffer == null) {
                 continue;
@@ -89,7 +88,7 @@ public final class FramebufferCache {
             destroyLater.accept(framebuffer);
             released++;
             for (long other : key.views()) {
-                List<Key> otherKeys = keysByView.get(other);
+                List<FramebufferKey> otherKeys = keysByView.get(other);
                 if (otherKeys != null) {
                     otherKeys.remove(key);
                     if (otherKeys.isEmpty()) {
@@ -117,27 +116,5 @@ public final class FramebufferCache {
         map.put("reused", reused);
         map.put("released", released);
         return map;
-    }
-    
-    /**
-     * Minecraft's Vulkan command encoder, which owns the framebuffers its render passes use.
-     */
-    public interface Owner {
-        FramebufferCache vim$framebuffers();
-    }
-    
-    /**
-     * What Minecraft builds a framebuffer from: the render pass, the attachment views in order,
-     * {@code VK_NULL_HANDLE} for an unused color attachment, and the size.
-     */
-    private record Key(long renderPass, List<Long> views, int width, int height) {
-        static Key of(VkFramebufferCreateInfo createInfo) {
-            LongBuffer attachments = createInfo.pAttachments();
-            Long[] views = new Long[attachments == null ? 0 : attachments.remaining()];
-            for (int i = 0; i < views.length; i++) {
-                views[i] = attachments.get(attachments.position() + i);
-            }
-            return new Key(createInfo.renderPass(), List.of(views), createInfo.width(), createInfo.height());
-        }
     }
 }

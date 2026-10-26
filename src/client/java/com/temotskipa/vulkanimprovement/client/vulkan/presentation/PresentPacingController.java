@@ -1,7 +1,7 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.presentation;
 
 import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
-import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanImprovementCapabilities;
+import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanCapabilitySnapshot;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.*;
@@ -28,7 +28,7 @@ public final class PresentPacingController {
         return INSTANCE;
     }
     
-    public void configure(VulkanImprovementCapabilities.Snapshot capabilities) {
+    public void configure(VulkanCapabilitySnapshot capabilities) {
         this.presentIdAvailable = capabilities.presentIdExtension();
         this.presentWaitAvailable = capabilities.presentWaitExtension();
         this.disabled = TerrainRendererDebugConfig.disablePresentPacing();

@@ -7,7 +7,10 @@ import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDeb
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.*;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 
 public final class VulkanFeatureRequirements {
     public static final String VULKAN_14_CAPABILITY = "Vulkan Improvement Mod requires VULKAN_CORE_1_4; remove the mod to use vanilla renderer";
@@ -32,7 +35,7 @@ public final class VulkanFeatureRequirements {
     private VulkanFeatureRequirements() {
     }
     
-    public static List<RequirementGroup> requirementGroups() {
+    public static List<VulkanRequirementGroup> requirementGroups() {
         return requirementGroups(!TerrainRendererDebugConfig.validationDescriptorBufferOnly());
     }
     
@@ -42,7 +45,7 @@ public final class VulkanFeatureRequirements {
     
     static Set<String> requiredDeviceExtensions(boolean requireDescriptorHeap) {
         Set<String> extensions = new LinkedHashSet<>();
-        for (RequirementGroup group : startupRequiredRequirementGroups(requireDescriptorHeap)) {
+        for (VulkanRequirementGroup group : startupRequiredRequirementGroups(requireDescriptorHeap)) {
             extensions.addAll(group.deviceExtensions());
         }
         return extensions;
@@ -54,25 +57,25 @@ public final class VulkanFeatureRequirements {
     
     static Set<VulkanFeature> requiredDeviceFeatures(boolean requireDescriptorHeap) {
         Set<VulkanFeature> features = new LinkedHashSet<>();
-        for (RequirementGroup group : startupRequiredRequirementGroups(requireDescriptorHeap)) {
+        for (VulkanRequirementGroup group : startupRequiredRequirementGroups(requireDescriptorHeap)) {
             features.addAll(group.deviceFeatures());
         }
         return features;
     }
     
-    static List<RequirementGroup> requirementGroups(boolean requireDescriptorHeap) {
-        List<RequirementGroup> groups = new ArrayList<>();
-        groups.add(new RequirementGroup("base-vulkan-api", RequirementScope.BASE_MINECRAFT, true, "requires Vulkan 1.4 device API", Set.of(), Set.of()));
+    static List<VulkanRequirementGroup> requirementGroups(boolean requireDescriptorHeap) {
+        List<VulkanRequirementGroup> groups = new ArrayList<>();
+        groups.add(new VulkanRequirementGroup("base-vulkan-api", RequirementScope.BASE_MINECRAFT, true, "requires Vulkan 1.4 device API", Set.of(), Set.of()));
         
         Set<String> hardExtensions = hardRenderingExtensions();
         Set<VulkanFeature> hardFeatures = hardRenderingFeatures();
-        groups.add(new RequirementGroup("vim-hard-rendering", RequirementScope.VIM_HARD, true, "required by mesh terrain, descriptor-buffer resources, present pacing, and diagnostics", hardExtensions, hardFeatures));
+        groups.add(new VulkanRequirementGroup("vim-hard-rendering", RequirementScope.VIM_HARD, true, "required by mesh terrain, descriptor-buffer resources, present pacing, and diagnostics", hardExtensions, hardFeatures));
         
-        groups.add(new RequirementGroup("descriptor-heap-path", RequirementScope.REQUIRED_IF_ENABLED, requireDescriptorHeap, requireDescriptorHeap ? "required by descriptor-buffer plus heap path" : "disabled by vim.validationDescriptorBufferOnly", Set.of(EXTDescriptorHeap.VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME), Set.of(new VulkanFeature(DESCRIPTOR_HEAP_FEATURES, "descriptorHeap"))));
+        groups.add(new VulkanRequirementGroup("descriptor-heap-path", RequirementScope.REQUIRED_IF_ENABLED, requireDescriptorHeap, requireDescriptorHeap ? "required by descriptor-buffer plus heap path" : "disabled by vim.validationDescriptorBufferOnly", Set.of(EXTDescriptorHeap.VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME), Set.of(new VulkanFeature(DESCRIPTOR_HEAP_FEATURES, "descriptorHeap"))));
         
-        groups.add(new RequirementGroup("optional-acceleration", RequirementScope.OPTIONAL_ACCELERATION, false, "optional acceleration path is unavailable when the extension is not enabled by Minecraft/Vulkan", optionalAccelerationExtensionSet(), Set.of()));
+        groups.add(new VulkanRequirementGroup("optional-acceleration", RequirementScope.OPTIONAL_ACCELERATION, false, "optional acceleration path is unavailable when the extension is not enabled by Minecraft/Vulkan", optionalAccelerationExtensionSet(), Set.of()));
         
-        groups.add(new RequirementGroup("rt-pt-readiness", RequirementScope.RT_PT_READINESS, false, "RT/PT readiness path is unavailable until all required ray-tracing extensions are enabled by Minecraft/Vulkan", rtPtReadinessExtensionsSet(), Set.of()));
+        groups.add(new VulkanRequirementGroup("rt-pt-readiness", RequirementScope.RT_PT_READINESS, false, "RT/PT readiness path is unavailable until all required ray-tracing extensions are enabled by Minecraft/Vulkan", rtPtReadinessExtensionsSet(), Set.of()));
         
         return List.copyOf(groups);
     }
@@ -149,7 +152,7 @@ public final class VulkanFeatureRequirements {
     
     static List<FeatureSet> requiredFeatureSets(boolean requireDescriptorHeap) {
         List<FeatureSet> featureSets = new ArrayList<>();
-        for (RequirementGroup group : startupRequiredRequirementGroups(requireDescriptorHeap)) {
+        for (VulkanRequirementGroup group : startupRequiredRequirementGroups(requireDescriptorHeap)) {
             if (!group.deviceExtensions().isEmpty() || !group.deviceFeatures().isEmpty()) {
                 featureSets.add(new FeatureSet(FEATURE_SET_PREFIX + "[" + group.id() + "]", group.deviceExtensions(), group.deviceFeatures()));
             }
@@ -157,8 +160,8 @@ public final class VulkanFeatureRequirements {
         return List.copyOf(featureSets);
     }
     
-    static List<RequirementGroup> startupRequiredRequirementGroups(boolean requireDescriptorHeap) {
-        return requirementGroups(requireDescriptorHeap).stream().filter(RequirementGroup::startupRequired).toList();
+    static List<VulkanRequirementGroup> startupRequiredRequirementGroups(boolean requireDescriptorHeap) {
+        return requirementGroups(requireDescriptorHeap).stream().filter(VulkanRequirementGroup::startupRequired).toList();
     }
     
     public static Set<String> optionalAccelerationExtensions() {
@@ -171,7 +174,7 @@ public final class VulkanFeatureRequirements {
     
     private static Set<String> extensionsByScope(RequirementScope scope) {
         Set<String> extensions = new LinkedHashSet<>();
-        for (RequirementGroup group : requirementGroups()) {
+        for (VulkanRequirementGroup group : requirementGroups()) {
             if (group.scope() == scope) {
                 extensions.addAll(group.deviceExtensions());
             }
@@ -181,7 +184,7 @@ public final class VulkanFeatureRequirements {
     
     public static Set<String> baseCapabilityNames() {
         Set<String> capabilities = new LinkedHashSet<>();
-        for (RequirementGroup group : requirementGroups()) {
+        for (VulkanRequirementGroup group : requirementGroups()) {
             if (group.scope() == RequirementScope.BASE_MINECRAFT) {
                 capabilities.add(VULKAN_14_CAPABILITY);
             }
@@ -206,12 +209,5 @@ public final class VulkanFeatureRequirements {
         int minor = version >>> 12 & 0x3ff;
         int patch = version & 0xfff;
         return major + "." + minor + "." + patch;
-    }
-    
-    public record RequirementGroup(String id, RequirementScope scope, boolean startupRequired, String disabledReason, Set<String> deviceExtensions, Set<VulkanFeature> deviceFeatures) {
-        public RequirementGroup {
-            deviceExtensions = Collections.unmodifiableSet(new LinkedHashSet<>(deviceExtensions));
-            deviceFeatures = Collections.unmodifiableSet(new LinkedHashSet<>(deviceFeatures));
-        }
     }
 }

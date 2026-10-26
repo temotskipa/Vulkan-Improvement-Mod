@@ -40,7 +40,7 @@ final class ModelCubeStore {
     private static final Direction[] DIRECTIONS = Direction.values();
     
     private final int id = NEXT_ID.getAndIncrement();
-    private final GrowingSegment copy = new GrowingSegment(INITIAL_POLYGONS * ModelGpuRecords.Polygon.BYTES);
+    private final GrowingSegment copy = new GrowingSegment(INITIAL_POLYGONS * ModelPolygonRecord.BYTES);
     /**
      * The cubes whose faces are in the store, each held weakly, so that one Minecraft drops shows
      * up in {@link #collected} once it is collected.
@@ -99,14 +99,14 @@ final class ModelCubeStore {
         Vertex[] vertices = polygon.vertices();
         for (int corner = 0; corner < ModelGpuRecords.POLYGON_VERTICES; corner++) {
             Vertex vertex = vertices[corner];
-            long base = offset + ModelGpuRecords.Polygon.CORNERS + corner * ModelGpuRecords.Polygon.CORNER_BYTES;
-            records.set(ModelGpuRecords.FLOAT, base + ModelGpuRecords.Polygon.CORNER_X, vertex.worldX());
-            records.set(ModelGpuRecords.FLOAT, base + ModelGpuRecords.Polygon.CORNER_Y, vertex.worldY());
-            records.set(ModelGpuRecords.FLOAT, base + ModelGpuRecords.Polygon.CORNER_Z, vertex.worldZ());
-            records.set(ModelGpuRecords.FLOAT, base + ModelGpuRecords.Polygon.CORNER_U, vertex.u());
-            records.set(ModelGpuRecords.FLOAT, base + ModelGpuRecords.Polygon.CORNER_V, vertex.v());
+            long base = offset + ModelPolygonRecord.CORNERS + corner * ModelPolygonRecord.CORNER_BYTES;
+            records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_X, vertex.worldX());
+            records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_Y, vertex.worldY());
+            records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_Z, vertex.worldZ());
+            records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_U, vertex.u());
+            records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_V, vertex.v());
         }
-        records.set(ModelGpuRecords.INT, offset + ModelGpuRecords.Polygon.DIRECTION, direction(polygon.normal()));
+        records.set(ModelGpuRecords.INT, offset + ModelPolygonRecord.DIRECTION, direction(polygon.normal()));
     }
     
     /**
@@ -129,12 +129,12 @@ final class ModelCubeStore {
         }
         int first = this.polygonCount;
         int count = cube.polygons.length;
-        long start = first * ModelGpuRecords.Polygon.BYTES;
-        long end = (long) (first + count) * ModelGpuRecords.Polygon.BYTES;
+        long start = first * ModelPolygonRecord.BYTES;
+        long end = (long) (first + count) * ModelPolygonRecord.BYTES;
         ensureCapacity(first + count);
         MemorySegment records = this.copy.reserve(start, end);
         for (int i = 0; i < count; i++) {
-            writePolygon(records, start + i * ModelGpuRecords.Polygon.BYTES, cube.polygons[i]);
+            writePolygon(records, start + i * ModelPolygonRecord.BYTES, cube.polygons[i]);
         }
         MemorySegment.copy(records, start, Objects.requireNonNull(this.mapped), start, end - start);
         this.polygonCount += count;
@@ -177,7 +177,7 @@ final class ModelCubeStore {
     }
     
     long residentBytes() {
-        return this.polygonCount * ModelGpuRecords.Polygon.BYTES;
+        return this.polygonCount * ModelPolygonRecord.BYTES;
     }
     
     /**
@@ -190,11 +190,11 @@ final class ModelCubeStore {
             return;
         }
         long grown = Math.max(Math.max(polygons, INITIAL_POLYGONS), this.capacity * 2L);
-        long bytes = grown * ModelGpuRecords.Polygon.BYTES;
+        long bytes = grown * ModelPolygonRecord.BYTES;
         GpuBuffer next = RenderSystem.getDevice().createBuffer(() -> "VIM Model Polygons", GpuBuffer.USAGE_MAP_WRITE | ShaderStorage.USAGE_SHADER_STORAGE, bytes);
         MappedView nextMapping = next.map(false, true);
         MemorySegment nextMapped = MemorySegment.ofBuffer(nextMapping.data());
-        long used = this.polygonCount * ModelGpuRecords.Polygon.BYTES;
+        long used = this.polygonCount * ModelPolygonRecord.BYTES;
         if (used > 0L) {
             MemorySegment.copy(this.copy.segment(), 0L, nextMapped, 0L, used);
         }

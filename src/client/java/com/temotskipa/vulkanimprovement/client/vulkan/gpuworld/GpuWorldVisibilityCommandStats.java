@@ -11,7 +11,7 @@ public final class GpuWorldVisibilityCommandStats {
     private long emittedCommandCount;
     private long overflowedCommandCount;
     private long fallbackCommandCount;
-    private VisibilityCommandPass lastPass;
+    private GpuWorldVisibilityCommandPass lastPass;
     
     private GpuWorldVisibilityCommandStats() {
     }
@@ -53,7 +53,7 @@ public final class GpuWorldVisibilityCommandStats {
         this.emittedCommandCount = checkedAdd(this.emittedCommandCount, emittedCommandCount, "GPU world emitted command count overflow long");
         this.overflowedCommandCount = checkedAdd(this.overflowedCommandCount, overflowedCommandCount, "GPU world overflowed command count overflow long");
         this.fallbackCommandCount = checkedAdd(this.fallbackCommandCount, fallbackCommandCount, "GPU world fallback command count overflow long");
-        this.lastPass = new VisibilityCommandPass(inputSectionCount, culledSectionCount, visibleSectionCount, emittedCommandCount, overflowedCommandCount, fallbackCommandCount);
+        this.lastPass = new GpuWorldVisibilityCommandPass(inputSectionCount, culledSectionCount, visibleSectionCount, emittedCommandCount, overflowedCommandCount, fallbackCommandCount);
     }
     
     synchronized void resetForTests() {
@@ -80,19 +80,5 @@ public final class GpuWorldVisibilityCommandStats {
         map.put("affectsVanillaCancellation", false);
         map.put("lastPass", this.lastPass == null ? Map.of("present", false) : this.lastPass.asMap());
         return map;
-    }
-    
-    private record VisibilityCommandPass(long inputSectionCount, long culledSectionCount, long visibleSectionCount, long emittedCommandCount, long overflowedCommandCount, long fallbackCommandCount) {
-        private Map<String, Object> asMap() {
-            Map<String, Object> map = new LinkedHashMap<>();
-            map.put("present", true);
-            map.put("inputSectionCount", this.inputSectionCount);
-            map.put("culledSectionCount", this.culledSectionCount);
-            map.put("visibleSectionCount", this.visibleSectionCount);
-            map.put("emittedCommandCount", this.emittedCommandCount);
-            map.put("overflowedCommandCount", this.overflowedCommandCount);
-            map.put("fallbackCommandCount", this.fallbackCommandCount);
-            return map;
-        }
     }
 }

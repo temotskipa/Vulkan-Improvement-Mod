@@ -1,7 +1,7 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
-import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuRecords;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainWorkQueueRecord;
 
 import java.io.IOException;
 import java.util.Map;
@@ -21,7 +21,7 @@ public final class TerrainWorkQueueLayoutInvariantCheck {
     
     private static void checkRecordLayout(String taskShader) {
         require(GlslSource.bytes(GlslSource.body(taskShader, "buffer TerrainWorkQueue {")) == TerrainGpuLayout.TERRAIN_WORK_QUEUE_COUNTER_BYTES, "work queue counters must be what the task stage reads before the records");
-        require(TerrainGpuRecords.WorkQueueRecord.LAYOUT.byteSize() == TerrainGpuLayout.TERRAIN_WORK_QUEUE_RECORD_STRIDE, "work queue record must stay four uints");
+        require(TerrainWorkQueueRecord.LAYOUT.byteSize() == TerrainGpuLayout.TERRAIN_WORK_QUEUE_RECORD_STRIDE, "work queue record must stay four uints");
     }
     
     private static void checkCapacityBytes() {

@@ -63,6 +63,16 @@ public final class ShaderCompiler implements AutoCloseable {
         }
     }
     
+    private static long createShaderModule(VulkanDevice device, String filename, ByteBuffer spirv) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            VkShaderModuleCreateInfo moduleCreateInfo = VkShaderModuleCreateInfo.calloc(stack).sType$Default();
+            moduleCreateInfo.pCode(spirv);
+            long[] module = new long[1];
+            VulkanUtils.crashIfFailure(device, VK12.vkCreateShaderModule(device.vkDevice(), moduleCreateInfo, null, module), "Failed to create " + filename);
+            return module[0];
+        }
+    }
+    
     /**
      * Where the last module came from: the build's SPIR-V or runtime compilation.
      */
@@ -101,16 +111,6 @@ public final class ShaderCompiler implements AutoCloseable {
             return Shaderc.shaderc_result_get_compilation_status(result) == Shaderc.shaderc_compilation_status_success ? null : Shaderc.shaderc_result_get_error_message(result);
         } finally {
             Shaderc.shaderc_result_release(result);
-        }
-    }
-    
-    private static long createShaderModule(VulkanDevice device, String filename, ByteBuffer spirv) {
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            VkShaderModuleCreateInfo moduleCreateInfo = VkShaderModuleCreateInfo.calloc(stack).sType$Default();
-            moduleCreateInfo.pCode(spirv);
-            long[] module = new long[1];
-            VulkanUtils.crashIfFailure(device, VK12.vkCreateShaderModule(device.vkDevice(), moduleCreateInfo, null, module), "Failed to create " + filename);
-            return module[0];
         }
     }
     

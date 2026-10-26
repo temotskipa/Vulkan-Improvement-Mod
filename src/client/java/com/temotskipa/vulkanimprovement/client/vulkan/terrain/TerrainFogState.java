@@ -14,8 +14,8 @@ public final class TerrainFogState {
      * switches fog off.
      */
     private static final float NEVER = Float.MAX_VALUE;
-    private static final Fog NONE = new Fog(false, 0.0F, 0.0F, 0.0F, 0.0F, NEVER, NEVER, NEVER, NEVER);
-    private static volatile Fog current = NONE;
+    private static final TerrainFog NONE = new TerrainFog(false, 0.0F, 0.0F, 0.0F, 0.0F, NEVER, NEVER, NEVER, NEVER);
+    private static volatile TerrainFog current = NONE;
     
     private TerrainFogState() {
     }
@@ -25,7 +25,7 @@ public final class TerrainFogState {
      *                of fog that never starts instead of the frame's
      */
     public static void record(boolean enabled, float red, float green, float blue, float alpha, float environmentalStart, float environmentalEnd, float renderDistanceStart, float renderDistanceEnd) {
-        current = enabled ? new Fog(true, red, green, blue, alpha, environmentalStart, environmentalEnd, renderDistanceStart, renderDistanceEnd) : NONE;
+        current = enabled ? new TerrainFog(true, red, green, blue, alpha, environmentalStart, environmentalEnd, renderDistanceStart, renderDistanceEnd) : NONE;
     }
     
     public static void reset() {
@@ -37,14 +37,14 @@ public final class TerrainFogState {
      *                    behind it instead of the fog colour
      */
     static void write(ByteBuffer target, boolean improvedFog) {
-        Fog fog = current;
+        TerrainFog fog = current;
         target.putFloat(fog.red()).putFloat(fog.green()).putFloat(fog.blue()).putFloat(fog.alpha());
         target.putFloat(fog.environmentalStart()).putFloat(fog.environmentalEnd()).putFloat(fog.renderDistanceStart()).putFloat(fog.renderDistanceEnd());
         target.putInt(improvedFog ? 1 : 0).putInt(0).putInt(0).putInt(0);
     }
     
     public static Map<String, Object> asMap() {
-        Fog fog = current;
+        TerrainFog fog = current;
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("enabled", fog.enabled());
         map.put("color", fog.red() + "," + fog.green() + "," + fog.blue() + "," + fog.alpha());
@@ -53,8 +53,5 @@ public final class TerrainFogState {
         map.put("renderDistanceStart", fog.renderDistanceStart());
         map.put("renderDistanceEnd", fog.renderDistanceEnd());
         return map;
-    }
-    
-    private record Fog(boolean enabled, float red, float green, float blue, float alpha, float environmentalStart, float environmentalEnd, float renderDistanceStart, float renderDistanceEnd) {
     }
 }

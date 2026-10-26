@@ -148,15 +148,15 @@ public final class ModelMeshShader {
     }
     
     private static String meshMain(CharSequence stores) {
-        int polygonWords = Math.toIntExact(ModelGpuRecords.Polygon.BYTES / Integer.BYTES);
-        int cornerWords = Math.toIntExact(ModelGpuRecords.Polygon.CORNER_BYTES / Integer.BYTES);
-        int polygonDirection = Math.toIntExact(ModelGpuRecords.Polygon.DIRECTION / Integer.BYTES);
-        int partWords = Math.toIntExact(ModelGpuRecords.Part.BYTES / Integer.BYTES);
-        int partNormals = Math.toIntExact(ModelGpuRecords.Part.NORMALS / Integer.BYTES);
-        int partColor = Math.toIntExact(ModelGpuRecords.Part.COLOR / Integer.BYTES);
-        int partOverlay = Math.toIntExact(ModelGpuRecords.Part.OVERLAY / Integer.BYTES);
-        int partLight = Math.toIntExact(ModelGpuRecords.Part.LIGHT / Integer.BYTES);
-        int jobWords = Math.toIntExact(ModelGpuRecords.Job.BYTES / Integer.BYTES);
+        int polygonWords = Math.toIntExact(ModelPolygonRecord.BYTES / Integer.BYTES);
+        int cornerWords = Math.toIntExact(ModelPolygonRecord.CORNER_BYTES / Integer.BYTES);
+        int polygonDirection = Math.toIntExact(ModelPolygonRecord.DIRECTION / Integer.BYTES);
+        int partWords = Math.toIntExact(ModelPartRecord.BYTES / Integer.BYTES);
+        int partNormals = Math.toIntExact(ModelPartRecord.NORMALS / Integer.BYTES);
+        int partColor = Math.toIntExact(ModelPartRecord.COLOR / Integer.BYTES);
+        int partOverlay = Math.toIntExact(ModelPartRecord.OVERLAY / Integer.BYTES);
+        int partLight = Math.toIntExact(ModelPartRecord.LIGHT / Integer.BYTES);
+        int jobWords = Math.toIntExact(ModelJobRecord.BYTES / Integer.BYTES);
         return """
                
                float vim_unorm8(uint value, uint shift) {
@@ -233,6 +233,6 @@ public final class ModelMeshShader {
                        gl_PrimitiveTriangleIndicesEXT[vertex] = (vertex & 1u) == 0u ? uvec3(first, first + 1u, first + 2u) : uvec3(first + 2u, first + 3u, first);
                    }
                }
-               """.formatted(jobWords, ModelGpuRecords.Job.DRAW_BITS, partWords, polygonWords, cornerWords, partColor, partOverlay, partLight, partNormals, polygonDirection, stores);
+               """.formatted(jobWords, ModelJobRecord.DRAW_BITS, partWords, polygonWords, cornerWords, partColor, partOverlay, partLight, partNormals, polygonDirection, stores);
     }
 }

@@ -1,6 +1,6 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.runtime;
 
-import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanImprovementCapabilities;
+import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanCapabilitySnapshot;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.FramebufferCache;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.TransferBarriers;
 import com.temotskipa.vulkanimprovement.client.vulkan.presentation.PresentPacingController;
@@ -28,7 +28,7 @@ public final class RendererCoreServices {
         RendererDomainRegistry.get().reset();
     }
     
-    public synchronized void configure(VulkanImprovementCapabilities.Snapshot capabilities) {
+    public synchronized void configure(VulkanCapabilitySnapshot capabilities) {
         PresentPacingController.get().configure(capabilities);
         FragmentShadingRateController.get().configure(capabilities);
     }

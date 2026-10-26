@@ -1,6 +1,7 @@
 package com.temotskipa.vulkanimprovement.mixin.client;
 
 import com.mojang.renderpearl.api.device.BackendCreationException;
+import com.mojang.renderpearl.api.device.BackendCreationException.Reason;
 import com.mojang.renderpearl.api.device.GpuDebugOptions;
 import com.mojang.renderpearl.api.device.GpuDevice;
 import com.mojang.renderpearl.backend.opengl.GlBackend;
@@ -17,7 +18,7 @@ public final class GlBackendMixin {
     @Inject(method = "createDevice", at = @At("HEAD"))
     private void vim$rejectOpenGlFallback(String applicationName, int applicationVersion, GpuDebugOptions debugOptions, CallbackInfoReturnable<GpuDevice> cir) throws BackendCreationException {
         if (TerrainRendererDebugConfig.requireVulkanBackend()) {
-            throw new BackendCreationException("Vulkan Improvement developer config vim.requireVulkanBackend=true forbids OpenGL fallback after Vulkan backend creation failed or was not selected.", BackendCreationException.Reason.OTHER, List.of("vim.requireVulkanBackend"));
+            throw new BackendCreationException("Vulkan Improvement developer config vim.requireVulkanBackend=true forbids OpenGL fallback after Vulkan backend creation failed or was not selected.", Reason.OTHER, List.of("vim.requireVulkanBackend"));
         }
     }
 }

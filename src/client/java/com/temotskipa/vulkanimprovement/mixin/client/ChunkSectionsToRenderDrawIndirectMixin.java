@@ -7,7 +7,7 @@ import com.mojang.renderpearl.api.pipeline.IndexType;
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.VulkanImprovementRuntime;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.MeshTerrainRenderer;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
-import net.minecraft.client.renderer.chunk.ChunkSectionsToRender;
+import net.minecraft.client.renderer.chunk.ChunkSectionsToRender.DrawIndirect;
 import org.jspecify.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -19,7 +19,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * The mesh path draws the layer once Minecraft has bound the layer's pipeline, and Minecraft's own
  * draws for the layer are skipped only when the mesh path says it covered them.
  */
-@Mixin(ChunkSectionsToRender.DrawIndirect.class)
+@Mixin(DrawIndirect.class)
 public abstract class ChunkSectionsToRenderDrawIndirectMixin {
     @Inject(method = "render", at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/api/commands/RenderPass;setPipeline(Lcom/mojang/renderpearl/api/pipeline/CompiledRenderPipeline;)V", shift = At.Shift.AFTER), cancellable = true)
     private void vim$drawMeshTerrainLayer(ChunkSectionLayer layer, RenderPass renderPass, @Nullable GpuBuffer defaultIndexBuffer, @Nullable IndexType defaultIndexType, boolean cloudsInFog, @Nullable RenderPipeline renderPipelineOverride, @Nullable RenderPipeline renderPipelineOverrideMultidraw, CallbackInfo ci) {

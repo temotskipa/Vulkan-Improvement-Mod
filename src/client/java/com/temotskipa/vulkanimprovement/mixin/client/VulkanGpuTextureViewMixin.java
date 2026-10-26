@@ -3,7 +3,7 @@ package com.temotskipa.vulkanimprovement.mixin.client;
 import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
 import com.mojang.renderpearl.backend.vulkan.VulkanGpuTextureView;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.FramebufferCache;
-import com.temotskipa.vulkanimprovement.client.vulkan.gpu.FramebufferCache.Owner;
+import com.temotskipa.vulkanimprovement.client.vulkan.gpu.FramebufferCacheOwner;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -31,7 +31,7 @@ public abstract class VulkanGpuTextureViewMixin {
     @Inject(method = "close", at = @At("HEAD"))
     private void vim$releaseFramebuffers(CallbackInfo ci) {
         if (!this.closed) {
-            ((Owner) this.device.createCommandEncoder()).vim$framebuffers().release(this.vkImageView);
+            ((FramebufferCacheOwner) this.device.createCommandEncoder()).vim$framebuffers().release(this.vkImageView);
         }
     }
 }

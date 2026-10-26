@@ -20,9 +20,9 @@ import net.minecraft.client.renderer.SubmitNodeStorage;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.chunk.SectionMesh;
 import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
-import net.minecraft.client.renderer.feature.FeatureRenderDispatcher;
 import net.minecraft.client.renderer.chunk.SectionRenderDispatcher.RenderSection;
 import net.minecraft.client.renderer.chunk.SectionRenderDispatcher.RenderSectionBufferSlice;
+import net.minecraft.client.renderer.feature.FeatureRenderDispatcher;
 import net.minecraft.client.renderer.state.OptionsRenderState;
 import net.minecraft.client.renderer.state.level.LevelRenderState;
 import net.minecraft.util.Util;
@@ -41,6 +41,9 @@ import java.util.Map;
 
 @Mixin(LevelRenderer.class)
 public final class LevelRendererMixin {
+    // The visible sections Minecraft collects in a GPU-driven frame, in its order.
+    @Unique
+    private final ObjectArrayList<RenderSection> vim$collectedSections = new ObjectArrayList<>();
     @Shadow
     @Final
     private LevelRenderState levelRenderState;
@@ -50,9 +53,6 @@ public final class LevelRendererMixin {
     @Shadow
     @Final
     private OptionsRenderState optionsRenderState;
-    // The visible sections Minecraft collects in a GPU-driven frame, in its order.
-    @Unique
-    private final ObjectArrayList<RenderSection> vim$collectedSections = new ObjectArrayList<>();
     @Unique
     private boolean vim$gpuDrivenFrame;
     

@@ -12,6 +12,9 @@ public final class TerrainRenderPassStateInvariantCheck {
     private static final Path RENDER_PASS_MIXIN = Path.of("src/client/java/com/temotskipa/vulkanimprovement/mixin/client/VulkanRenderPassMixin.java");
     private static final Path MESH_TERRAIN_RENDERER = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/MeshTerrainRenderer.java");
     private static final Path MESH_SHADER_PROGRAM = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/MeshShaderTerrainProgram.java");
+    private static final Path TERRAIN_PIPELINE_KEY = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/TerrainPipelineKey.java");
+    private static final Path TERRAIN_DRAW_RESULT = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/TerrainDrawResult.java");
+    private static final Path TERRAIN_TEXTURE_BINDING = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/TerrainTextureBinding.java");
     private static final Path DESCRIPTOR_HEAP_TERRAIN_RESOURCES = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/DescriptorHeapTerrainResources.java");
     
     private TerrainRenderPassStateInvariantCheck() {
@@ -22,13 +25,13 @@ public final class TerrainRenderPassStateInvariantCheck {
         checkRenderPassRestoresVanillaPipelineState(read(RENDER_PASS_MIXIN), read(MESH_TERRAIN_RENDERER));
         checkLayerHooksDrawAfterMinecraftBindsThePipeline();
         checkFramePreparationStaysOutsideTheRenderPass(read(MESH_TERRAIN_RENDERER), read(MESH_SHADER_PROGRAM), read(LEVEL_RENDERER_MIXIN));
-        checkMeshPipelineIsBuiltForMinecraftsRenderPass(read(MESH_SHADER_PROGRAM));
-        checkPartialMeshReplacementFallsBackToVanilla(read(MESH_TERRAIN_RENDERER));
+        checkMeshPipelineIsBuiltForMinecraftsRenderPass(read(MESH_SHADER_PROGRAM), read(TERRAIN_PIPELINE_KEY));
+        checkPartialMeshReplacementFallsBackToVanilla(read(MESH_TERRAIN_RENDERER), read(TERRAIN_DRAW_RESULT));
         checkVisibleReplacementRespectsStrictMode(read(MESH_TERRAIN_RENDERER));
-        checkFullLayerDiagnosticsDoNotCancelVanilla(read(MESH_TERRAIN_RENDERER));
+        checkFullLayerDiagnosticsDoNotCancelVanilla(read(MESH_TERRAIN_RENDERER), read(TERRAIN_DRAW_RESULT));
         checkMeshProgramDoesNotLeaveMeshPipelineBoundOnDescriptorFailure(read(MESH_SHADER_PROGRAM));
         checkMeshProgramUsesVanillaCameraProjection(read(MESH_SHADER_PROGRAM));
-        checkTerrainTextureBindingsExposeSamplerState(read(DESCRIPTOR_HEAP_TERRAIN_RESOURCES));
+        checkTerrainTextureBindingsExposeSamplerState(read(DESCRIPTOR_HEAP_TERRAIN_RESOURCES), read(TERRAIN_TEXTURE_BINDING));
     }
     
     private static void checkRenderPassRestoresVanillaPipelineState(String renderPassMixin, String meshRenderer) {
@@ -98,27 +101,27 @@ public final class TerrainRenderPassStateInvariantCheck {
      * Minecraft records terrain inside a render pass object, so a pipeline drawn there has to be
      * created for that pass and not for dynamic rendering.
      */
-    private static void checkMeshPipelineIsBuiltForMinecraftsRenderPass(String meshProgram) {
-        String createPipeline = methodBody(meshProgram, "private MeshPipeline createPipeline");
+    private static void checkMeshPipelineIsBuiltForMinecraftsRenderPass(String meshProgram, String pipelineKey) {
+        String createPipeline = methodBody(meshProgram, "private TerrainMeshPipeline createPipeline");
         require(createPipeline.contains("device.renderpassCache().getRenderPass("), "the mesh pipeline must be created for the render pass Minecraft's pipeline uses");
         require(createPipeline.contains(".renderPass(renderPass).subpass(0)"), "the mesh pipeline must name its render pass and subpass");
         require(!createPipeline.contains("VkPipelineRenderingCreateInfo"), "the mesh pipeline must not be created for dynamic rendering");
-        require(meshProgram.contains("Map<PipelineKey, MeshPipeline> pipelineCache") && meshProgram.contains("record PipelineKey(TerrainPipelineState state, boolean alphaTest)"), "mesh pipelines must be cached by the vanilla pipeline state they stand in for and whether the layer tests alpha");
+        require(meshProgram.contains("Map<TerrainPipelineKey, TerrainMeshPipeline> pipelineCache") && pipelineKey.contains("record TerrainPipelineKey(TerrainPipelineState state, boolean alphaTest)"), "mesh pipelines must be cached by the vanilla pipeline state they stand in for and whether the layer tests alpha");
         require(meshProgram.contains("alphaTestValue.putInt(0, alphaTest ? VK10.VK_TRUE : VK10.VK_FALSE);"), "a solid layer's mesh pipeline must be specialized without the alpha test, so depth is tested before its fragments run");
         // Minecraft culls the back faces of terrain. Drawn unculled, both faces of a plant's crossed
         // planes show and their mirrored textures add up to foliage denser than Minecraft's.
         require(createPipeline.contains(".cullMode(pipelineInfo.cull() ? VK10.VK_CULL_MODE_BACK_BIT : VK10.VK_CULL_MODE_NONE).frontFace(VK10.VK_FRONT_FACE_CLOCKWISE)"), "the mesh pipeline must cull the faces the vanilla pipeline it stands in for culls");
     }
     
-    private static void checkPartialMeshReplacementFallsBackToVanilla(String source) {
-        require(source.contains("public record DrawResult(boolean drewMeshTerrain, boolean cancelVanillaDraw)"), "mesh renderer must return whether it drew VIM commands separately from whether vanilla should be cancelled");
-        require(source.contains("fallbackAfterPartialDraw()"), "mesh renderer must expose a partial-draw result that restores state but leaves vanilla uncancelled");
-        require(methodBody(source, "private DrawResult tryDrawVisibleMeshTerrain").contains("TerrainLayerReplacementPolicy.dispatchBatches(ranges)"), "a layer's visible ranges must be split into dispatches instead of truncated");
-        require(methodBody(source, "private DrawResult drawPreparedLayerDispatches").contains("return drewAny ? DrawResult.fallbackAfterPartialDraw() : DrawResult.passThrough();"), "prepared multi-dispatch failure must fall back to vanilla after restoring any emitted VIM draw");
-        String fullLayerSegments = methodBody(source, "private DrawResult drawFullLayerSegments");
+    private static void checkPartialMeshReplacementFallsBackToVanilla(String source, String drawResult) {
+        require(drawResult.contains("public record TerrainDrawResult(boolean drewMeshTerrain, boolean cancelVanillaDraw)"), "mesh renderer must return whether it drew VIM commands separately from whether vanilla should be cancelled");
+        require(drawResult.contains("fallbackAfterPartialDraw()"), "mesh renderer must expose a partial-draw result that restores state but leaves vanilla uncancelled");
+        require(methodBody(source, "private TerrainDrawResult tryDrawVisibleMeshTerrain").contains("TerrainLayerReplacementPolicy.dispatchBatches(ranges)"), "a layer's visible ranges must be split into dispatches instead of truncated");
+        require(methodBody(source, "private TerrainDrawResult drawPreparedLayerDispatches").contains("return drewAny ? TerrainDrawResult.fallbackAfterPartialDraw() : TerrainDrawResult.passThrough();"), "prepared multi-dispatch failure must fall back to vanilla after restoring any emitted VIM draw");
+        String fullLayerSegments = methodBody(source, "private TerrainDrawResult drawFullLayerSegments");
         require(fullLayerSegments.contains("TerrainMeshTaskDispatch.fullLayer"), "full-layer diagnostic replacement must use direct segmented mesh-task dispatches");
         require(!fullLayerSegments.contains("writeLayerWorkQueue"), "full-layer diagnostic replacement must not churn the shared terrain work queue");
-        require(fullLayerSegments.contains("return drewAny ? DrawResult.fallbackAfterPartialDraw() : DrawResult.passThrough();"), "full-layer segmented failure must fall back to vanilla after restoring any emitted VIM draw");
+        require(fullLayerSegments.contains("return drewAny ? TerrainDrawResult.fallbackAfterPartialDraw() : TerrainDrawResult.passThrough();"), "full-layer segmented failure must fall back to vanilla after restoring any emitted VIM draw");
     }
     
     /**
@@ -131,8 +134,8 @@ public final class TerrainRenderPassStateInvariantCheck {
         require(takeover.contains("!TerrainRendererDebugConfig.strictMeshTerrainReplacement()"), "taking section layers from Minecraft's draw lists must be gated by the strict replacement flag");
         require(takeover.contains("wireframe ||"), "wireframe terrain must stay Minecraft's to draw");
         require(takeover.contains("MeshShaderTerrainProgram.get().ready()"), "a section layer may only be taken when the mesh path can draw it");
-        String visibleReplacement = methodBody(source, "private DrawResult visibleDrawResult");
-        require(visibleReplacement.contains("return DrawResult.overlayOnly();"), "Minecraft's draws for a layer must run after the mesh path's: they hold only what was not taken");
+        String visibleReplacement = methodBody(source, "private TerrainDrawResult visibleDrawResult");
+        require(visibleReplacement.contains("return TerrainDrawResult.overlayOnly();"), "Minecraft's draws for a layer must run after the mesh path's: they hold only what was not taken");
         String store = readUnchecked(Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/SectionMeshletStore.java"));
         String take = methodBody(store, "public static boolean takeSectionLayer");
         require(take.contains("!VISIBLE_FRAME.takeover() || !TerrainLayerReplacementPolicy.canReplaceLayer(layer)"), "only a takeover frame takes section layers, and never translucent ones");
@@ -142,13 +145,13 @@ public final class TerrainRenderPassStateInvariantCheck {
         require(configSource.contains("strictMeshTerrainReplacement = booleanProperty(\"vim.strictMeshTerrainReplacement\", false)"), "strict mesh terrain replacement must default to vanilla fallback until visible coverage is proven");
     }
     
-    private static void checkFullLayerDiagnosticsDoNotCancelVanilla(String source) {
-        String layerReplacement = methodBody(source, "private DrawResult tryDrawLayerMeshTerrain");
+    private static void checkFullLayerDiagnosticsDoNotCancelVanilla(String source, String drawResult) {
+        String layerReplacement = methodBody(source, "private TerrainDrawResult tryDrawLayerMeshTerrain");
         require(layerReplacement.contains("if (!context.drawAllCapturedTerrainLayers())"), "full-layer diagnostic mesh draws must only run when drawAllCapturedTerrainLayers is enabled");
         require(layerReplacement.indexOf("if (!context.drawAllCapturedTerrainLayers())") < layerReplacement.indexOf("drawFullLayerSegments"), "drawAllCapturedTerrainLayers must gate full-layer diagnostic mesh draws before dispatch");
-        String fullLayerSegments = methodBody(source, "private DrawResult drawFullLayerSegments");
-        require(fullLayerSegments.contains("return drewAny ? DrawResult.overlayOnly() : DrawResult.passThrough();"), "full-layer diagnostic mesh draws must restore state but leave vanilla terrain uncancelled");
-        require(source.contains("private static final DrawResult OVERLAY_ONLY = new DrawResult(true, false);"), "draw result must expose a named overlay-only outcome for diagnostic full-layer draws");
+        String fullLayerSegments = methodBody(source, "private TerrainDrawResult drawFullLayerSegments");
+        require(fullLayerSegments.contains("return drewAny ? TerrainDrawResult.overlayOnly() : TerrainDrawResult.passThrough();"), "full-layer diagnostic mesh draws must restore state but leave vanilla terrain uncancelled");
+        require(drawResult.contains("private static final TerrainDrawResult OVERLAY_ONLY = new TerrainDrawResult(true, false);"), "draw result must expose a named overlay-only outcome for diagnostic full-layer draws");
     }
     
     private static void checkMeshProgramDoesNotLeaveMeshPipelineBoundOnDescriptorFailure(String source) {
@@ -168,13 +171,13 @@ public final class TerrainRenderPassStateInvariantCheck {
         require(!source.contains("Math.tan(Math.toRadians(fovDegrees)"), "mesh shader program must not hand-roll perspective projection");
     }
     
-    private static void checkTerrainTextureBindingsExposeSamplerState(String source) {
+    private static void checkTerrainTextureBindingsExposeSamplerState(String source, String textureBinding) {
         require(source.contains("sampler.getMinFilter()"), "terrain texture binding diagnostics must capture min sampler filtering");
         require(source.contains("sampler.getMagFilter()"), "terrain texture binding diagnostics must capture mag sampler filtering");
         require(source.contains("sampler.getMaxLod()"), "terrain texture binding diagnostics must capture sampler max LOD");
-        require(source.contains("map.put(\"minFilter\""), "terrain texture binding diagnostics must report min sampler filtering");
-        require(source.contains("map.put(\"magFilter\""), "terrain texture binding diagnostics must report mag sampler filtering");
-        require(source.contains("map.put(\"maxLod\""), "terrain texture binding diagnostics must report sampler max LOD");
+        require(textureBinding.contains("map.put(\"minFilter\""), "terrain texture binding diagnostics must report min sampler filtering");
+        require(textureBinding.contains("map.put(\"magFilter\""), "terrain texture binding diagnostics must report mag sampler filtering");
+        require(textureBinding.contains("map.put(\"maxLod\""), "terrain texture binding diagnostics must report sampler max LOD");
     }
     
     private static String read(Path path) throws IOException {

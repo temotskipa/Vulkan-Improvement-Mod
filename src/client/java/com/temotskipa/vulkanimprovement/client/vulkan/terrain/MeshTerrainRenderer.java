@@ -1,7 +1,9 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
 import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
+import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanCapabilitySnapshot;
 import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanImprovementCapabilities;
+import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldDatabase;
 import com.temotskipa.vulkanimprovement.client.vulkan.presentation.PresentPacingController;
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.RendererCoreServices;
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.RendererDomainObserver;
@@ -9,15 +11,10 @@ import com.temotskipa.vulkanimprovement.client.vulkan.runtime.RendererDomainRegi
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
-import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldDatabase;
 import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
 import org.jspecify.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.atomic.LongAdder;
 
 public final class MeshTerrainRenderer {
@@ -59,13 +56,13 @@ public final class MeshTerrainRenderer {
     private final LongAdder[] meshReplacementCustomIndexFallbacksByLayer = createLayerCounters();
     private final LongAdder[] meshReplacementIndexedDrawCallsByLayer = createLayerCounters();
     private final LongAdder[] meshReplacementDrawCallsByLayer = createLayerCounters();
-    private volatile TerrainMeshTaskDispatch lastTerrainDispatch = TerrainMeshTaskDispatch.unavailable("not dispatched");
     // A GPU-driven frame's state, used on the render thread only and reused from frame to frame.
     private final VisibleSectionGrid visibleSectionGrid = new VisibleSectionGrid();
     private final int[] gpuDrivenLayerTasks = new int[ChunkSectionLayer.values().length];
     private final int[] gpuDrivenLayerOutputs = new int[TerrainGpuLayout.SECTION_PAGES_LAYERS];
     private final int[] gpuDrivenLayerCommands = new int[TerrainGpuLayout.SECTION_PAGES_LAYERS];
     private final TerrainMeshTaskDispatch[] gpuDrivenDispatches = new TerrainMeshTaskDispatch[ChunkSectionLayer.values().length];
+    private volatile TerrainMeshTaskDispatch lastTerrainDispatch = TerrainMeshTaskDispatch.unavailable("not dispatched");
     private boolean gpuDrivenFrame;
     
     private MeshTerrainRenderer() {
@@ -91,6 +88,21 @@ public final class MeshTerrainRenderer {
             map.put(layer.label(), ordinal < counters.length ? counters[ordinal].sum() : 0L);
         }
         return map;
+    }
+    
+    /**
+     * Where the run of a layer's pages that starts at {@code first} ends: as many pages, in their
+     * order, as one draw can launch the tasks of. A page has far fewer tasks than a draw can launch,
+     * so a run holds at least one.
+     */
+    private static int taskBatchEnd(MeshletPageList pages, int first) {
+        int end = first;
+        int tasks = 0;
+        while (end < pages.size() && tasks + pages.tasks(end) <= TerrainMeshTaskDispatch.MAX_DIRECT_TASKS) {
+            tasks += pages.tasks(end);
+            end++;
+        }
+        return end;
     }
     
     /**
@@ -205,7 +217,7 @@ public final class MeshTerrainRenderer {
             collected.clear();
             return false;
         }
-        DescriptorHeapTerrainResources.GpuDrivenFrame frame = terrainResources.writeGpuDrivenFrame(this.visibleSectionGrid, this.gpuDrivenLayerTasks);
+        TerrainGpuDrivenFrame frame = terrainResources.writeGpuDrivenFrame(this.visibleSectionGrid, this.gpuDrivenLayerTasks);
         if (!frame.ready()) {
             return refuseGpuDrivenFrame(collected);
         }
@@ -218,7 +230,7 @@ public final class MeshTerrainRenderer {
             if (tasks == 0) {
                 continue;
             }
-            DescriptorHeapTerrainResources.TerrainMeshTaskCommandUpload command = terrainResources.reserveMeshTaskCommand(tasks);
+            TerrainMeshTaskCommandUpload command = terrainResources.reserveMeshTaskCommand(tasks);
             TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.gpuDrivenPages(frame, output, tasks, ordinal).withIndirectCommand(command);
             if (!dispatch.ready() || !dispatch.usesIndirectCommand()) {
                 return refuseGpuDrivenFrame(collected);
@@ -260,7 +272,7 @@ public final class MeshTerrainRenderer {
             this.meshReplacementRefusals.increment();
             return false;
         }
-        DrawResult drawResult = tryDrawMeshTerrain(TerrainDrawContext.forLayer(access, layer.ordinal()));
+        TerrainDrawResult drawResult = tryDrawMeshTerrain(TerrainDrawContext.forLayer(access, layer.ordinal()));
         if (drawResult.drewMeshTerrain()) {
             access.vim$restoreVanillaPipeline();
         }
@@ -279,9 +291,9 @@ public final class MeshTerrainRenderer {
         this.releasedSections.increment();
     }
     
-    public DrawResult tryDrawMeshTerrain(TerrainDrawContext context) {
+    public TerrainDrawResult tryDrawMeshTerrain(TerrainDrawContext context) {
         if (!canAttemptMeshTerrain(context)) {
-            return DrawResult.passThrough();
+            return TerrainDrawResult.passThrough();
         }
         DescriptorHeapTerrainResources terrainResources = DescriptorHeapTerrainResources.get();
         if (context.useVisibleDrawList()) {
@@ -291,19 +303,19 @@ public final class MeshTerrainRenderer {
         return tryDrawLayerMeshTerrain(context, terrainResources);
     }
     
-    private DrawResult tryDrawLayerMeshTerrain(TerrainDrawContext context, DescriptorHeapTerrainResources terrainResources) {
+    private TerrainDrawResult tryDrawLayerMeshTerrain(TerrainDrawContext context, DescriptorHeapTerrainResources terrainResources) {
         int layerOrdinal = context.layerOrdinal();
         if (!TerrainLayerReplacementPolicy.canReplaceLayer(layerOrdinal)) {
             this.meshReplacementRefusals.increment();
-            return DrawResult.passThrough();
+            return TerrainDrawResult.passThrough();
         }
         if (terrainResources.meshletCountForLayer(layerOrdinal) <= 0) {
             this.meshReplacementRefusals.increment();
-            return DrawResult.passThrough();
+            return TerrainDrawResult.passThrough();
         }
         if (!TerrainRenderContext.markDispatchRequired(layerOrdinal)) {
             this.meshReplacementDuplicateCancellations.increment();
-            return DrawResult.passThrough();
+            return TerrainDrawResult.passThrough();
         }
         
         TerrainMeshTaskDispatch dispatch = TerrainRenderContext.pollPreparedLayerDispatch(layerOrdinal);
@@ -312,16 +324,16 @@ public final class MeshTerrainRenderer {
         }
         if (!context.drawAllCapturedTerrainLayers()) {
             this.meshReplacementRefusals.increment();
-            return DrawResult.passThrough();
+            return TerrainDrawResult.passThrough();
         }
         return drawFullLayerSegments(context, terrainResources, layerOrdinal);
     }
     
-    private DrawResult tryDrawVisibleMeshTerrain(TerrainDrawContext context, DescriptorHeapTerrainResources terrainResources) {
+    private TerrainDrawResult tryDrawVisibleMeshTerrain(TerrainDrawContext context, DescriptorHeapTerrainResources terrainResources) {
         int layerOrdinal = context.layerOrdinal();
         if (!TerrainLayerReplacementPolicy.canReplaceLayer(layerOrdinal)) {
             this.meshReplacementRefusals.increment();
-            return DrawResult.passThrough();
+            return TerrainDrawResult.passThrough();
         }
         
         TerrainMeshTaskDispatch preparedDispatch = TerrainRenderContext.pollPreparedLayerDispatch(layerOrdinal);
@@ -329,18 +341,18 @@ public final class MeshTerrainRenderer {
             return drawPreparedLayerDispatches(context, preparedDispatch, terrainResources);
         }
         
-        List<SectionMeshletStore.MeshletRange> ranges = SectionMeshletStore.visibleMeshletRanges(layerOrdinal);
+        List<MeshletRange> ranges = SectionMeshletStore.visibleMeshletRanges(layerOrdinal);
         if (ranges == null || ranges.isEmpty()) {
             this.meshReplacementRefusals.increment();
-            return DrawResult.passThrough();
+            return TerrainDrawResult.passThrough();
         }
         
         boolean drewAny = false;
-        for (List<SectionMeshletStore.MeshletRange> batch : TerrainLayerReplacementPolicy.dispatchBatches(ranges)) {
+        for (List<MeshletRange> batch : TerrainLayerReplacementPolicy.dispatchBatches(ranges)) {
             TerrainMeshTaskDispatch dispatch = buildVisibleMeshDispatch(terrainResources, batch, layerOrdinal);
             if (dispatch == null || failedToDrawMeshTerrain(context, dispatch, terrainResources)) {
                 this.meshReplacementRefusals.increment();
-                return drewAny ? DrawResult.fallbackAfterPartialDraw() : DrawResult.passThrough();
+                return drewAny ? TerrainDrawResult.fallbackAfterPartialDraw() : TerrainDrawResult.passThrough();
             }
             drewAny = true;
         }
@@ -359,35 +371,35 @@ public final class MeshTerrainRenderer {
         return true;
     }
     
-    private DrawResult drawPreparedLayerDispatches(TerrainDrawContext context, TerrainMeshTaskDispatch firstDispatch, DescriptorHeapTerrainResources terrainResources) {
+    private TerrainDrawResult drawPreparedLayerDispatches(TerrainDrawContext context, TerrainMeshTaskDispatch firstDispatch, DescriptorHeapTerrainResources terrainResources) {
         boolean drewAny = false;
         TerrainMeshTaskDispatch dispatch = firstDispatch;
         while (dispatch != null) {
             if (!dispatch.ready() || failedToDrawMeshTerrain(context, dispatch, terrainResources)) {
                 this.meshReplacementRefusals.increment();
-                return drewAny ? DrawResult.fallbackAfterPartialDraw() : DrawResult.passThrough();
+                return drewAny ? TerrainDrawResult.fallbackAfterPartialDraw() : TerrainDrawResult.passThrough();
             }
             drewAny = true;
             dispatch = TerrainRenderContext.pollPreparedLayerDispatch(context.layerOrdinal());
         }
-        return drewAny ? visibleDrawResult() : DrawResult.passThrough();
+        return drewAny ? visibleDrawResult() : TerrainDrawResult.passThrough();
     }
     
     /**
      * In strict replacement Minecraft's own draws for the layer are what the mesh path did not
      * take, so they run too; otherwise they are drawn over.
      */
-    private DrawResult visibleDrawResult() {
-        return DrawResult.overlayOnly();
+    private TerrainDrawResult visibleDrawResult() {
+        return TerrainDrawResult.overlayOnly();
     }
     
     /**
      * Draws every page a layer has on the GPU, visible or not, one page at a time. A page's
      * meshlets are one range of the meshlet headers; a layer's are not.
      */
-    private DrawResult drawFullLayerSegments(TerrainDrawContext context, DescriptorHeapTerrainResources terrainResources, int layerOrdinal) {
+    private TerrainDrawResult drawFullLayerSegments(TerrainDrawContext context, DescriptorHeapTerrainResources terrainResources, int layerOrdinal) {
         boolean drewAny = false;
-        for (SectionMeshletStore.MeshletRange page : SectionMeshletStore.meshletRangesForLayer(layerOrdinal)) {
+        for (MeshletRange page : SectionMeshletStore.meshletRangesForLayer(layerOrdinal)) {
             int segments = TerrainLayerReplacementPolicy.dispatchCountForMeshlets(page.count());
             for (int segment = 0; segment < segments; segment++) {
                 int segmentOffset = TerrainLayerReplacementPolicy.segmentMeshletOffset(page.offset(), segment);
@@ -395,12 +407,12 @@ public final class MeshTerrainRenderer {
                 TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.fullLayer(segmentOffset, layerOrdinal, segmentCount);
                 if (!dispatch.ready() || failedToDrawMeshTerrain(context, dispatch, terrainResources)) {
                     this.meshReplacementRefusals.increment();
-                    return drewAny ? DrawResult.fallbackAfterPartialDraw() : DrawResult.passThrough();
+                    return drewAny ? TerrainDrawResult.fallbackAfterPartialDraw() : TerrainDrawResult.passThrough();
                 }
                 drewAny = true;
             }
         }
-        return drewAny ? DrawResult.overlayOnly() : DrawResult.passThrough();
+        return drewAny ? TerrainDrawResult.overlayOnly() : TerrainDrawResult.passThrough();
     }
     
     private void prepareTerrainCommands() {
@@ -434,13 +446,13 @@ public final class MeshTerrainRenderer {
             prepareListedPages(terrainResources);
             return;
         }
-        List<MeshShaderTerrainProgram.PreparedPages> prepared = new ArrayList<>();
+        List<TerrainPreparedPages> prepared = new ArrayList<>();
         for (ChunkSectionLayer layer : ChunkSectionLayer.values()) {
             if (!TerrainLayerReplacementPolicy.canReplaceLayer(layer)) {
                 continue;
             }
             int layerOrdinal = layer.ordinal();
-            SectionMeshletStore.PageList pages = SectionMeshletStore.visiblePages(layerOrdinal);
+            MeshletPageList pages = SectionMeshletStore.visiblePages(layerOrdinal);
             if (pages == null) {
                 this.meshReplacementPreparedGpuCommandRefusals.increment();
                 this.visibilityFallbackLayers.increment();
@@ -449,12 +461,12 @@ public final class MeshTerrainRenderer {
             
             for (int first = 0, end; first < pages.size(); first = end) {
                 end = taskBatchEnd(pages, first);
-                DescriptorHeapTerrainResources.VisiblePageUpload upload = terrainResources.writeVisiblePageList(pages, first, end);
+                TerrainVisiblePageUpload upload = terrainResources.writeVisiblePageList(pages, first, end);
                 TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.gpuVisiblePages(upload, layerOrdinal);
-                DescriptorHeapTerrainResources.TerrainMeshTaskCommandUpload commandUpload = terrainResources.reserveMeshTaskCommand(dispatch.taskCount());
+                TerrainMeshTaskCommandUpload commandUpload = terrainResources.reserveMeshTaskCommand(dispatch.taskCount());
                 TerrainMeshTaskDispatch preparedDispatch = dispatch.withIndirectCommand(commandUpload);
                 if (preparedDispatch.ready() && preparedDispatch.usesIndirectCommand()) {
-                    prepared.add(new MeshShaderTerrainProgram.PreparedPages(preparedDispatch, upload));
+                    prepared.add(new TerrainPreparedPages(preparedDispatch, upload));
                 }
                 else {
                     this.meshReplacementPreparedGpuCommandRefusals.increment();
@@ -471,7 +483,7 @@ public final class MeshTerrainRenderer {
             this.visibilityFallbackLayers.add(prepared.size());
             return;
         }
-        for (MeshShaderTerrainProgram.PreparedPages layer : prepared) {
+        for (TerrainPreparedPages layer : prepared) {
             TerrainRenderContext.enqueuePreparedLayerDispatch(layer.dispatch().layerOrdinal(), layer.dispatch());
             this.meshReplacementPreparedGpuCommands.increment();
             this.meshReplacementPreparedVisibleGpuCommands.increment();
@@ -491,7 +503,7 @@ public final class MeshTerrainRenderer {
                 continue;
             }
             int layerOrdinal = layer.ordinal();
-            SectionMeshletStore.PageList pages = SectionMeshletStore.visiblePages(layerOrdinal);
+            MeshletPageList pages = SectionMeshletStore.visiblePages(layerOrdinal);
             if (pages == null) {
                 this.meshReplacementPreparedGpuCommandRefusals.increment();
                 this.visibilityFallbackLayers.increment();
@@ -510,21 +522,6 @@ public final class MeshTerrainRenderer {
                 }
             }
         }
-    }
-    
-    /**
-     * Where the run of a layer's pages that starts at {@code first} ends: as many pages, in their
-     * order, as one draw can launch the tasks of. A page has far fewer tasks than a draw can launch,
-     * so a run holds at least one.
-     */
-    private static int taskBatchEnd(SectionMeshletStore.PageList pages, int first) {
-        int end = first;
-        int tasks = 0;
-        while (end < pages.size() && tasks + pages.tasks(end) <= TerrainMeshTaskDispatch.MAX_DIRECT_TASKS) {
-            tasks += pages.tasks(end);
-            end++;
-        }
-        return end;
     }
     
     /**
@@ -550,15 +547,15 @@ public final class MeshTerrainRenderer {
         GpuWorldDatabase.get().recordVisibilityCommandPass(sinceLast[0], culled, visible, emitted, 0L, fallback);
     }
     
-    private @Nullable TerrainMeshTaskDispatch buildVisibleMeshDispatch(DescriptorHeapTerrainResources terrainResources, List<SectionMeshletStore.MeshletRange> ranges, int layerOrdinal) {
-        DescriptorHeapTerrainResources.TerrainWorkQueueUpload workQueue = terrainResources.writeVisibleWorkQueue(ranges, layerOrdinal);
+    private @Nullable TerrainMeshTaskDispatch buildVisibleMeshDispatch(DescriptorHeapTerrainResources terrainResources, List<MeshletRange> ranges, int layerOrdinal) {
+        TerrainWorkQueueUpload workQueue = terrainResources.writeVisibleWorkQueue(ranges, layerOrdinal);
         TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.cpuWorkQueue(workQueue, layerOrdinal, workQueue.count());
         if (!dispatch.ready()) {
             if (!TerrainRendererDebugConfig.allowCpuVisibleMeshletFallback()) {
                 this.meshReplacementVisibleMeshletFallbackRefusals.increment();
                 return null;
             }
-            DescriptorHeapTerrainResources.VisibleMeshletUpload visibleMeshlets = terrainResources.writeVisibleMeshletList(ranges);
+            TerrainVisibleMeshletUpload visibleMeshlets = terrainResources.writeVisibleMeshletList(ranges);
             if (!visibleMeshlets.ready()) {
                 return null;
             }
@@ -577,7 +574,7 @@ public final class MeshTerrainRenderer {
         }
         TerrainMeshTaskDispatch drawDispatch = dispatch;
         if (!drawDispatch.usesIndirectCommand()) {
-            DescriptorHeapTerrainResources.TerrainMeshTaskCommandUpload commandUpload = terrainResources.writeMeshTaskCommand(dispatch.taskCount());
+            TerrainMeshTaskCommandUpload commandUpload = terrainResources.writeMeshTaskCommand(dispatch.taskCount());
             drawDispatch = dispatch.withIndirectCommand(commandUpload);
         }
         if (MeshShaderTerrainProgram.get().drawTerrain(context.commandBuffer(), vanillaPipeline, drawDispatch, terrainResources.meshletHeaderAddress(), terrainResources.meshletVertexPayloadAddress(), terrainResources.meshletIndexPayloadAddress())) {
@@ -590,10 +587,10 @@ public final class MeshTerrainRenderer {
             if (drawDispatch.usesGpuGeneratedIndirectCommand()) {
                 this.meshReplacementPreparedGpuCommandDrawCalls.increment();
             }
-            if (drawDispatch.source() == TerrainMeshTaskDispatch.Source.CPU_VISIBLE_LIST) {
+            if (drawDispatch.source() == TerrainMeshTaskSource.CPU_VISIBLE_LIST) {
                 this.meshReplacementVisibleListDrawCalls.increment();
             }
-            else if (drawDispatch.source() == TerrainMeshTaskDispatch.Source.CPU_WORK_QUEUE) {
+            else if (drawDispatch.source() == TerrainMeshTaskSource.CPU_WORK_QUEUE) {
                 this.meshReplacementWorkQueueDrawCalls.increment();
             }
             if (drawDispatch.truncated()) {
@@ -620,7 +617,7 @@ public final class MeshTerrainRenderer {
         return true;
     }
     
-    public void configure(VulkanDevice device, VulkanImprovementCapabilities.Snapshot capabilities) {
+    public void configure(VulkanDevice device, VulkanCapabilitySnapshot capabilities) {
         RendererCoreServices.get().beginConfiguration();
         try {
             DescriptorHeapTerrainResources.get().configure(device, capabilities);
@@ -697,22 +694,4 @@ public final class MeshTerrainRenderer {
         return map;
     }
     
-    
-    public record DrawResult(boolean drewMeshTerrain, boolean cancelVanillaDraw) {
-        private static final DrawResult PASS_THROUGH = new DrawResult(false, false);
-        private static final DrawResult OVERLAY_ONLY = new DrawResult(true, false);
-        private static final DrawResult FALLBACK_AFTER_PARTIAL_DRAW = new DrawResult(true, false);
-        
-        static DrawResult passThrough() {
-            return PASS_THROUGH;
-        }
-        
-        static DrawResult overlayOnly() {
-            return OVERLAY_ONLY;
-        }
-        
-        static DrawResult fallbackAfterPartialDraw() {
-            return FALLBACK_AFTER_PARTIAL_DRAW;
-        }
-    }
 }

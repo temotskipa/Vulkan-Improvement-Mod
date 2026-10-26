@@ -2,8 +2,9 @@ package com.temotskipa.vulkanimprovement.mixin.client;
 
 import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
 import com.mojang.renderpearl.backend.vulkan.VulkanGpuBuffer;
+import com.mojang.renderpearl.backend.vulkan.VulkanGpuBuffer.Direct;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ShaderStorage;
-import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ShaderStorage.Addressable;
+import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ShaderStorageAddressable;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VK12;
 import org.lwjgl.vulkan.VkBufferDeviceAddressInfo;
@@ -17,8 +18,8 @@ import org.spongepowered.asm.mixin.Unique;
  * made with {@link ShaderStorage#USAGE_SHADER_STORAGE} has one, which {@link ShaderStorage#address}
  * checks before it asks.
  */
-@Mixin(VulkanGpuBuffer.Direct.class)
-public abstract class VulkanGpuBufferDirectMixin extends VulkanGpuBuffer implements Addressable {
+@Mixin(Direct.class)
+public abstract class VulkanGpuBufferDirectMixin extends VulkanGpuBuffer implements ShaderStorageAddressable {
     @Shadow
     @Final
     protected VulkanDevice device;

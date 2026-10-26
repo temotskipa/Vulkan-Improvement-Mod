@@ -2,7 +2,7 @@ package com.temotskipa.vulkanimprovement.client.vulkan.rtpt;
 
 import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanImprovementCapabilities;
 import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanRuntimeProfile;
-import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.*;
+import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldSectionUpdate;
 
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -23,7 +23,7 @@ public final class RtPtAccelerationDataRegistry {
     private long deviceLostClearCount;
     private long sourceInvalidationCount;
     private long sourceInvalidatedPageCount;
-    private SourceInvalidation lastSourceInvalidation;
+    private RtPtSourceInvalidation lastSourceInvalidation;
     
     private RtPtAccelerationDataRegistry() {
     }
@@ -37,8 +37,8 @@ public final class RtPtAccelerationDataRegistry {
      * support allocation and allocation has to be switched on; it is not, because no allocation
      * plan exists yet, so the answer is no on every device and the gate records why.
      */
-    public static AllocationGate allocationGate(VulkanRuntimeProfile profile) {
-        return new AllocationGate(profile.rtPtAccelerationAllocationSupported(), ALLOCATION_ENABLED, profile.rtPtAccelerationAllocationDisabledReason());
+    public static RtPtAllocationGate allocationGate(VulkanRuntimeProfile profile) {
+        return new RtPtAllocationGate(profile.rtPtAccelerationAllocationSupported(), ALLOCATION_ENABLED, profile.rtPtAccelerationAllocationDisabledReason());
     }
     
     private static boolean pageInvalidatedBy(GpuWorldSectionUpdate update, RtPtAccelerationPage page) {
@@ -92,7 +92,7 @@ public final class RtPtAccelerationDataRegistry {
         this.sourceInvalidationCount++;
         this.sourceInvalidatedPageCount += invalidatedPages;
         this.pendingRebuildCount += invalidatedPages;
-        this.lastSourceInvalidation = new SourceInvalidation(update.sequence(), update.section(), update.revision(), update.pageKind(), update.reason(), invalidatedPages, normalizedReason(fallbackReason));
+        this.lastSourceInvalidation = new RtPtSourceInvalidation(update.sequence(), update.section(), update.revision(), update.pageKind(), update.reason(), invalidatedPages, normalizedReason(fallbackReason));
         countReason(fallbackReason);
     }
     
@@ -136,36 +136,5 @@ public final class RtPtAccelerationDataRegistry {
             return;
         }
         this.fallbackReasonCounts.merge(reason, 1L, Long::sum);
-    }
-    
-    public record AllocationGate(boolean deviceSupported, boolean allocationEnabled, String disabledReason) {
-        public boolean canScheduleAllocation() {
-            return this.deviceSupported && this.allocationEnabled;
-        }
-        
-        Map<String, Object> asMap() {
-            Map<String, Object> map = new LinkedHashMap<>();
-            map.put("deviceSupported", this.deviceSupported);
-            map.put("allocationEnabled", this.allocationEnabled);
-            map.put("canScheduleAllocation", canScheduleAllocation());
-            map.put("selectedPath", "disabled");
-            map.put("disabledReason", this.disabledReason);
-            return map;
-        }
-    }
-    
-    private record SourceInvalidation(long updateSequence, GpuWorldSectionId sectionId, GpuWorldRevision sourceRevision, GpuWorldPageKind pageKind, GpuWorldDirtyReason reason, long invalidatedPageCount, String fallbackReason) {
-        private Map<String, Object> asMap() {
-            Map<String, Object> map = new LinkedHashMap<>();
-            map.put("present", true);
-            map.put("updateSequence", this.updateSequence);
-            map.put("sectionId", this.sectionId.asMap());
-            map.put("sourceRevision", this.sourceRevision.value());
-            map.put("pageKind", this.pageKind.diagnosticName());
-            map.put("reason", this.reason.diagnosticName());
-            map.put("invalidatedPageCount", this.invalidatedPageCount);
-            map.put("fallbackReason", this.fallbackReason);
-            return map;
-        }
     }
 }

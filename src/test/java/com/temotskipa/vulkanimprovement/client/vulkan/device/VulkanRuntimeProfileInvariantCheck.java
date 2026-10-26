@@ -1,7 +1,7 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.device;
 
-import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
 
 import java.util.Map;
 
@@ -23,7 +23,7 @@ public final class VulkanRuntimeProfileInvariantCheck {
      * exists. The profile says whether the device is the obstacle and names what it lacks.
      */
     private static void checkRtPtAccelerationAllocationGate() {
-        VulkanRuntimeProfile unsupported = VulkanRuntimeProfile.from(VulkanImprovementCapabilities.Snapshot.empty());
+        VulkanRuntimeProfile unsupported = VulkanRuntimeProfile.from(VulkanCapabilitySnapshot.empty());
         Map<String, Object> unsupportedProfile = unsupported.asMap();
         require("disabled".equals(child(unsupportedProfile, "selectedPaths").get(VulkanRuntimeProfile.RT_PT_ACCELERATION_ALLOCATION)), "acceleration allocation must be disabled without device support");
         require("requires acceleration structures, ray-tracing pipelines, buffer device addresses, descriptor buffers".equals(child(unsupportedProfile, "disabledReasons").get(VulkanRuntimeProfile.RT_PT_ACCELERATION_ALLOCATION)), "a device without support must be told every capability allocation requires");
@@ -39,7 +39,7 @@ public final class VulkanRuntimeProfileInvariantCheck {
     }
     
     private static void checkEmptySnapshotRuntimeProfile() {
-        Map<String, Object> profile = profile(VulkanImprovementCapabilities.Snapshot.empty());
+        Map<String, Object> profile = profile(VulkanCapabilitySnapshot.empty());
         Map<?, ?> hardRequirements = child(profile, "hardRequirements");
         Map<?, ?> preferredFeatures = child(profile, "preferredFeatures");
         Map<?, ?> rtReadiness = child(profile, "rtReadiness");
@@ -110,12 +110,12 @@ public final class VulkanRuntimeProfileInvariantCheck {
         require(snapshot.get("runtimeProfile") instanceof Map<?, ?>, "snapshot diagnostics must include nested runtime profile");
     }
     
-    private static Map<String, Object> profile(VulkanImprovementCapabilities.Snapshot snapshot) {
+    private static Map<String, Object> profile(VulkanCapabilitySnapshot snapshot) {
         return VulkanRuntimeProfile.from(snapshot).asMap();
     }
     
-    private static VulkanImprovementCapabilities.Snapshot supportedSnapshot() {
-        return new VulkanImprovementCapabilities.Snapshot("test device", "test vendor", "test driver", "1.4.0", "mesh-overlay-vanilla-fallback", true, true, true, true, true, true, true, true, true, true, true, true, true, true, TerrainGpuLayout.MAX_MESH_OUTPUT_VERTICES, TerrainGpuLayout.MAX_MESH_OUTPUT_PRIMITIVES, 32, 32, 1L << 20, 1L << 20, 32L, 32L, 32L, 32L, 16, 16, 32L, 32L, 32L, 32L, 1L << 20, 1L << 20, 4, 4, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true);
+    private static VulkanCapabilitySnapshot supportedSnapshot() {
+        return new VulkanCapabilitySnapshot("test device", "test vendor", "test driver", "1.4.0", "mesh-overlay-vanilla-fallback", true, true, true, true, true, true, true, true, true, true, true, true, true, true, TerrainGpuLayout.MAX_MESH_OUTPUT_VERTICES, TerrainGpuLayout.MAX_MESH_OUTPUT_PRIMITIVES, 32, 32, 1L << 20, 1L << 20, 32L, 32L, 32L, 32L, 16, 16, 32L, 32L, 32L, 32L, 1L << 20, 1L << 20, 4, 4, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true);
     }
     
     private static Map<?, ?> child(Map<String, Object> profile, String key) {

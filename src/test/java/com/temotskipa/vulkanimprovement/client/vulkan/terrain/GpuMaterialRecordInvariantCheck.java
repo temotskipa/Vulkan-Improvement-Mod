@@ -1,6 +1,7 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuRecords;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainMaterialRecord;
 
 import java.lang.foreign.MemorySegment;
 import java.util.Map;
@@ -18,8 +19,8 @@ public final class GpuMaterialRecordInvariantCheck {
     }
     
     private static void checkRecordSizeMatchesTerrainLayout() {
-        require(GpuMaterialRecord.BYTES == TerrainGpuRecords.MaterialRecord.LAYOUT.byteSize(), "material record byte size must match the shader's record");
-        require(GpuMaterialRecord.INT_COUNT == TerrainGpuRecords.MaterialRecord.LAYOUT.memberLayouts().size(), "material record must write one int per member of the shader's record");
+        require(GpuMaterialRecord.BYTES == TerrainMaterialRecord.LAYOUT.byteSize(), "material record byte size must match the shader's record");
+        require(GpuMaterialRecord.INT_COUNT == TerrainMaterialRecord.LAYOUT.memberLayouts().size(), "material record must write one int per member of the shader's record");
         require(GpuMaterialRecord.INT_COUNT == GpuMaterialRecord.class.getRecordComponents().length, "material record must write every one of its components");
     }
     

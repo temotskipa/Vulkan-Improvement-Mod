@@ -74,25 +74,25 @@ public final class ModelVertexInvariantCheck {
         requireConstant(constants, "MAX_CUBE_POLYGONS", ModelGpuRecords.MAX_CUBE_POLYGONS);
         requireConstant(constants, "POLYGON_VERTICES", ModelGpuRecords.POLYGON_VERTICES);
         
-        requireConstant(constants, "POLYGON_WORDS", ModelGpuRecords.Polygon.BYTES / Integer.BYTES);
-        requireConstant(constants, "CORNER_WORDS", ModelGpuRecords.Polygon.CORNER_BYTES / Integer.BYTES);
-        requireConstant(constants, "POLYGON_DIRECTION", ModelGpuRecords.Polygon.DIRECTION / Integer.BYTES);
+        requireConstant(constants, "POLYGON_WORDS", ModelPolygonRecord.BYTES / Integer.BYTES);
+        requireConstant(constants, "CORNER_WORDS", ModelPolygonRecord.CORNER_BYTES / Integer.BYTES);
+        requireConstant(constants, "POLYGON_DIRECTION", ModelPolygonRecord.DIRECTION / Integer.BYTES);
         // The shader reads a corner's words in order from the polygon's first word.
-        require(ModelGpuRecords.Polygon.CORNERS == 0L, "a polygon record must start with its corners");
-        require(ModelGpuRecords.Polygon.CORNER_X == 0L && ModelGpuRecords.Polygon.CORNER_Y == 4L && ModelGpuRecords.Polygon.CORNER_Z == 8L && ModelGpuRecords.Polygon.CORNER_U == 12L && ModelGpuRecords.Polygon.CORNER_V == 16L, "a corner record must be x, y, z, u, v");
+        require(ModelPolygonRecord.CORNERS == 0L, "a polygon record must start with its corners");
+        require(ModelPolygonRecord.CORNER_X == 0L && ModelPolygonRecord.CORNER_Y == 4L && ModelPolygonRecord.CORNER_Z == 8L && ModelPolygonRecord.CORNER_U == 12L && ModelPolygonRecord.CORNER_V == 16L, "a corner record must be x, y, z, u, v");
         
-        requireConstant(constants, "PART_WORDS", ModelGpuRecords.Part.BYTES / Integer.BYTES);
-        requireConstant(constants, "PART_NORMALS", ModelGpuRecords.Part.NORMALS / Integer.BYTES);
-        requireConstant(constants, "PART_COLOR", ModelGpuRecords.Part.COLOR / Integer.BYTES);
-        requireConstant(constants, "PART_OVERLAY", ModelGpuRecords.Part.OVERLAY / Integer.BYTES);
-        requireConstant(constants, "PART_LIGHT", ModelGpuRecords.Part.LIGHT / Integer.BYTES);
-        require(ModelGpuRecords.Part.POSE == 0L, "a part record must start with its pose");
+        requireConstant(constants, "PART_WORDS", ModelPartRecord.BYTES / Integer.BYTES);
+        requireConstant(constants, "PART_NORMALS", ModelPartRecord.NORMALS / Integer.BYTES);
+        requireConstant(constants, "PART_COLOR", ModelPartRecord.COLOR / Integer.BYTES);
+        requireConstant(constants, "PART_OVERLAY", ModelPartRecord.OVERLAY / Integer.BYTES);
+        requireConstant(constants, "PART_LIGHT", ModelPartRecord.LIGHT / Integer.BYTES);
+        require(ModelPartRecord.POSE == 0L, "a part record must start with its pose");
         
-        requireConstant(constants, "JOB_WORDS", ModelGpuRecords.Job.BYTES / Integer.BYTES);
-        requireConstant(constants, "DRAW_BITS", ModelGpuRecords.Job.DRAW_BITS);
-        require(ModelGpuRecords.Job.PART == 0L && ModelGpuRecords.Job.FIRST_POLYGON == 4L && ModelGpuRecords.Job.DRAW_AND_POLYGONS == 8L && ModelGpuRecords.Job.FIRST_VERTEX == 12L, "a job record must be part, first polygon, draw and polygons, first vertex");
+        requireConstant(constants, "JOB_WORDS", ModelJobRecord.BYTES / Integer.BYTES);
+        requireConstant(constants, "DRAW_BITS", ModelJobRecord.DRAW_BITS);
+        require(ModelJobRecord.PART == 0L && ModelJobRecord.FIRST_POLYGON == 4L && ModelJobRecord.DRAW_AND_POLYGONS == 8L && ModelJobRecord.FIRST_VERTEX == 12L, "a job record must be part, first polygon, draw and polygons, first vertex");
         
-        requireConstant(constants, "VERTEX_WORDS", ModelGpuRecords.EntityVertex.BYTES / Integer.BYTES);
+        requireConstant(constants, "VERTEX_WORDS", ModelEntityVertexRecord.BYTES / Integer.BYTES);
         
         // ModelVertexFrame.write fills the push constants in this order: five addresses, then the
         // first job and the job count.
@@ -115,7 +115,7 @@ public final class ModelVertexInvariantCheck {
      */
     private static void checkEntityFormat() {
         VertexFormat format = DefaultVertexFormat.ENTITY;
-        require(format.getVertexSize() == ModelGpuRecords.EntityVertex.BYTES, "DefaultVertexFormat.ENTITY must be " + ModelGpuRecords.EntityVertex.BYTES + " bytes, is " + format.getVertexSize());
+        require(format.getVertexSize() == ModelEntityVertexRecord.BYTES, "DefaultVertexFormat.ENTITY must be " + ModelEntityVertexRecord.BYTES + " bytes, is " + format.getVertexSize());
         requireOffset(format, DefaultVertexFormat.POSITION_SEMANTIC_NAME, 0);
         requireOffset(format, DefaultVertexFormat.COLOR_SEMANTIC_NAME, 12);
         requireOffset(format, DefaultVertexFormat.UV0_SEMANTIC_NAME, 16);
@@ -150,10 +150,10 @@ public final class ModelVertexInvariantCheck {
             int light = random.nextInt(256) | random.nextInt(256) << 16;
             byte[] minecraft = minecraftVertices(cubes, pose, light, overlay, color);
             byte[] pass = passVertices(constants, cubes, pose, light, overlay, color);
-            require(minecraft.length == pass.length, "pose " + poseIndex + ": the model vertex pass must write as many vertices as Minecraft, " + pass.length / ModelGpuRecords.EntityVertex.BYTES + " against " + minecraft.length / ModelGpuRecords.EntityVertex.BYTES);
-            for (int vertex = 0; vertex < minecraft.length / ModelGpuRecords.EntityVertex.BYTES; vertex++) {
+            require(minecraft.length == pass.length, "pose " + poseIndex + ": the model vertex pass must write as many vertices as Minecraft, " + pass.length / ModelEntityVertexRecord.BYTES + " against " + minecraft.length / ModelEntityVertexRecord.BYTES);
+            for (int vertex = 0; vertex < minecraft.length / ModelEntityVertexRecord.BYTES; vertex++) {
                 for (int b = 0; b < WRITTEN_VERTEX_BYTES; b++) {
-                    int at = vertex * (int) ModelGpuRecords.EntityVertex.BYTES + b;
+                    int at = vertex * (int) ModelEntityVertexRecord.BYTES + b;
                     require(minecraft[at] == pass[at], "pose " + poseIndex + ", vertex " + vertex + ", byte " + b + ": the model vertex pass writes " + pass[at] + " where Minecraft writes " + minecraft[at]);
                 }
                 checked++;
@@ -239,7 +239,7 @@ public final class ModelVertexInvariantCheck {
         ModelVertexFrame frame = new ModelVertexFrame();
         try (Arena arena = Arena.ofConfined()) {
             int polygonCount = cubes.stream().mapToInt(cube -> cube.polygons.length).sum();
-            MemorySegment polygons = arena.allocate(polygonCount * ModelGpuRecords.Polygon.BYTES, 16L);
+            MemorySegment polygons = arena.allocate(polygonCount * ModelPolygonRecord.BYTES, 16L);
             // The check writes no frame, so the draw is drawn with no render type.
             ModelVertexDraw draw = frame.addDraw(new Object(), null);
             int part = frame.addPart(pose, color, overlay, light);
@@ -251,13 +251,13 @@ public final class ModelVertexInvariantCheck {
                     int direction = ModelCubeStore.direction(polygon.normal());
                     require(direction >= 0 && polygon.vertices().length == ModelGpuRecords.POLYGON_VERTICES, "a vanilla cube's faces must be quads facing one of the six directions");
                     directions |= 1 << direction;
-                    ModelCubeStore.writePolygon(polygons, (firstPolygon + i) * ModelGpuRecords.Polygon.BYTES, polygon);
+                    ModelCubeStore.writePolygon(polygons, (firstPolygon + i) * ModelPolygonRecord.BYTES, polygon);
                 }
                 frame.addJob(part, firstPolygon, cube.polygons.length, draw);
                 firstPolygon += cube.polygons.length;
             }
             frame.writeNormals(part, pose, directions, new Vector3f());
-            MemorySegment vertices = arena.allocate(frame.vertexCount() * ModelGpuRecords.EntityVertex.BYTES, 16L);
+            MemorySegment vertices = arena.allocate(frame.vertexCount() * ModelEntityVertexRecord.BYTES, 16L);
             int[] drawBases = {0};
             for (int job = 0; job < frame.jobCount(); job++) {
                 for (int polygonInCube = 0; polygonInCube < constant(constants, "MAX_CUBE_POLYGONS"); polygonInCube++) {

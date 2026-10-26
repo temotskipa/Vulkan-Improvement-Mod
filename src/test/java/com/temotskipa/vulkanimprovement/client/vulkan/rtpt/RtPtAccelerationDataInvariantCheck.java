@@ -1,6 +1,6 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.rtpt;
 
-import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanImprovementCapabilities;
+import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanCapabilitySnapshot;
 import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanRuntimeProfile;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldPageKind;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldRevision;
@@ -31,8 +31,8 @@ public final class RtPtAccelerationDataInvariantCheck {
      * It is not, so no allocation task can be scheduled, and diagnostics say why.
      */
     private static void checkAllocationCannotBeScheduled() {
-        VulkanRuntimeProfile unconfigured = VulkanRuntimeProfile.from(VulkanImprovementCapabilities.Snapshot.empty());
-        RtPtAccelerationDataRegistry.AllocationGate gate = RtPtAccelerationDataRegistry.allocationGate(unconfigured);
+        VulkanRuntimeProfile unconfigured = VulkanRuntimeProfile.from(VulkanCapabilitySnapshot.empty());
+        RtPtAllocationGate gate = RtPtAccelerationDataRegistry.allocationGate(unconfigured);
         require(!gate.canScheduleAllocation(), "no allocation task may be scheduled without device support");
         require(!gate.deviceSupported(), "the gate must take device support from the runtime profile");
         require(gate.disabledReason().startsWith("requires acceleration structures"), "the gate must carry the runtime profile's reason");
@@ -46,7 +46,7 @@ public final class RtPtAccelerationDataInvariantCheck {
     }
     
     private static void checkRuntimeProfileKeepsRtPtOptional() {
-        Map<String, Object> profile = VulkanRuntimeProfile.from(VulkanImprovementCapabilities.Snapshot.empty()).asMap();
+        Map<String, Object> profile = VulkanRuntimeProfile.from(VulkanCapabilitySnapshot.empty()).asMap();
         Map<?, ?> hardRequirements = child(profile, "hardRequirements");
         Map<?, ?> rtReadiness = child(profile, "rtReadiness");
         Map<?, ?> selectedPaths = child(profile, "selectedPaths");

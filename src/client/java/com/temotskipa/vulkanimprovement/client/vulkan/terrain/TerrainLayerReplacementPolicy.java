@@ -22,11 +22,11 @@ final class TerrainLayerReplacementPolicy {
      * Splits a layer's visible ranges into runs that one mesh-task dispatch can take, in order and
      * without dividing a section layer.
      */
-    static List<List<SectionMeshletStore.MeshletRange>> dispatchBatches(List<SectionMeshletStore.MeshletRange> ranges) {
-        List<List<SectionMeshletStore.MeshletRange>> batches = new ArrayList<>();
-        List<SectionMeshletStore.MeshletRange> batch = new ArrayList<>();
+    static List<List<MeshletRange>> dispatchBatches(List<MeshletRange> ranges) {
+        List<List<MeshletRange>> batches = new ArrayList<>();
+        List<MeshletRange> batch = new ArrayList<>();
         int batchMeshlets = 0;
-        for (SectionMeshletStore.MeshletRange range : ranges) {
+        for (MeshletRange range : ranges) {
             if (!batch.isEmpty() && batchMeshlets + range.count() > TerrainMeshTaskDispatch.MAX_DIRECT_TASKS) {
                 batches.add(batch);
                 batch = new ArrayList<>();

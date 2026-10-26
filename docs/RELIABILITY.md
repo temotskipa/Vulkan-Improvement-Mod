@@ -98,6 +98,11 @@ validation on real Vulkan hardware.
   checks that the mcdev-confirmed mixin target manifest for the Minecraft
   version in `gradle.properties`, the client mixin config, and source-level
   hook tokens stay aligned, and that no configured mixin is missing from it.
+- `.\gradlew.bat checkNestedTypes` parses every source file and fails on a
+  class, record, interface or enum declared inside another type or a method:
+  each type has a file of its own, because the code style imports nested
+  classes by their own name and a nested type of the mod's would clash with
+  one of Minecraft's.
 - `.\gradlew.bat build` compiles and packages the mod.
 - `.\gradlew.bat runClient` starts a local Minecraft client for manual runtime
   validation.
@@ -299,7 +304,7 @@ A CPU profile (`jcmd <pid> JFR.start`) shows whether the render thread waits
 for the GPU (swapchain acquire and submit) or is busy itself.
 
 Any buffer the GPU reads or updates every frame lives in device memory
-(`DeviceBuffer.Placement.DEVICE_MAPPED`); host memory is for staging and
+(`DeviceBufferPlacement.DEVICE_MAPPED`); host memory is for staging and
 read-back. Two atomics per meshlet on a counter in host memory once made the
 opaque layers take 2.4 ms instead of 0.4 ms.
 

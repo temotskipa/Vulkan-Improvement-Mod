@@ -43,30 +43,7 @@ public final class DeviceBuffer implements Destroyable {
     private boolean closed;
     private boolean destroyed;
     
-    /**
-     * Where a buffer's memory lives and how the CPU reaches it.
-     */
-    public enum Placement {
-        /**
-         * Device memory the CPU cannot map; written by copies only.
-         */
-        DEVICE,
-        /**
-         * Device memory the CPU maps and writes in order, for what the GPU reads or updates every
-         * frame. Where the device has no such memory, host memory the GPU reaches over the bus.
-         * Any thread may reach it, as diagnostics do.
-         */
-        DEVICE_MAPPED,
-        /**
-         * Host memory the CPU reads and writes at random, for staging. Only the thread that made
-         * the buffer reaches it, and gives it back, which lets its memory's lifetime end at no cost:
-         * ending one any thread may reach waits on every thread, some 30 to 50 microseconds with as
-         * many threads as the game runs.
-         */
-        HOST
-    }
-    
-    public DeviceBuffer(VulkanDevice device, String label, long size, int usage, Placement placement) {
+    public DeviceBuffer(VulkanDevice device, String label, long size, int usage, DeviceBufferPlacement placement) {
         this.device = device;
         this.label = label;
         this.size = size;
@@ -78,11 +55,11 @@ public final class DeviceBuffer implements Destroyable {
             bufferInfo.sharingMode(VK10.VK_SHARING_MODE_EXCLUSIVE);
             
             VmaAllocationCreateInfo allocationInfo = VmaAllocationCreateInfo.calloc(stack);
-            allocationInfo.usage(placement == Placement.HOST ? Vma.VMA_MEMORY_USAGE_AUTO_PREFER_HOST : Vma.VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
-            if (placement == Placement.HOST) {
+            allocationInfo.usage(placement == DeviceBufferPlacement.HOST ? Vma.VMA_MEMORY_USAGE_AUTO_PREFER_HOST : Vma.VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
+            if (placement == DeviceBufferPlacement.HOST) {
                 allocationInfo.flags(Vma.VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | Vma.VMA_ALLOCATION_CREATE_MAPPED_BIT);
             }
-            else if (placement == Placement.DEVICE_MAPPED) {
+            else if (placement == DeviceBufferPlacement.DEVICE_MAPPED) {
                 allocationInfo.flags(Vma.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | Vma.VMA_ALLOCATION_CREATE_MAPPED_BIT);
             }
             
@@ -93,7 +70,7 @@ public final class DeviceBuffer implements Destroyable {
             this.vkBuffer = bufferPtr.get(0);
             this.allocation = allocationPtr.get(0);
             this.mappedAddress = allocationResult.pMappedData();
-            this.mappedLifetime = this.mappedAddress == 0L ? null : placement == Placement.HOST ? Arena.ofConfined() : Arena.ofShared();
+            this.mappedLifetime = this.mappedAddress == 0L ? null : placement == DeviceBufferPlacement.HOST ? Arena.ofConfined() : Arena.ofShared();
             this.mapped = this.mappedLifetime == null ? null : mappedSegment(this.mappedAddress, size, this.mappedLifetime);
             IntBuffer memoryFlags = stack.callocInt(1);
             Vma.vmaGetAllocationMemoryProperties(device.vma(), this.allocation, memoryFlags);

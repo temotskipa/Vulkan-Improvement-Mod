@@ -30,28 +30,19 @@ public record TerrainPipelineState(String name, PolygonMode polygonMode, boolean
      * The state a pipeline was compiled with, if it is a Vulkan pipeline, on which a mixin keeps it.
      */
     public static @Nullable TerrainPipelineState of(@Nullable BackendRenderPipeline pipeline) {
-        return pipeline instanceof Holder holder ? holder.vim$terrainPipelineState() : null;
+        return pipeline instanceof TerrainPipelineStateHolder holder ? holder.vim$terrainPipelineState() : null;
     }
     
     /**
      * Keeps the state a pipeline was compiled with on the pipeline.
      */
     public static void remember(BackendRenderPipeline pipeline, TerrainPipelineState state) {
-        if (pipeline instanceof Holder holder) {
+        if (pipeline instanceof TerrainPipelineStateHolder holder) {
             holder.vim$rememberTerrainPipelineState(state);
         }
     }
     
     public boolean hasDepth() {
         return this.depthStencilState != null;
-    }
-    
-    /**
-     * Implemented on Minecraft's Vulkan pipeline by a mixin.
-     */
-    public interface Holder {
-        @Nullable TerrainPipelineState vim$terrainPipelineState();
-        
-        void vim$rememberTerrainPipelineState(TerrainPipelineState state);
     }
 }

@@ -21,7 +21,7 @@ public final class ComputeCommands {
      * @param pushConstants the pipeline's push constants, from the buffer's position to its limit
      */
     public static void dispatch(CommandEncoder encoder, Supplier<String> label, ComputePipeline pipeline, ByteBuffer pushConstants, int groupsX, int groupsY, int groupsZ) {
-        if (!(encoder instanceof Frontend frontend)) {
+        if (!(encoder instanceof ComputeCommandsFrontend frontend)) {
             throw new UnsupportedOperationException("No compute dispatch on " + encoder.getClass().getName());
         }
         frontend.vim$dispatchCompute(label, pipeline, pushConstants, groupsX, groupsY, groupsZ);
@@ -32,22 +32,6 @@ public final class ComputeCommands {
      * without compute dispatch counts as being inside one.
      */
     public static boolean insideRenderPass(CommandEncoder encoder) {
-        return !(encoder instanceof Frontend frontend) || frontend.vim$isInRenderPass();
-    }
-    
-    /**
-     * Implemented on Minecraft's frontend command encoder by a mixin.
-     */
-    public interface Frontend {
-        void vim$dispatchCompute(Supplier<String> label, ComputePipeline pipeline, ByteBuffer pushConstants, int groupsX, int groupsY, int groupsZ);
-        
-        boolean vim$isInRenderPass();
-    }
-    
-    /**
-     * Implemented on Minecraft's Vulkan command encoder by a mixin.
-     */
-    public interface Backend {
-        void vim$dispatchCompute(Supplier<String> label, ComputePipeline pipeline, ByteBuffer pushConstants, int groupsX, int groupsY, int groupsZ);
+        return !(encoder instanceof ComputeCommandsFrontend frontend) || frontend.vim$isInRenderPass();
     }
 }

@@ -24,12 +24,15 @@ import org.lwjgl.vulkan.*;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
-import java.util.*;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.LongAdder;
 
 public final class MeshShaderTerrainProgram {
     private static final MeshShaderTerrainProgram INSTANCE = new MeshShaderTerrainProgram();
-    private final Map<PipelineKey, MeshPipeline> pipelineCache = new HashMap<>();
+    private final Map<TerrainPipelineKey, TerrainMeshPipeline> pipelineCache = new HashMap<>();
     private final LongAdder pipelineCompiles = new LongAdder();
     private final LongAdder meshTaskDispatches = new LongAdder();
     private final LongAdder improvedFogDispatches = new LongAdder();
@@ -155,7 +158,7 @@ public final class MeshShaderTerrainProgram {
         target.putFloat(w);
     }
     
-    private static DescriptorHeapTerrainResources.TextureDescriptorLayout queryTextureDescriptorLayout(VulkanDevice device, long descriptorSetLayout) {
+    private static TerrainTextureDescriptorLayout queryTextureDescriptorLayout(VulkanDevice device, long descriptorSetLayout) {
         long[] layoutSize = new long[1];
         long[] blockAtlasImageOffset = new long[1];
         long[] blockAtlasSamplerOffset = new long[1];
@@ -172,8 +175,36 @@ public final class MeshShaderTerrainProgram {
         EXTDescriptorBuffer.vkGetDescriptorSetLayoutBindingOffsetEXT(device.vkDevice(), descriptorSetLayout, 4, skyImageOffset);
         EXTDescriptorBuffer.vkGetDescriptorSetLayoutBindingOffsetEXT(device.vkDevice(), descriptorSetLayout, 5, cloudsImageOffset);
         EXTDescriptorBuffer.vkGetDescriptorSetLayoutBindingOffsetEXT(device.vkDevice(), descriptorSetLayout, 6, cloudsDepthImageOffset);
-        DescriptorHeapTerrainResources.Layout terrainLayout = DescriptorHeapTerrainResources.get().layout();
-        return new DescriptorHeapTerrainResources.TextureDescriptorLayout(layoutSize[0], blockAtlasImageOffset[0], blockAtlasSamplerOffset[0], lightmapImageOffset[0], lightmapSamplerOffset[0], skyImageOffset[0], cloudsImageOffset[0], cloudsDepthImageOffset[0], Math.max(terrainLayout.descriptorBufferSampledImageDescriptorBytes(), 1L), Math.max(terrainLayout.descriptorBufferSamplerDescriptorBytes(), 1L));
+        TerrainDescriptorHeapLayout terrainLayout = DescriptorHeapTerrainResources.get().layout();
+        return new TerrainTextureDescriptorLayout(layoutSize[0], blockAtlasImageOffset[0], blockAtlasSamplerOffset[0], lightmapImageOffset[0], lightmapSamplerOffset[0], skyImageOffset[0], cloudsImageOffset[0], cloudsDepthImageOffset[0], Math.max(terrainLayout.descriptorBufferSampledImageDescriptorBytes(), 1L), Math.max(terrainLayout.descriptorBufferSamplerDescriptorBytes(), 1L));
+    }
+    
+    /**
+     * Whether a layer's fragments may be dropped for their alpha. A draw that is not for one layer
+     * keeps the test.
+     */
+    private static boolean alphaTest(int layerOrdinal) {
+        ChunkSectionLayer[] layers = ChunkSectionLayer.values();
+        return layerOrdinal < 0 || layerOrdinal >= layers.length || TerrainMaterialClassifier.alphaModeForLayer(layers[layerOrdinal]) != GpuMaterialAlphaMode.OPAQUE;
+    }
+    
+    /**
+     * The section the camera is in, which the GPU-driven pass sorts tasks by their distance from.
+     */
+    private static void putCameraSection(ByteBuffer target) {
+        Camera camera = Minecraft.getInstance().gameRenderer.mainCamera();
+        if (!camera.isInitialized()) {
+            target.putInt(0).putInt(0).putInt(0);
+            return;
+        }
+        Vec3 position = camera.position();
+        target.putInt(SectionPos.blockToSectionCoord(position.x()));
+        target.putInt(SectionPos.blockToSectionCoord(position.y()));
+        target.putInt(SectionPos.blockToSectionCoord(position.z()));
+    }
+    
+    private static void describeBinding(VkDescriptorSetLayoutBinding.Buffer bindings, int index, int descriptorType, int stages) {
+        bindings.apply(index, binding -> binding.binding(index).descriptorType(descriptorType).descriptorCount(1).stageFlags(stages));
     }
     
     public synchronized void configure(VulkanDevice device) {
@@ -210,7 +241,7 @@ public final class MeshShaderTerrainProgram {
     public synchronized void shutdown() {
         VulkanDevice activeDevice = this.device;
         if (activeDevice != null) {
-            for (MeshPipeline pipeline : this.pipelineCache.values()) {
+            for (TerrainMeshPipeline pipeline : this.pipelineCache.values()) {
                 pipeline.destroy(activeDevice);
             }
             this.pipelineCache.clear();
@@ -247,7 +278,7 @@ public final class MeshShaderTerrainProgram {
         if (activeDevice == null || !ready() || dispatch == null || !dispatch.ready() || meshletHeaderAddress == 0L || vertexPayloadAddress == 0L) {
             return false;
         }
-        MeshPipeline meshPipeline = this.pipelineCache.computeIfAbsent(new PipelineKey(vanillaPipeline, alphaTest(dispatch.layerOrdinal())), key -> createPipeline(activeDevice, key.state(), key.alphaTest()));
+        TerrainMeshPipeline meshPipeline = this.pipelineCache.computeIfAbsent(new TerrainPipelineKey(vanillaPipeline, alphaTest(dispatch.layerOrdinal())), key -> createPipeline(activeDevice, key.state(), key.alphaTest()));
         boolean improvedFog = TerrainRenderContext.improvedFog();
         if (!bindTerrainTextureDescriptorBuffer(commandBuffer, meshPipeline, improvedFog)) {
             return false;
@@ -263,7 +294,7 @@ public final class MeshShaderTerrainProgram {
             pushConstants.putLong(dispatch.workQueueAddress());
             pushConstants.putLong(DescriptorHeapTerrainResources.get().materialTableAddress());
             // With a page table the tasks are pages the visibility pass kept; it has culled them already.
-            boolean drawsPages = dispatch.source() == TerrainMeshTaskDispatch.Source.GPU_VISIBLE_PAGES || dispatch.source() == TerrainMeshTaskDispatch.Source.LISTED_PAGES || dispatch.source() == TerrainMeshTaskDispatch.Source.GPU_DRIVEN_PAGES;
+            boolean drawsPages = dispatch.source() == TerrainMeshTaskSource.GPU_VISIBLE_PAGES || dispatch.source() == TerrainMeshTaskSource.LISTED_PAGES || dispatch.source() == TerrainMeshTaskSource.GPU_DRIVEN_PAGES;
             pushConstants.putLong(drawsPages ? DescriptorHeapTerrainResources.get().sectionMetadataAddress() : 0L);
             pushConstants.putInt(dispatch.taskCount());
             pushConstants.putInt(drawsPages ? pageCullFlags(vanillaPipeline) : meshletFrustumCullingPushConstant());
@@ -294,16 +325,7 @@ public final class MeshShaderTerrainProgram {
         return true;
     }
     
-    /**
-     * Whether a layer's fragments may be dropped for their alpha. A draw that is not for one layer
-     * keeps the test.
-     */
-    private static boolean alphaTest(int layerOrdinal) {
-        ChunkSectionLayer[] layers = ChunkSectionLayer.values();
-        return layerOrdinal < 0 || layerOrdinal >= layers.length || TerrainMaterialClassifier.alphaModeForLayer(layers[layerOrdinal]) != GpuMaterialAlphaMode.OPAQUE;
-    }
-    
-    private boolean bindTerrainTextureDescriptorBuffer(VkCommandBuffer commandBuffer, MeshPipeline meshPipeline, boolean improvedFog) {
+    private boolean bindTerrainTextureDescriptorBuffer(VkCommandBuffer commandBuffer, TerrainMeshPipeline meshPipeline, boolean improvedFog) {
         DescriptorHeapTerrainResources resources = DescriptorHeapTerrainResources.get();
         long descriptorBufferAddress = resources.terrainDescriptorBufferAddress();
         if (descriptorBufferAddress == 0L || !resources.writeTerrainTextureDescriptors(this.device, meshPipeline.textureDescriptorLayout(), improvedFog)) {
@@ -329,13 +351,13 @@ public final class MeshShaderTerrainProgram {
      * CPU, and the rings they live in are not reused while a frame that read them may still run.
      * One barrier after them makes what they wrote visible to the draws.
      */
-    public synchronized boolean prepareVisiblePageCommands(List<PreparedPages> layers) {
+    public synchronized boolean prepareVisiblePageCommands(List<TerrainPreparedPages> layers) {
         VulkanDevice activeDevice = this.device;
         ComputePipeline pipeline = this.commandPipeline;
         if (activeDevice == null || pipeline == null || layers.isEmpty()) {
             return false;
         }
-        for (PreparedPages layer : layers) {
+        for (TerrainPreparedPages layer : layers) {
             if (layer.dispatch() == null || !layer.dispatch().ready() || !layer.dispatch().usesIndirectCommand() || layer.pages() == null || !layer.pages().ready()) {
                 return false;
             }
@@ -350,7 +372,7 @@ public final class MeshShaderTerrainProgram {
         VkCommandBuffer commandBuffer = encoder.allocateAndBeginTransientCommandBuffer();
         try (MemoryStack stack = MemoryStack.stackPush()) {
             VK12.vkCmdBindPipeline(commandBuffer, VK10.VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.handle());
-            for (PreparedPages layer : layers) {
+            for (TerrainPreparedPages layer : layers) {
                 recordVisiblePageCommand(commandBuffer, pipeline, layer.dispatch(), layer.pages(), stack);
             }
             // The draws read what the passes wrote: the indirect draw its command, the task stage the list.
@@ -363,7 +385,7 @@ public final class MeshShaderTerrainProgram {
         return true;
     }
     
-    private void recordVisiblePageCommand(VkCommandBuffer commandBuffer, ComputePipeline pipeline, TerrainMeshTaskDispatch dispatch, DescriptorHeapTerrainResources.VisiblePageUpload pages, MemoryStack stack) {
+    private void recordVisiblePageCommand(VkCommandBuffer commandBuffer, ComputePipeline pipeline, TerrainMeshTaskDispatch dispatch, TerrainVisiblePageUpload pages, MemoryStack stack) {
         DescriptorHeapTerrainResources resources = DescriptorHeapTerrainResources.get();
         long commandBaseAddress = dispatch.indirectCommandAddress() - dispatch.indirectCommandOffset();
         int commandIndex = (int) (dispatch.indirectCommandOffset() / dispatch.indirectCommandStride());
@@ -397,7 +419,7 @@ public final class MeshShaderTerrainProgram {
      * @param layerCommands the command each layer's tasks are counted in, or -1 for a layer not drawn
      * @param fadeMillis    how long a section takes to fade in, or 0 for no fade
      */
-    synchronized boolean prepareGpuDrivenPages(DescriptorHeapTerrainResources.GpuDrivenFrame frame, VisibleSectionGrid sections, int slotCount, int[] layerOutputs, int[] layerCommands, int fadeMillis) {
+    synchronized boolean prepareGpuDrivenPages(TerrainGpuDrivenFrame frame, VisibleSectionGrid sections, int slotCount, int[] layerOutputs, int[] layerCommands, int fadeMillis) {
         VulkanDevice activeDevice = this.device;
         ComputePipeline pipeline = this.sectionPagesPipeline;
         if (activeDevice == null || pipeline == null || !frame.ready() || slotCount <= 0) {
@@ -447,28 +469,6 @@ public final class MeshShaderTerrainProgram {
         return true;
     }
     
-    /**
-     * The section the camera is in, which the GPU-driven pass sorts tasks by their distance from.
-     */
-    private static void putCameraSection(ByteBuffer target) {
-        Camera camera = Minecraft.getInstance().gameRenderer.mainCamera();
-        if (!camera.isInitialized()) {
-            target.putInt(0).putInt(0).putInt(0);
-            return;
-        }
-        Vec3 position = camera.position();
-        target.putInt(SectionPos.blockToSectionCoord(position.x()));
-        target.putInt(SectionPos.blockToSectionCoord(position.y()));
-        target.putInt(SectionPos.blockToSectionCoord(position.z()));
-    }
-    
-    /**
-     * One layer's part of a frame's visibility passes: the dispatch that will draw what the pass
-     * keeps, and the list of pages the pass looks at.
-     */
-    public record PreparedPages(TerrainMeshTaskDispatch dispatch, DescriptorHeapTerrainResources.VisiblePageUpload pages) {
-    }
-    
     public Map<String, Object> asMap() {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("ready", ready());
@@ -503,8 +503,8 @@ public final class MeshShaderTerrainProgram {
         map.put("improvedFogDispatches", this.improvedFogDispatches.sum());
         map.put("textureDescriptorBufferBinds", this.textureDescriptorBufferBinds.sum());
         map.put("textureDescriptorBufferMissing", this.textureDescriptorBufferMissing.sum());
-        DescriptorHeapTerrainResources.TextureDescriptorLayout descriptorLayout = null;
-        for (MeshPipeline pipeline : this.pipelineCache.values()) {
+        TerrainTextureDescriptorLayout descriptorLayout = null;
+        for (TerrainMeshPipeline pipeline : this.pipelineCache.values()) {
             descriptorLayout = pipeline.textureDescriptorLayout();
             break;
         }
@@ -521,7 +521,7 @@ public final class MeshShaderTerrainProgram {
      * @param alphaTest whether the fragment stage keeps its alpha test; without it the GPU tests
      *                  depth before the fragment stage runs
      */
-    private MeshPipeline createPipeline(VulkanDevice device, TerrainPipelineState pipelineInfo, boolean alphaTest) {
+    private TerrainMeshPipeline createPipeline(VulkanDevice device, TerrainPipelineState pipelineInfo, boolean alphaTest) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             VkDescriptorSetLayoutBinding.Buffer textureBindings = VkDescriptorSetLayoutBinding.calloc(7, stack);
             describeBinding(textureBindings, 0, VK10.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VK10.VK_SHADER_STAGE_FRAGMENT_BIT);
@@ -537,7 +537,7 @@ public final class MeshShaderTerrainProgram {
             LongBuffer descriptorSetLayoutHandle = stack.callocLong(1);
             VulkanUtils.crashIfFailure(device, VK12.vkCreateDescriptorSetLayout(device.vkDevice(), descriptorSetLayoutCreateInfo, null, descriptorSetLayoutHandle), "Failed to create VIM terrain texture descriptor-buffer layout for " + pipelineInfo.name());
             long textureDescriptorSetLayout = descriptorSetLayoutHandle.get(0);
-            DescriptorHeapTerrainResources.TextureDescriptorLayout textureDescriptorLayout = queryTextureDescriptorLayout(device, textureDescriptorSetLayout);
+            TerrainTextureDescriptorLayout textureDescriptorLayout = queryTextureDescriptorLayout(device, textureDescriptorSetLayout);
             
             VkPushConstantRange.Buffer pushConstantRanges = VkPushConstantRange.calloc(2, stack);
             pushConstantRanges.apply(0, range -> range.stageFlags(EXTMeshShader.VK_SHADER_STAGE_TASK_BIT_EXT | EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT).offset(0).size(TerrainGpuLayout.TERRAIN_PUSH_CONSTANT_BYTES));
@@ -597,31 +597,10 @@ public final class MeshShaderTerrainProgram {
             VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_PIPELINE, pipeline, "VIM Terrain Mesh Pipeline " + pipelineInfo.name());
             this.pipelineCompiles.increment();
             this.lastError = "";
-            return new MeshPipeline(pipeline, pipelineLayout, textureDescriptorSetLayout, textureDescriptorLayout);
+            return new TerrainMeshPipeline(pipeline, pipelineLayout, textureDescriptorSetLayout, textureDescriptorLayout);
         } catch (RuntimeException ex) {
             this.lastError = ex.getMessage();
             throw ex;
-        }
-    }
-    
-    private static void describeBinding(VkDescriptorSetLayoutBinding.Buffer bindings, int index, int descriptorType, int stages) {
-        bindings.apply(index, binding -> binding.binding(index).descriptorType(descriptorType).descriptorCount(1).stageFlags(stages));
-    }
-    
-    private record PipelineKey(TerrainPipelineState state, boolean alphaTest) {
-    }
-    
-    private record MeshPipeline(long handle, long layout, long textureDescriptorSetLayout, DescriptorHeapTerrainResources.TextureDescriptorLayout textureDescriptorLayout) {
-        private void destroy(VulkanDevice device) {
-            if (this.handle != 0L) {
-                VK12.vkDestroyPipeline(device.vkDevice(), this.handle, null);
-            }
-            if (this.layout != 0L) {
-                VK12.vkDestroyPipelineLayout(device.vkDevice(), this.layout, null);
-            }
-            if (this.textureDescriptorSetLayout != 0L) {
-                VK12.vkDestroyDescriptorSetLayout(device.vkDevice(), this.textureDescriptorSetLayout, null);
-            }
         }
     }
 }

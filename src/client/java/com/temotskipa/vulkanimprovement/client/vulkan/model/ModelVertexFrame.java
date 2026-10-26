@@ -10,9 +10,6 @@ import com.mojang.renderpearl.backend.vulkan.VulkanRenderPipeline;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ComputeCommands;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ComputePipeline;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ShaderStorage;
-import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelGpuRecords.EntityVertex;
-import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelGpuRecords.Job;
-import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelGpuRecords.Part;
 import net.minecraft.client.renderer.StagedVertexBuffer.ExecuteInfo;
 import net.minecraft.client.renderer.rendertype.PreparedRenderType;
 import net.minecraft.core.Direction;
@@ -49,9 +46,9 @@ final class ModelVertexFrame {
     private static final long RECORD_ALIGNMENT = 16L;
     private static final Direction[] DIRECTIONS = Direction.values();
     
-    private final GrowingSegment parts = new GrowingSegment(4096L * Part.BYTES);
-    private final GrowingSegment jobs = new GrowingSegment(16_384L * Job.BYTES);
-    private final GrowingSegment sortedJobs = new GrowingSegment(16_384L * Job.BYTES);
+    private final GrowingSegment parts = new GrowingSegment(4096L * ModelPartRecord.BYTES);
+    private final GrowingSegment jobs = new GrowingSegment(16_384L * ModelJobRecord.BYTES);
+    private final GrowingSegment sortedJobs = new GrowingSegment(16_384L * ModelJobRecord.BYTES);
     private final List<ModelVertexDraw> draws = new ArrayList<>();
     private int partCount;
     private int jobCount;
@@ -149,8 +146,8 @@ final class ModelVertexFrame {
         else if (this.stagedBuffer != stagedVertexBuffer) {
             throw new IllegalStateException("GPU model draws of two staged vertex buffers in one frame");
         }
-        if (this.draws.size() >= Job.MAX_DRAWS) {
-            throw new IllegalStateException("More than " + Job.MAX_DRAWS + " GPU model draws in one frame");
+        if (this.draws.size() >= ModelJobRecord.MAX_DRAWS) {
+            throw new IllegalStateException("More than " + ModelJobRecord.MAX_DRAWS + " GPU model draws in one frame");
         }
         ModelVertexDraw draw = new ModelVertexDraw(this.draws.size(), renderType);
         this.draws.add(draw);
@@ -162,10 +159,10 @@ final class ModelVertexFrame {
      * its vertices. Its normals are written as its cubes need them.
      */
     int addPart(PoseStack.Pose pose, int color, int overlay, int light) {
-        long offset = (long) this.partCount * Part.BYTES;
-        MemorySegment records = this.parts.reserve(offset, offset + Part.BYTES);
+        long offset = (long) this.partCount * ModelPartRecord.BYTES;
+        MemorySegment records = this.parts.reserve(offset, offset + ModelPartRecord.BYTES);
         Matrix4f matrix = pose.pose();
-        long poseOffset = offset + Part.POSE;
+        long poseOffset = offset + ModelPartRecord.POSE;
         records.set(ModelGpuRecords.FLOAT, poseOffset, matrix.m00());
         records.set(ModelGpuRecords.FLOAT, poseOffset + 4L, matrix.m01());
         records.set(ModelGpuRecords.FLOAT, poseOffset + 8L, matrix.m02());
@@ -178,9 +175,9 @@ final class ModelVertexFrame {
         records.set(ModelGpuRecords.FLOAT, poseOffset + 36L, matrix.m30());
         records.set(ModelGpuRecords.FLOAT, poseOffset + 40L, matrix.m31());
         records.set(ModelGpuRecords.FLOAT, poseOffset + 44L, matrix.m32());
-        records.set(ModelGpuRecords.INT, offset + Part.COLOR, ARGB.toABGR(color));
-        records.set(ModelGpuRecords.INT, offset + Part.OVERLAY, overlay);
-        records.set(ModelGpuRecords.INT, offset + Part.LIGHT, light);
+        records.set(ModelGpuRecords.INT, offset + ModelPartRecord.COLOR, ARGB.toABGR(color));
+        records.set(ModelGpuRecords.INT, offset + ModelPartRecord.OVERLAY, overlay);
+        records.set(ModelGpuRecords.INT, offset + ModelPartRecord.LIGHT, light);
         return this.partCount++;
     }
     
@@ -189,7 +186,7 @@ final class ModelVertexFrame {
      * pose as {@code ModelPart.Cube.compile} transforms it, packed as {@code BufferBuilder} packs it.
      */
     void writeNormals(int part, PoseStack.Pose pose, int directions, Vector3f scratch) {
-        long offset = (long) part * Part.BYTES + Part.NORMALS;
+        long offset = (long) part * ModelPartRecord.BYTES + ModelPartRecord.NORMALS;
         MemorySegment records = this.parts.segment();
         for (Direction direction : DIRECTIONS) {
             if ((directions & 1 << direction.ordinal()) != 0) {
@@ -203,12 +200,12 @@ final class ModelVertexFrame {
      * Records a cube the GPU writes into the draw, after the draw's vertices so far.
      */
     void addJob(int part, int firstPolygon, int polygons, ModelVertexDraw draw) {
-        long offset = (long) this.jobCount * Job.BYTES;
-        MemorySegment records = this.jobs.reserve(offset, offset + Job.BYTES);
-        records.set(ModelGpuRecords.INT, offset + Job.PART, part);
-        records.set(ModelGpuRecords.INT, offset + Job.FIRST_POLYGON, firstPolygon);
-        records.set(ModelGpuRecords.INT, offset + Job.DRAW_AND_POLYGONS, draw.index | polygons << Job.DRAW_BITS);
-        records.set(ModelGpuRecords.INT, offset + Job.FIRST_VERTEX, draw.vertexCount);
+        long offset = (long) this.jobCount * ModelJobRecord.BYTES;
+        MemorySegment records = this.jobs.reserve(offset, offset + ModelJobRecord.BYTES);
+        records.set(ModelGpuRecords.INT, offset + ModelJobRecord.PART, part);
+        records.set(ModelGpuRecords.INT, offset + ModelJobRecord.FIRST_POLYGON, firstPolygon);
+        records.set(ModelGpuRecords.INT, offset + ModelJobRecord.DRAW_AND_POLYGONS, draw.index | polygons << ModelJobRecord.DRAW_BITS);
+        records.set(ModelGpuRecords.INT, offset + ModelJobRecord.FIRST_VERTEX, draw.vertexCount);
         int vertices = polygons * ModelGpuRecords.POLYGON_VERTICES;
         draw.vertexCount += vertices;
         draw.jobCount++;
@@ -240,9 +237,9 @@ final class ModelVertexFrame {
             draw.baseVertex = draw.mesh ? 0 : Math.toIntExact(base);
             base += draw.mesh ? 0 : draw.vertexCount;
         }
-        long partBytes = (long) this.partCount * Part.BYTES;
+        long partBytes = (long) this.partCount * ModelPartRecord.BYTES;
         long jobOffset = align(partBytes);
-        long jobBytes = (long) this.jobCount * Job.BYTES;
+        long jobBytes = (long) this.jobCount * ModelJobRecord.BYTES;
         long drawBaseOffset = align(jobOffset + jobBytes);
         GpuBuffer input = inputs.acquire(drawBaseOffset + (long) this.draws.size() * Integer.BYTES);
         try (MappedView view = input.map(false, true)) {
@@ -264,7 +261,7 @@ final class ModelVertexFrame {
         if (vertexPassJobs == 0) {
             return;
         }
-        GpuBuffer output = outputs.acquire(base * EntityVertex.BYTES);
+        GpuBuffer output = outputs.acquire(base * ModelEntityVertexRecord.BYTES);
         CommandEncoder encoder = RenderSystem.getDevice().createCommandEncoder();
         try (MemoryStack stack = MemoryStack.stackPush()) {
             ByteBuffer pushConstants = stack.malloc(PUSH_CONSTANT_BYTES);
@@ -304,12 +301,12 @@ final class ModelVertexFrame {
         }
         int[] placed = new int[this.draws.size()];
         MemorySegment source = this.jobs.segment();
-        MemorySegment sorted = this.sortedJobs.reserve(0L, (long) this.jobCount * Job.BYTES);
+        MemorySegment sorted = this.sortedJobs.reserve(0L, (long) this.jobCount * ModelJobRecord.BYTES);
         for (int job = 0; job < this.jobCount; job++) {
-            long offset = (long) job * Job.BYTES;
-            int drawIndex = source.get(ModelGpuRecords.INT, offset + Job.DRAW_AND_POLYGONS) & Job.MAX_DRAWS - 1;
+            long offset = (long) job * ModelJobRecord.BYTES;
+            int drawIndex = source.get(ModelGpuRecords.INT, offset + ModelJobRecord.DRAW_AND_POLYGONS) & ModelJobRecord.MAX_DRAWS - 1;
             ModelVertexDraw draw = this.draws.get(drawIndex);
-            MemorySegment.copy(source, offset, sorted, (long) (draw.firstJob + placed[drawIndex]++) * Job.BYTES, Job.BYTES);
+            MemorySegment.copy(source, offset, sorted, (long) (draw.firstJob + placed[drawIndex]++) * ModelJobRecord.BYTES, ModelJobRecord.BYTES);
         }
         return sorted;
     }
@@ -354,7 +351,7 @@ final class ModelVertexFrame {
             return false;
         }
         ModelVertexDraw draw = this.draws.get(drawIndex);
-        ModelMeshPipelines.MeshPipeline meshPipeline = ModelMeshPipelines.of(pipeline);
+        ModelMeshPipeline meshPipeline = ModelMeshPipelines.of(pipeline);
         if (!draw.mesh || meshPipeline == null) {
             return false;
         }

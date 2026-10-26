@@ -1,6 +1,7 @@
 package com.temotskipa.vulkanimprovement.mixin.client;
 
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.VulkanImprovementRuntime;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.SectionMeshletCaptureHolder;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.SectionMeshletStore;
 import net.minecraft.client.renderer.chunk.CompiledSectionMesh;
 import org.jspecify.annotations.Nullable;
@@ -11,7 +12,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(CompiledSectionMesh.class)
-public final class CompiledSectionMeshMixin implements SectionMeshletStore.CaptureHolder {
+public final class CompiledSectionMeshMixin implements SectionMeshletCaptureHolder {
     @Unique
     private volatile @Nullable Object vim$capturedSection;
     @Unique

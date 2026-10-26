@@ -2,6 +2,7 @@ package com.temotskipa.vulkanimprovement.mixin.client;
 
 import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelGpuVertices;
 import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelVertexDraw;
+import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelVertexDrawHolder;
 import net.minecraft.client.renderer.StagedVertexBuffer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -24,7 +25,7 @@ public abstract class StagedVertexBufferMixin {
     
     @Inject(method = "getExecuteInfo", at = @At("HEAD"), cancellable = true)
     private void vim$executeModelDraw(StagedVertexBuffer.Draw draw, CallbackInfoReturnable<StagedVertexBuffer.ExecuteInfo> cir) {
-        ModelVertexDraw modelDraw = ((ModelVertexDraw.Holder) draw).vim$modelDraw();
+        ModelVertexDraw modelDraw = ((ModelVertexDrawHolder) draw).vim$modelDraw();
         if (modelDraw != null) {
             cir.setReturnValue(ModelGpuVertices.get().executeInfo(modelDraw));
         }

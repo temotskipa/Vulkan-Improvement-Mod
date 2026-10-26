@@ -15,7 +15,6 @@ import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ComputeCommands;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ComputePipeline;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ShaderCompiler;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ShaderStorage;
-import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelVertexDraw.Holder;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.geom.ModelPart.Cube;
@@ -312,7 +311,7 @@ public final class ModelGpuVertices {
      * Makes a draw Minecraft's draw group just added a GPU draw of the frame.
      */
     public void adopt(Object stagedVertexBuffer, Draw draw, PreparedRenderType renderType) {
-        ((Holder) draw).vim$setModelDraw(frame().addDraw(stagedVertexBuffer, renderType));
+        ((ModelVertexDrawHolder) draw).vim$setModelDraw(frame().addDraw(stagedVertexBuffer, renderType));
         this.stagedBufferUsed = stagedVertexBuffer;
     }
     

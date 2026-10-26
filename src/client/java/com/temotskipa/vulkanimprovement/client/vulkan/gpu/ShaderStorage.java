@@ -28,16 +28,9 @@ public final class ShaderStorage {
         if (buffer.isClosed()) {
             throw new IllegalStateException("Buffer already closed");
         }
-        if (!(buffer instanceof Addressable addressable)) {
+        if (!(buffer instanceof ShaderStorageAddressable addressable)) {
             throw new UnsupportedOperationException("Only Vulkan buffers have a device address, not " + buffer.getClass().getName());
         }
         return addressable.vim$deviceAddress();
-    }
-    
-    /**
-     * Implemented on Minecraft's Vulkan buffers by a mixin.
-     */
-    public interface Addressable {
-        long vim$deviceAddress();
     }
 }

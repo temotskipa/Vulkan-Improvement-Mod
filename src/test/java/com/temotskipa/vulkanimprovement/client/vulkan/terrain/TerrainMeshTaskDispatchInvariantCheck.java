@@ -51,7 +51,7 @@ public final class TerrainMeshTaskDispatchInvariantCheck {
     }
     
     private static void checkCpuVisibleListDispatch() {
-        DescriptorHeapTerrainResources.VisibleMeshletUpload upload = new DescriptorHeapTerrainResources.VisibleMeshletUpload(7, 64, 4096L, 0, true);
+        TerrainVisibleMeshletUpload upload = new TerrainVisibleMeshletUpload(7, 64, 4096L, 0, true);
         TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.cpuVisibleList(upload, 1);
         
         require(dispatch.ready(), "CPU visible-list dispatch must be ready when upload is ready");
@@ -62,7 +62,7 @@ public final class TerrainMeshTaskDispatchInvariantCheck {
     }
     
     private static void checkCpuWorkQueueDispatch() {
-        DescriptorHeapTerrainResources.TerrainWorkQueueUpload upload = new DescriptorHeapTerrainResources.TerrainWorkQueueUpload(9, 32, 8192L, 0, true);
+        TerrainWorkQueueUpload upload = new TerrainWorkQueueUpload(9, 32, 8192L, 0, true);
         TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.cpuWorkQueue(upload, 2, 96);
         
         require(dispatch.ready(), "CPU work-queue dispatch must be ready when upload is ready");
@@ -73,7 +73,7 @@ public final class TerrainMeshTaskDispatchInvariantCheck {
     }
     
     private static void checkIndirectCommandDispatch() {
-        DescriptorHeapTerrainResources.TerrainMeshTaskCommandUpload upload = new DescriptorHeapTerrainResources.TerrainMeshTaskCommandUpload(2, 32, 12_288L, 24L, TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_STRIDE, 16_384L, 0, true, true);
+        TerrainMeshTaskCommandUpload upload = new TerrainMeshTaskCommandUpload(2, 32, 12_288L, 24L, TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_STRIDE, 16_384L, 0, true, true);
         TerrainMeshTaskDispatch dispatch = TerrainMeshTaskDispatch.fullLayer(4, 1, 32).withIndirectCommand(upload);
         
         require(dispatch.ready(), "dispatch with indirect command must remain ready");
@@ -110,13 +110,13 @@ public final class TerrainMeshTaskDispatchInvariantCheck {
     }
     
     private static void checkInvalidDispatchesRejected() {
-        requireThrows(() -> new TerrainMeshTaskDispatch(-1, 0, 0, 0, 0L, 0L, 0L, 0L, 0, 0L, false, TerrainMeshTaskDispatch.Source.DIRECT_LAYER, ""), "negative offset must be rejected");
-        requireThrows(() -> new TerrainMeshTaskDispatch(0, 0, -1, 0, 0L, 0L, 0L, 0L, 0, 0L, false, TerrainMeshTaskDispatch.Source.DIRECT_LAYER, ""), "negative requested meshlets must be rejected");
-        requireThrows(() -> new TerrainMeshTaskDispatch(0, 0, 1, 2, 0L, 0L, 0L, 0L, 0, 0L, false, TerrainMeshTaskDispatch.Source.DIRECT_LAYER, ""), "task count above requested meshlets must be rejected");
-        requireThrows(() -> new TerrainMeshTaskDispatch(0, 0, 1, 1, 0L, 0L, 0L, 0L, 0, 0L, false, TerrainMeshTaskDispatch.Source.CPU_VISIBLE_LIST, ""), "visible-list dispatch without address must be rejected");
-        requireThrows(() -> new TerrainMeshTaskDispatch(0, 0, 1, 1, 0L, 0L, 0L, 0L, 0, 0L, false, TerrainMeshTaskDispatch.Source.CPU_WORK_QUEUE, ""), "work-queue dispatch without address must be rejected");
-        requireThrows(() -> new TerrainMeshTaskDispatch(0, 0, 1, 1, 0L, 0L, 1L, 0L, 0, 0L, false, TerrainMeshTaskDispatch.Source.DIRECT_LAYER, ""), "indirect dispatch without stride must be rejected");
-        requireThrows(() -> new TerrainMeshTaskDispatch(0, 0, 1, 1, 0L, 0L, 0L, 1L, TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_STRIDE, 0L, false, TerrainMeshTaskDispatch.Source.DIRECT_LAYER, ""), "indirect metadata without buffer must be rejected");
+        requireThrows(() -> new TerrainMeshTaskDispatch(-1, 0, 0, 0, 0L, 0L, 0L, 0L, 0, 0L, false, TerrainMeshTaskSource.DIRECT_LAYER, ""), "negative offset must be rejected");
+        requireThrows(() -> new TerrainMeshTaskDispatch(0, 0, -1, 0, 0L, 0L, 0L, 0L, 0, 0L, false, TerrainMeshTaskSource.DIRECT_LAYER, ""), "negative requested meshlets must be rejected");
+        requireThrows(() -> new TerrainMeshTaskDispatch(0, 0, 1, 2, 0L, 0L, 0L, 0L, 0, 0L, false, TerrainMeshTaskSource.DIRECT_LAYER, ""), "task count above requested meshlets must be rejected");
+        requireThrows(() -> new TerrainMeshTaskDispatch(0, 0, 1, 1, 0L, 0L, 0L, 0L, 0, 0L, false, TerrainMeshTaskSource.CPU_VISIBLE_LIST, ""), "visible-list dispatch without address must be rejected");
+        requireThrows(() -> new TerrainMeshTaskDispatch(0, 0, 1, 1, 0L, 0L, 0L, 0L, 0, 0L, false, TerrainMeshTaskSource.CPU_WORK_QUEUE, ""), "work-queue dispatch without address must be rejected");
+        requireThrows(() -> new TerrainMeshTaskDispatch(0, 0, 1, 1, 0L, 0L, 1L, 0L, 0, 0L, false, TerrainMeshTaskSource.DIRECT_LAYER, ""), "indirect dispatch without stride must be rejected");
+        requireThrows(() -> new TerrainMeshTaskDispatch(0, 0, 1, 1, 0L, 0L, 0L, 1L, TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_STRIDE, 0L, false, TerrainMeshTaskSource.DIRECT_LAYER, ""), "indirect metadata without buffer must be rejected");
     }
     
     private static void requireMap(Map<String, Object> map, String source, int offset, int layerOrdinal, int requestedMeshlets, int taskCount, boolean usesVisibleList, boolean usesWorkQueue, boolean truncated) {

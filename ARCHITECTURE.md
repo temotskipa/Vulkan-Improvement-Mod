@@ -155,7 +155,7 @@ renderer code does not drift back into a catch-all root package.
   is drawn by nobody else. Without strict replacement nothing is taken and the
   mesh path draws over Minecraft's terrain.
 - A compiled section mesh carries the mod's record of it
-  (`SectionMeshletStore.CaptureHolder`), and that record the page each layer
+  (`SectionMeshletCaptureHolder`), and that record the page each layer
   has now, so collecting a frame needs no map lookup per section layer.
 - Nothing is uploaded and no compute work is recorded while Minecraft's
   terrain render pass is open. Minecraft's command encoder fails the frame
@@ -237,7 +237,7 @@ renderer code does not drift back into a catch-all root package.
   keyed by section node and chunk layer, not by vanilla draw objects, so later
   GPU visibility work can consume resident section-layer records without
   depending on transient render-pass draw slices.
-- `DeviceBuffer.Placement` says where a buffer of the mod's lives. What the
+- `DeviceBufferPlacement` says where a buffer of the mod's lives. What the
   pages hold is in device memory and written by copies; what the CPU writes
   each frame and the GPU reads or counts up in the same frame (visible page
   lists, mesh-task commands, the material table, counters, descriptors) is in

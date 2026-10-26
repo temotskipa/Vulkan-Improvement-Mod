@@ -13,7 +13,7 @@ public interface TerrainRenderPassAccess {
      * have one, so nothing is recorded where it might not be allowed.
      */
     static boolean insideRenderPass(Object commandEncoder) {
-        return !(commandEncoder instanceof Encoder encoder) || encoder.vim$insideRenderPass();
+        return !(commandEncoder instanceof TerrainCommandEncoderAccess encoder) || encoder.vim$insideRenderPass();
     }
     
     /**
@@ -23,11 +23,11 @@ public interface TerrainRenderPassAccess {
      * ones there, each with a barrier on all work before it.
      */
     static @Nullable VkCommandBuffer frameCommandBuffer(Object commandEncoder) {
-        return commandEncoder instanceof Encoder encoder && !encoder.vim$insideRenderPass() ? encoder.vim$frameCommandBuffer() : null;
+        return commandEncoder instanceof TerrainCommandEncoderAccess encoder && !encoder.vim$insideRenderPass() ? encoder.vim$frameCommandBuffer() : null;
     }
     
     static @Nullable TerrainRenderPassAccess of(Object renderPass) {
-        Object backend = renderPass instanceof Frontend frontend ? frontend.vim$backend() : renderPass;
+        Object backend = renderPass instanceof TerrainRenderPassFrontend frontend ? frontend.vim$backend() : renderPass;
         return backend instanceof TerrainRenderPassAccess access ? access : null;
     }
     
@@ -39,21 +39,4 @@ public interface TerrainRenderPassAccess {
      * Binds Minecraft's pipeline again and makes it rewrite its descriptors before its next draw.
      */
     void vim$restoreVanillaPipeline();
-    
-    /**
-     * Implemented on Minecraft's frontend render pass by a mixin: the way from the pass a renderer
-     * is handed to the backend pass that records it.
-     */
-    interface Frontend {
-        Object vim$backend();
-    }
-    
-    /**
-     * Implemented on Minecraft's Vulkan command encoder by a mixin.
-     */
-    interface Encoder {
-        boolean vim$insideRenderPass();
-        
-        VkCommandBuffer vim$frameCommandBuffer();
-    }
 }

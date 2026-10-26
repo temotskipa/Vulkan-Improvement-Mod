@@ -27,7 +27,7 @@ public final class VulkanRuntimeProfile {
         this.rtPtAccelerationAllocationSupported = rtPtAccelerationAllocationSupported;
     }
     
-    public static VulkanRuntimeProfile from(VulkanImprovementCapabilities.Snapshot snapshot) {
+    public static VulkanRuntimeProfile from(VulkanCapabilitySnapshot snapshot) {
         Map<String, Object> hardRequirements = new LinkedHashMap<>();
         hardRequirements.put("apiVersion", snapshot.apiVersion());
         hardRequirements.put("meshShaderExtension", snapshot.meshShaderExtension());
@@ -124,7 +124,7 @@ public final class VulkanRuntimeProfile {
      * the structures themselves, a pipeline to trace them with, device addresses for their build
      * inputs, and the descriptor path the renderer binds them through.
      */
-    private static String rtPtAccelerationAllocationBlocker(VulkanImprovementCapabilities.Snapshot snapshot, boolean descriptorBufferSelected) {
+    private static String rtPtAccelerationAllocationBlocker(VulkanCapabilitySnapshot snapshot, boolean descriptorBufferSelected) {
         List<String> missing = new ArrayList<>();
         if (!snapshot.accelerationStructureExtension()) {
             missing.add("acceleration structures");
@@ -145,7 +145,7 @@ public final class VulkanRuntimeProfile {
         return selected ? "selected" : "unavailable";
     }
     
-    private static Map<String, Object> preferredFeatures(VulkanImprovementCapabilities.Snapshot snapshot) {
+    private static Map<String, Object> preferredFeatures(VulkanCapabilitySnapshot snapshot) {
         Map<String, Object> preferredFeatures = new LinkedHashMap<>();
         preferredFeatures.put("deviceGeneratedCommandsExtension", snapshot.deviceGeneratedCommandsExtension());
         preferredFeatures.put("multiDrawExtension", snapshot.multiDrawExtension());
@@ -159,7 +159,7 @@ public final class VulkanRuntimeProfile {
         return preferredFeatures;
     }
     
-    private static Map<String, Object> rtReadiness(VulkanImprovementCapabilities.Snapshot snapshot) {
+    private static Map<String, Object> rtReadiness(VulkanCapabilitySnapshot snapshot) {
         Map<String, Object> rtReadiness = new LinkedHashMap<>();
         rtReadiness.put("accelerationStructureExtension", snapshot.accelerationStructureExtension());
         rtReadiness.put("rayQueryExtension", snapshot.rayQueryExtension());
@@ -171,7 +171,7 @@ public final class VulkanRuntimeProfile {
         return rtReadiness;
     }
     
-    private static boolean rtPtReady(VulkanImprovementCapabilities.Snapshot snapshot) {
+    private static boolean rtPtReady(VulkanCapabilitySnapshot snapshot) {
         return snapshot.accelerationStructureExtension() && snapshot.rayQueryExtension() && snapshot.rayTracingPipelineExtension() && snapshot.rayTracingMaintenance1Extension() && snapshot.rayTracingPositionFetchExtension() && snapshot.opacityMicromapExtension() && snapshot.rayTracingInvocationReorderExtension();
     }
     

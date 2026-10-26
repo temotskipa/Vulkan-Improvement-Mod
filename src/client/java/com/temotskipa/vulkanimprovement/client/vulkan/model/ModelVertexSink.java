@@ -1,8 +1,8 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.model;
 
-import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.PoseStack.Pose;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import net.minecraft.client.model.geom.ModelPart;
+import net.minecraft.client.model.geom.ModelPart.Cube;
 import net.minecraft.client.renderer.StagedVertexBuffer;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import org.joml.Vector3f;
@@ -42,14 +42,14 @@ final class ModelVertexSink implements VertexConsumer {
      * Minecraft is compiled into Minecraft's builder here, between the GPU draws before and after
      * it, so the geometry keeps Minecraft's order.
      */
-    void part(List<ModelPart.Cube> cubes, PoseStack.Pose pose, int lightCoords, int overlayCoords, int color) {
+    void part(List<Cube> cubes, Pose pose, int lightCoords, int overlayCoords, int color) {
         ModelCubeStore store = this.owner.store();
         ModelVertexFrame frame = this.owner.frame();
         int part = -1;
         int normals = 0;
         StagedVertexBuffer.Draw draw = null;
         ModelVertexDraw modelDraw = null;
-        for (ModelPart.Cube cube : cubes) {
+        for (Cube cube : cubes) {
             int firstPolygon = store.firstPolygon(cube);
             if (firstPolygon == ModelCubeStore.CPU_ONLY) {
                 cube.compile(pose, cpu(), lightCoords, overlayCoords, color);
@@ -70,11 +70,11 @@ final class ModelVertexSink implements VertexConsumer {
             }
             if (draw == null) {
                 draw = Objects.requireNonNull(this.group).vim$modelDraw(Objects.requireNonNull(this.renderType));
-                modelDraw = Objects.requireNonNull(((ModelVertexDraw.Holder) draw).vim$modelDraw());
+                modelDraw = Objects.requireNonNull(((ModelVertexDrawHolder) draw).vim$modelDraw());
                 this.cpu = null;
             }
             frame.addJob(part, firstPolygon, polygons, Objects.requireNonNull(modelDraw));
-            ((ModelVertexDraw.Holder) draw).vim$addQuadVertices(polygons * ModelGpuRecords.POLYGON_VERTICES);
+            ((ModelVertexDrawHolder) draw).vim$addQuadVertices(polygons * ModelGpuRecords.POLYGON_VERTICES);
         }
     }
     

@@ -10,6 +10,7 @@ public final class RendererCoreServiceInvariantCheck {
     private static final Path RUNTIME = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/runtime/VulkanImprovementRuntime.java");
     private static final Path DIAGNOSTICS = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/runtime/RendererDiagnostics.java");
     private static final Path TERRAIN_RESOURCES = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/DescriptorHeapTerrainResources.java");
+    private static final Path TERRAIN_TEXTURE_BINDING = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/TerrainTextureBinding.java");
     
     private RendererCoreServiceInvariantCheck() {
     }
@@ -21,7 +22,7 @@ public final class RendererCoreServiceInvariantCheck {
         checkCoreOwnsLifecycleAndRendererWideControllers(core);
         checkTerrainRendererDelegatesSharedLifecycle(terrain);
         checkRuntimeAndDiagnosticsUseCoreServices(read(RUNTIME), read(DIAGNOSTICS));
-        checkVisualDiagnosticsCaptureTextureFiltering(read(DIAGNOSTICS), read(TERRAIN_RESOURCES));
+        checkVisualDiagnosticsCaptureTextureFiltering(read(DIAGNOSTICS), read(TERRAIN_RESOURCES), read(TERRAIN_TEXTURE_BINDING));
     }
     
     private static void checkCoreOwnsLifecycleAndRendererWideControllers(String source) {
@@ -45,12 +46,12 @@ public final class RendererCoreServiceInvariantCheck {
         require(diagnosticsSource.contains("report.put(\"rendererServices\", RendererCoreServices.get().asMap())"), "bug reports must expose renderer core service diagnostics separately from terrain diagnostics");
     }
     
-    private static void checkVisualDiagnosticsCaptureTextureFiltering(String diagnosticsSource, String terrainResourceSource) {
+    private static void checkVisualDiagnosticsCaptureTextureFiltering(String diagnosticsSource, String terrainResourceSource, String textureBindingSource) {
         require(diagnosticsSource.contains("report.put(\"videoSettings\", VulkanVideoSettingsCompatibility.snapshot())"), "bug reports must include video settings so blurry captures can be tied to filtering and mipmap options");
         require(terrainResourceSource.contains("map.put(\"textureBindings\", textureBindingMap())"), "terrain descriptor diagnostics must expose captured terrain texture bindings");
-        require(terrainResourceSource.contains("int maxAnisotropy"), "captured terrain texture bindings must record sampler anisotropy");
-        require(terrainResourceSource.contains("map.put(\"maxAnisotropy\", this.maxAnisotropy)"), "terrain texture binding diagnostics must emit sampler anisotropy");
-        require(terrainResourceSource.contains("map.put(\"mipLevels\", this.mipLevels)"), "terrain texture binding diagnostics must emit mip level count");
+        require(textureBindingSource.contains("int maxAnisotropy"), "captured terrain texture bindings must record sampler anisotropy");
+        require(textureBindingSource.contains("map.put(\"maxAnisotropy\", this.maxAnisotropy)"), "terrain texture binding diagnostics must emit sampler anisotropy");
+        require(textureBindingSource.contains("map.put(\"mipLevels\", this.mipLevels)"), "terrain texture binding diagnostics must emit mip level count");
     }
     
     private static String read(Path path) throws IOException {

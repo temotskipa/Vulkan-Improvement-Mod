@@ -4,13 +4,12 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.device.GpuDevice;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.PreferredGraphicsApi;
-import org.jspecify.annotations.Nullable;
 
 public final class VulkanImprovementRuntime {
+    private static volatile VulkanRuntimeBackend backend = new VulkanRuntimeBackend(null, false);
+    
     private VulkanImprovementRuntime() {
     }
-    
-    private static volatile Backend backend = new Backend(null, false);
     
     /**
      * Whether Minecraft renders through Vulkan. Asked once per section layer and frame, so the
@@ -21,15 +20,12 @@ public final class VulkanImprovementRuntime {
         if (device == null) {
             return false;
         }
-        Backend known = backend;
+        VulkanRuntimeBackend known = backend;
         if (known.device() != device) {
-            known = new Backend(device, "Vulkan".equalsIgnoreCase(device.getDeviceInfo().backendName()));
+            known = new VulkanRuntimeBackend(device, "Vulkan".equalsIgnoreCase(device.getDeviceInfo().backendName()));
             backend = known;
         }
         return known.vulkan();
-    }
-    
-    private record Backend(@Nullable GpuDevice device, boolean vulkan) {
     }
     
     public static boolean isModRendererActive() {

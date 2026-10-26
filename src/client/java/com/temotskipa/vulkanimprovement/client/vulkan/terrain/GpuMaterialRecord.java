@@ -1,6 +1,7 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuRecords;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainMaterialRecord;
 
 import java.lang.foreign.MemorySegment;
 import java.util.LinkedHashMap;
@@ -55,7 +56,7 @@ public record GpuMaterialRecord(int materialId, int flags, int blockAtlasWidth, 
     }
     
     /**
-     * Writes the record at the start of a segment, in the order of {@link TerrainGpuRecords.MaterialRecord}.
+     * Writes the record at the start of a segment, in the order of {@link TerrainMaterialRecord}.
      */
     void write(MemorySegment target) {
         int[] values = {this.materialId, this.flags, this.blockAtlasWidth, this.blockAtlasHeight, this.blockAtlasBaseMip, this.blockAtlasMipLevels, this.lightmapWidth, this.lightmapHeight, this.normalTextureIndex, this.specularTextureIndex, this.emissionTextureIndex, this.tintFlags, this.alphaMode, this.renderLayerOrdinal, this.materialDomain, this.reserved0};

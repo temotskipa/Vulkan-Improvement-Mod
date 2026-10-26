@@ -65,17 +65,17 @@ public final class VulkanRequirementInvariantCheck {
     }
     
     private static void checkRequirementGroups() {
-        List<VulkanFeatureRequirements.RequirementGroup> groups = VulkanFeatureRequirements.requirementGroups(true);
+        List<VulkanRequirementGroup> groups = VulkanFeatureRequirements.requirementGroups(true);
         require(groups.size() == 5, "Vulkan requirements must stay split into five plan-aligned groups");
         
-        VulkanFeatureRequirements.RequirementGroup base = group(groups, "base-vulkan-api");
+        VulkanRequirementGroup base = group(groups, "base-vulkan-api");
         require(base.scope() == RequirementScope.BASE_MINECRAFT, "base group must represent Minecraft/Vulkan baseline");
         require(base.startupRequired(), "base Vulkan API group must be startup-required");
         require(base.deviceExtensions().isEmpty(), "base Vulkan API group must not pretend API version is a device extension");
         require(base.deviceFeatures().isEmpty(), "base Vulkan API group must not pretend API version is a feature struct");
         require(VulkanFeatureRequirements.baseCapabilityNames().contains(VulkanFeatureRequirements.VULKAN_14_CAPABILITY), "base capabilities must include Vulkan 1.4 requirement label");
         
-        VulkanFeatureRequirements.RequirementGroup hard = group(groups, "vim-hard-rendering");
+        VulkanRequirementGroup hard = group(groups, "vim-hard-rendering");
         require(hard.scope() == RequirementScope.VIM_HARD, "hard group must represent VIM startup requirements");
         require(hard.startupRequired(), "hard VIM requirements must be startup-required");
         require(hard.deviceExtensions().contains(EXTMeshShader.VK_EXT_MESH_SHADER_EXTENSION_NAME), "hard group must include mesh shader extension");
@@ -83,19 +83,19 @@ public final class VulkanRequirementInvariantCheck {
         require(featureNames(hard.deviceFeatures()).contains("taskShader"), "hard group must include task shader feature");
         require(featureNames(hard.deviceFeatures()).contains("descriptorBuffer"), "hard group must include descriptor buffer feature");
         
-        VulkanFeatureRequirements.RequirementGroup descriptorHeap = group(groups, "descriptor-heap-path");
+        VulkanRequirementGroup descriptorHeap = group(groups, "descriptor-heap-path");
         require(descriptorHeap.scope() == RequirementScope.REQUIRED_IF_ENABLED, "descriptor heap group must be required-if-enabled");
         require(descriptorHeap.startupRequired(), "descriptor heap group must be required in the default path");
         require(descriptorHeap.deviceExtensions().contains(EXTDescriptorHeap.VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME), "descriptor heap group must include descriptor heap extension");
         require(featureNames(descriptorHeap.deviceFeatures()).contains("descriptorHeap"), "descriptor heap group must include descriptor heap feature");
         
-        VulkanFeatureRequirements.RequirementGroup optional = group(groups, "optional-acceleration");
+        VulkanRequirementGroup optional = group(groups, "optional-acceleration");
         require(optional.scope() == RequirementScope.OPTIONAL_ACCELERATION, "optional group must represent acceleration extensions");
         require(!optional.startupRequired(), "optional acceleration group must not be startup-required");
         require(optional.deviceExtensions().contains(EXTDeviceGeneratedCommands.VK_EXT_DEVICE_GENERATED_COMMANDS_EXTENSION_NAME), "optional group must include device-generated commands");
         require(optional.deviceExtensions().contains(EXTMultiDraw.VK_EXT_MULTI_DRAW_EXTENSION_NAME), "optional group must include multi-draw");
         
-        VulkanFeatureRequirements.RequirementGroup rtPt = group(groups, "rt-pt-readiness");
+        VulkanRequirementGroup rtPt = group(groups, "rt-pt-readiness");
         require(rtPt.scope() == RequirementScope.RT_PT_READINESS, "RT/PT group must represent ray-tracing readiness");
         require(!rtPt.startupRequired(), "RT/PT readiness group must not be startup-required");
         require(rtPt.deviceExtensions().contains(KHRAccelerationStructure.VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME), "RT/PT group must include acceleration structures");
@@ -133,7 +133,7 @@ public final class VulkanRequirementInvariantCheck {
         require(defaultFeatures.contains("descriptorHeap"), "default adapter must require descriptor heap feature");
         require(!validationFeatures.contains("descriptorHeap"), "descriptor-buffer-only adapter must not require descriptor heap feature");
         
-        VulkanFeatureRequirements.RequirementGroup descriptorHeap = group(VulkanFeatureRequirements.requirementGroups(false), "descriptor-heap-path");
+        VulkanRequirementGroup descriptorHeap = group(VulkanFeatureRequirements.requirementGroups(false), "descriptor-heap-path");
         require(!descriptorHeap.startupRequired(), "descriptor-buffer-only group state must mark descriptor heap as not startup-required");
         require("disabled by vim.validationDescriptorBufferOnly".equals(descriptorHeap.disabledReason()), "descriptor-buffer-only group state must explain why descriptor heap is disabled");
     }
@@ -148,7 +148,7 @@ public final class VulkanRequirementInvariantCheck {
         }
     }
     
-    private static VulkanFeatureRequirements.RequirementGroup group(List<VulkanFeatureRequirements.RequirementGroup> groups, String id) {
+    private static VulkanRequirementGroup group(List<VulkanRequirementGroup> groups, String id) {
         return groups.stream().filter(group -> group.id().equals(id)).findFirst().orElseThrow(() -> new AssertionError("Missing Vulkan requirement group: " + id));
     }
     

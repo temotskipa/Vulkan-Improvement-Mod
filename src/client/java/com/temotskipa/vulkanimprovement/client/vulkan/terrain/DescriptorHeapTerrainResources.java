@@ -3,28 +3,18 @@ package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 import com.mojang.renderpearl.api.commands.GpuFence;
 import com.mojang.renderpearl.api.textures.GpuSampler;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
-import com.mojang.renderpearl.backend.vulkan.VulkanCommandEncoder;
-import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
-import com.mojang.renderpearl.backend.vulkan.VulkanGpuSampler;
-import com.mojang.renderpearl.backend.vulkan.VulkanGpuTextureView;
-import com.mojang.renderpearl.backend.vulkan.VulkanUtils;
-import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanImprovementCapabilities;
+import com.mojang.renderpearl.backend.vulkan.*;
+import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanCapabilitySnapshot;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.DeviceBuffer;
+import com.temotskipa.vulkanimprovement.client.vulkan.gpu.DeviceBufferPlacement;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldDatabase;
-import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
-import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuRecords;
-import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.*;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.*;
 
 import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.LongAdder;
@@ -37,18 +27,18 @@ public final class DescriptorHeapTerrainResources {
     public static final String CLOUDS_IMAGE = "CloudsSampler";
     public static final String CLOUDS_DEPTH_IMAGE = "CloudsDepthSampler";
     private static final DescriptorHeapTerrainResources INSTANCE = new DescriptorHeapTerrainResources();
-    private final AtomicBoolean terrainDataDirty = new AtomicBoolean();
-    private final Map<String, TextureBinding> textureBindings = new ConcurrentHashMap<>();
-    private final LongAdder descriptorBufferWrites = new LongAdder();
-    private final LongAdder descriptorBufferMissing = new LongAdder();
-    private final LongAdder materialTableWrites = new LongAdder();
-    private final LongAdder materialTableMissing = new LongAdder();
     /**
      * How much page data one frame copies to the GPU at most, so that loading a world spreads its
      * uploads over frames. One page is always copied, however large.
      */
     private static final long PAGE_UPLOAD_BYTES_PER_FRAME = 32L << 20;
     private static final int PAGE_UPLOADS_PER_FRAME = 4096;
+    private final AtomicBoolean terrainDataDirty = new AtomicBoolean();
+    private final Map<String, TerrainTextureBinding> textureBindings = new ConcurrentHashMap<>();
+    private final LongAdder descriptorBufferWrites = new LongAdder();
+    private final LongAdder descriptorBufferMissing = new LongAdder();
+    private final LongAdder materialTableWrites = new LongAdder();
+    private final LongAdder materialTableMissing = new LongAdder();
     private final LongAdder visiblePageListUploads = new LongAdder();
     private final LongAdder gpuDrivenFrameUploads = new LongAdder();
     private final LongAdder visiblePageRecordsUploaded = new LongAdder();
@@ -74,19 +64,19 @@ public final class DescriptorHeapTerrainResources {
     private final LongAdder terrainMeshTaskCommandDrops = new LongAdder();
     private final LongAdder terrainMeshTaskCommandDeferrals = new LongAdder();
     private final LongAdder terrainMeshTaskCommandRingWraps = new LongAdder();
-    private final List<GpuResources> retiredResources = new ArrayList<>();
-    private volatile Layout layout = Layout.unconfigured();
-    private volatile GpuResources resources = GpuResources.empty();
-    private volatile UploadStats uploadStats = UploadStats.empty();
-    private volatile VulkanDevice device;
+    private final List<TerrainGpuResources> retiredResources = new ArrayList<>();
     // The fence of the frame that started each ring's current lap. A ring starts over only once
     // that frame is done on the GPU; Minecraft keeps two frames in flight and a lap is far longer,
     // so that frame has finished long before and nothing waits.
-    private final GpuFence[] ringLaps = new GpuFence[Ring.values().length];
-    private volatile DescriptorWrite lastDescriptorWrite;
-    private volatile VisibleMeshletStats lastVisibleMeshletUpload = VisibleMeshletStats.empty();
+    private final GpuFence[] ringLaps = new GpuFence[TerrainDescriptorRing.values().length];
+    private volatile TerrainDescriptorHeapLayout layout = TerrainDescriptorHeapLayout.unconfigured();
+    private volatile TerrainGpuResources resources = TerrainGpuResources.empty();
+    private volatile TerrainUploadStats uploadStats = TerrainUploadStats.empty();
+    private volatile VulkanDevice device;
+    private volatile TerrainDescriptorWrite lastDescriptorWrite;
+    private volatile TerrainVisibleMeshletStats lastVisibleMeshletUpload = TerrainVisibleMeshletStats.empty();
     private volatile TerrainWorkQueueStats lastWorkQueueUpload = TerrainWorkQueueStats.empty();
-    private volatile MeshTaskCommandStats lastMeshTaskCommandUpload = MeshTaskCommandStats.empty();
+    private volatile TerrainMeshTaskCommandStats lastMeshTaskCommandUpload = TerrainMeshTaskCommandStats.empty();
     private int visibleMeshletCursor;
     private int workQueueCursor;
     private int meshTaskCommandCursor;
@@ -99,14 +89,14 @@ public final class DescriptorHeapTerrainResources {
         return INSTANCE;
     }
     
-    private static void writeSampledImageDescriptor(VulkanDevice device, MemoryStack stack, MemorySegment descriptors, long offset, long size, TextureBinding binding) {
+    private static void writeSampledImageDescriptor(VulkanDevice device, MemoryStack stack, MemorySegment descriptors, long offset, long size, TerrainTextureBinding binding) {
         VkDescriptorImageInfo imageInfo = VkDescriptorImageInfo.calloc(stack).imageView(binding.imageView()).imageLayout(VK10.VK_IMAGE_LAYOUT_GENERAL);
         VkDescriptorGetInfoEXT descriptorInfo = VkDescriptorGetInfoEXT.calloc(stack).sType$Default().type(VK10.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
         descriptorInfo.data().pSampledImage(imageInfo);
         EXTDescriptorBuffer.vkGetDescriptorEXT(device.vkDevice(), descriptorInfo, descriptorSlice(descriptors, offset, size));
     }
     
-    private static void writeSamplerDescriptor(VulkanDevice device, MemoryStack stack, MemorySegment descriptors, long offset, long size, TextureBinding binding) {
+    private static void writeSamplerDescriptor(VulkanDevice device, MemoryStack stack, MemorySegment descriptors, long offset, long size, TerrainTextureBinding binding) {
         VkDescriptorGetInfoEXT descriptorInfo = VkDescriptorGetInfoEXT.calloc(stack).sType$Default().type(VK10.VK_DESCRIPTOR_TYPE_SAMPLER);
         descriptorInfo.data().pSampler(stack.longs(binding.sampler()));
         EXTDescriptorBuffer.vkGetDescriptorEXT(device.vkDevice(), descriptorInfo, descriptorSlice(descriptors, offset, size));
@@ -122,7 +112,7 @@ public final class DescriptorHeapTerrainResources {
         return descriptors.asSlice(offset, size).asByteBuffer();
     }
     
-    private static TextureInfo textureInfo(TextureBinding binding) {
+    private static TextureInfo textureInfo(TerrainTextureBinding binding) {
         if (binding == null || binding.unavailable() || binding.closed()) {
             return TextureInfo.unavailable();
         }
@@ -142,241 +132,12 @@ public final class DescriptorHeapTerrainResources {
         return (int) Math.min(Integer.MAX_VALUE, meshTaskCommands.size() / TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_STRIDE);
     }
     
-    private static int visibleMeshletRecordCount(List<SectionMeshletStore.MeshletRange> ranges) {
+    private static int visibleMeshletRecordCount(List<MeshletRange> ranges) {
         long count = 0L;
-        for (SectionMeshletStore.MeshletRange range : ranges) {
+        for (MeshletRange range : ranges) {
             count += Math.max(range.count(), 0);
         }
         return (int) Math.min(Integer.MAX_VALUE, count);
-    }
-    
-    public synchronized void configure(VulkanDevice device, VulkanImprovementCapabilities.Snapshot capabilities) {
-        this.device = device;
-        retireResources(this.resources);
-        this.layout = Layout.from(capabilities);
-        this.resources = GpuResources.create(device, this.layout);
-        this.resources.clearDebugCounters();
-        this.resources.clearWorkQueueCounters();
-        SectionMeshletStore.resetResidentPages(this.layout.sectionCapacity(), this.layout.meshletCapacity(), this.layout.vertexPayloadBytes(), this.layout.indexPayloadBytes());
-        writeTerrainMaterialRecords(this.resources, null, null);
-        this.terrainDataDirty.set(true);
-        this.visibleMeshletCursor = 0;
-        this.workQueueCursor = 0;
-        this.meshTaskCommandCursor = 0;
-        forgetRingLaps();
-    }
-    
-    public synchronized void shutdownNow() {
-        destroyRetiredResourcesNow();
-        this.resources.destroyNow();
-        this.resources = GpuResources.empty();
-        this.layout = Layout.unconfigured();
-        SectionMeshletStore.resetResidentPages(0, 0, 0L, 0L);
-        this.uploadStats = UploadStats.empty();
-        this.textureBindings.clear();
-        this.descriptorBufferWrites.reset();
-        this.descriptorBufferMissing.reset();
-        this.materialTableWrites.reset();
-        this.materialTableMissing.reset();
-        this.terrainCapacityGrowths.reset();
-        this.terrainUploadDeviceIdleWaits.reset();
-        this.terrainUploadFenceWaits.reset();
-        this.terrainUploadFenceDeferrals.reset();
-        this.terrainUploadFenceFailures.reset();
-        this.visibleMeshletListUploads.reset();
-        this.visibleMeshletRecordsUploaded.reset();
-        this.visibleMeshletRecordsDropped.reset();
-        this.visibleMeshletListDeferrals.reset();
-        this.visibleMeshletRingWraps.reset();
-        this.terrainWorkQueueUploads.reset();
-        this.terrainWorkQueueRecordsUploaded.reset();
-        this.terrainWorkQueueRecordsDropped.reset();
-        this.terrainWorkQueueDeferrals.reset();
-        this.terrainWorkQueueRingWraps.reset();
-        this.terrainMeshTaskCommandUploads.reset();
-        this.terrainMeshTaskCommandReservations.reset();
-        this.terrainMeshTaskCommandDrops.reset();
-        this.terrainMeshTaskCommandDeferrals.reset();
-        this.terrainMeshTaskCommandRingWraps.reset();
-        this.lastVisibleMeshletUpload = VisibleMeshletStats.empty();
-        this.lastWorkQueueUpload = TerrainWorkQueueStats.empty();
-        this.lastMeshTaskCommandUpload = MeshTaskCommandStats.empty();
-        this.visibleMeshletCursor = 0;
-        this.workQueueCursor = 0;
-        this.meshTaskCommandCursor = 0;
-        this.terrainDataDirty.set(false);
-        forgetRingLaps();
-        this.device = null;
-        this.lastCapacityGrowthReason = "";
-    }
-    
-    private void retireResources(GpuResources resources) {
-        if (!resources.allocated()) {
-            return;
-        }
-        resources.close();
-        this.retiredResources.add(resources);
-    }
-    
-    private void destroyRetiredResourcesNow() {
-        for (GpuResources resources : this.retiredResources) {
-            resources.destroyNow();
-        }
-        this.retiredResources.clear();
-    }
-    
-    private synchronized GpuResourceRetirementStats retiredResourceStats() {
-        GpuResourceRetirementStats stats = GpuResourceRetirementStats.empty();
-        for (GpuResources resources : this.retiredResources) {
-            stats = stats.plus(resources.retirementStats());
-        }
-        return stats;
-    }
-    
-    /**
-     * Records an image the terrain fragment stage reads texel by texel, which takes no sampler.
-     */
-    public void recordImageBinding(String name, GpuTextureView view) {
-        if (!(view instanceof VulkanGpuTextureView vulkanView)) {
-            this.textureBindings.put(name, TextureBinding.unavailable(name, view, null));
-            return;
-        }
-        this.textureBindings.put(name, new TextureBinding(name, vulkanView.vkImageView(), 0L, view.getWidth(0), view.getHeight(0), view.baseMipLevel(), view.mipLevels(), 0, "none", "none", "none", view.isClosed(), false));
-    }
-    
-    public boolean imageBindingReady(String name) {
-        TextureBinding binding = this.textureBindings.get(name);
-        return binding != null && !binding.unavailable() && !binding.closed() && binding.imageView() != 0L;
-    }
-    
-    public void recordTextureBinding(String name, GpuTextureView view, GpuSampler sampler) {
-        if (!(view instanceof VulkanGpuTextureView vulkanView) || !(sampler instanceof VulkanGpuSampler vulkanSampler)) {
-            this.textureBindings.put(name, TextureBinding.unavailable(name, view, sampler));
-            return;
-        }
-        
-        // Minecraft binds the same atlas and lightmap for every group of every frame.
-        TextureBinding known = this.textureBindings.get(name);
-        if (known != null && !known.unavailable() && known.imageView() == vulkanView.vkImageView() && known.sampler() == vulkanSampler.vkSampler() && known.closed() == view.isClosed()) {
-            return;
-        }
-        this.textureBindings.put(name, new TextureBinding(name, vulkanView.vkImageView(), vulkanSampler.vkSampler(), view.getWidth(0), view.getHeight(0), view.baseMipLevel(), view.mipLevels(), sampler.getMaxAnisotropy(), String.valueOf(sampler.getMinFilter()), String.valueOf(sampler.getMagFilter()), String.valueOf(sampler.getMaxLod()), view.isClosed(), false));
-        writeTerrainMaterialRecords(this.resources, this.textureBindings.get("Sampler0"), this.textureBindings.get("Sampler2"));
-    }
-    
-    private boolean textureBindingMissing(String name) {
-        TextureBinding binding = this.textureBindings.get(name);
-        return binding == null || binding.unavailable() || binding.closed() || binding.imageView() == 0L || binding.sampler() == 0L;
-    }
-    
-    
-    public long textureImageView(String name) {
-        TextureBinding binding = this.textureBindings.get(name);
-        return binding == null ? 0L : binding.imageView();
-    }
-    
-    public void markTerrainDataDirty() {
-        this.terrainDataDirty.set(true);
-    }
-    
-    /**
-     * Copies the pages of section layers that changed to the GPU. Called while no render pass is
-     * open. A page that did not change is not touched.
-     */
-    public synchronized void uploadDirtyTerrainData() {
-        if (!this.terrainDataDirty.compareAndSet(true, false)) {
-            return;
-        }
-        GpuResources activeResources = this.resources;
-        VulkanDevice activeDevice = this.device;
-        if (activeDevice == null || !activeResources.readyForTerrainMetadata()) {
-            this.terrainDataDirty.set(true);
-            return;
-        }
-        VulkanCommandEncoder encoder = activeDevice.createCommandEncoder();
-        if (TerrainRenderPassAccess.insideRenderPass(encoder)) {
-            this.terrainDataDirty.set(true);
-            return;
-        }
-        
-        long startedNanos = System.nanoTime();
-        List<SectionMeshletStore.PageUpload> uploads = SectionMeshletStore.collectPageUploads(PAGE_UPLOAD_BYTES_PER_FRAME, PAGE_UPLOADS_PER_FRAME);
-        ResidentTerrainPages.TableChanges tableChanges = SectionMeshletStore.takePageTableChanges();
-        if (!uploads.isEmpty() || tableChanges.any()) {
-            waitIdleIfRequested(activeDevice);
-            copyPagesToGpu(activeDevice, encoder, activeResources, uploads, tableChanges);
-            this.pageUploads.add(uploads.size());
-        }
-        ResidentTerrainPages.Stats pages = SectionMeshletStore.residentPageStats();
-        this.uploadStats = this.uploadStats.afterPageUpload(SectionMeshletStore.liveSectionCount(), pages, System.nanoTime() - startedNanos);
-        GpuWorldDatabase.get().recordResidentTerrainUsage(pages.livePages(), pages.vertexBytesUsed() + pages.indexBytesUsed() + pages.meshletsUsed() * TerrainGpuLayout.MESHLET_HEADER_STRIDE + pages.slotsUsed() * TerrainGpuLayout.SECTION_METADATA_STRIDE, activeResources.residentTerrainBytes(), pages.allocationRefusals());
-        if (pages.pendingPages() > 0) {
-            this.terrainDataDirty.set(true);
-        }
-        growTerrainResourcesIfNeeded(SectionMeshletStore.takePageShortage());
-    }
-    
-    private void waitIdleIfRequested(VulkanDevice activeDevice) {
-        if (!TerrainRendererDebugConfig.waitIdleBeforeTerrainUpload()) {
-            return;
-        }
-        VulkanUtils.crashIfFailure(activeDevice, VK12.vkDeviceWaitIdle(activeDevice.vkDevice()), "Failed to wait for Vulkan Improvement terrain upload safety");
-        this.terrainUploadDeviceIdleWaits.increment();
-    }
-    
-    /**
-     * Writes the pages into a staging buffer and records the copies into the GPU buffers, after
-     * clearing the page-table records of pages given back, in the command buffer Minecraft records
-     * the frame into. The copies run in command order, after every draw recorded before them, so a
-     * range that was given back and handed out again is never overwritten while an earlier draw
-     * still reads it.
-     */
-    private void copyPagesToGpu(VulkanDevice activeDevice, VulkanCommandEncoder encoder, GpuResources target, List<SectionMeshletStore.PageUpload> uploads, ResidentTerrainPages.TableChanges tableChanges) {
-        long stagingBytes = 0L;
-        for (SectionMeshletStore.PageUpload upload : uploads) {
-            stagingBytes += upload.bytes();
-        }
-        DeviceBuffer staging = stagingBytes > 0L ? new DeviceBuffer(activeDevice, "VIM Terrain Page Staging", stagingBytes, VK10.VK_BUFFER_USAGE_TRANSFER_SRC_BIT, DeviceBuffer.Placement.HOST) : null;
-        VkBufferCopy.Buffer vertexRegions = VkBufferCopy.calloc(uploads.size());
-        VkBufferCopy.Buffer indexRegions = VkBufferCopy.calloc(uploads.size());
-        VkBufferCopy.Buffer headerRegions = VkBufferCopy.calloc(uploads.size());
-        VkBufferCopy.Buffer recordRegions = VkBufferCopy.calloc(uploads.size());
-        try {
-            if (staging != null) {
-                MemorySegment staged = staging.mapped();
-                long cursor = 0L;
-                for (SectionMeshletStore.PageUpload upload : uploads) {
-                    ResidentTerrainPages.Page page = upload.page();
-                    cursor = stage(staged, cursor, upload.vertices(), vertexRegions, page.vertexOffset());
-                    cursor = stage(staged, cursor, upload.indices(), indexRegions, page.indexOffset());
-                    cursor = stage(staged, cursor, upload.meshletHeaders(), headerRegions, (long) page.firstMeshlet() * TerrainGpuLayout.MESHLET_HEADER_STRIDE);
-                    cursor = stage(staged, cursor, upload.pageRecord(), recordRegions, (long) page.slot() * TerrainGpuLayout.SECTION_METADATA_STRIDE);
-                }
-                staging.flush();
-            }
-            
-            VkCommandBuffer commandBuffer = Objects.requireNonNull(TerrainRenderPassAccess.frameCommandBuffer(encoder), "no render pass is open");
-            try (MemoryStack stack = MemoryStack.stackPush()) {
-                VulkanCommandEncoder.memoryBarrier(commandBuffer, stack);
-                clearPageRecords(commandBuffer, target.sectionMetadata(), tableChanges, stack);
-                if (staging != null) {
-                    copy(commandBuffer, staging, target.meshletVertices(), vertexRegions);
-                    copy(commandBuffer, staging, target.meshletIndices(), indexRegions);
-                    copy(commandBuffer, staging, target.meshletHeaders(), headerRegions);
-                    copy(commandBuffer, staging, target.sectionMetadata(), recordRegions);
-                }
-                VulkanCommandEncoder.memoryBarrier(commandBuffer, stack);
-            }
-            this.pageUploadBytes.add(stagingBytes);
-        } finally {
-            vertexRegions.free();
-            indexRegions.free();
-            headerRegions.free();
-            recordRegions.free();
-            if (staging != null) {
-                staging.close();
-            }
-        }
     }
     
     /**
@@ -385,7 +146,7 @@ public final class DescriptorHeapTerrainResources {
      * Those exclude every slot written below, so only clearing the whole table needs a barrier
      * before the records are written.
      */
-    private static void clearPageRecords(VkCommandBuffer commandBuffer, DeviceBuffer pageTable, ResidentTerrainPages.TableChanges changes, MemoryStack stack) {
+    private static void clearPageRecords(VkCommandBuffer commandBuffer, DeviceBuffer pageTable, ResidentPageTableChanges changes, MemoryStack stack) {
         if (changes.clearAll()) {
             VK10.vkCmdFillBuffer(commandBuffer, pageTable.vkBuffer(), 0L, VK10.VK_WHOLE_SIZE, 0);
             VulkanCommandEncoder.memoryBarrier(commandBuffer, stack);
@@ -419,10 +180,247 @@ public final class DescriptorHeapTerrainResources {
     }
     
     /**
+     * A command that launches some tasks in one row of one layer.
+     */
+    private static void writeMeshTaskCommand(MemorySegment commands, long offset, int taskCount) {
+        commands.set(TerrainGpuRecords.INT, offset + TerrainMeshTaskCommandRecord.GROUP_COUNT_X, taskCount);
+        commands.set(TerrainGpuRecords.INT, offset + TerrainMeshTaskCommandRecord.GROUP_COUNT_Y, 1);
+        commands.set(TerrainGpuRecords.INT, offset + TerrainMeshTaskCommandRecord.GROUP_COUNT_Z, 1);
+    }
+    
+    public synchronized void configure(VulkanDevice device, VulkanCapabilitySnapshot capabilities) {
+        this.device = device;
+        retireResources(this.resources);
+        this.layout = TerrainDescriptorHeapLayout.from(capabilities);
+        this.resources = TerrainGpuResources.create(device, this.layout);
+        this.resources.clearDebugCounters();
+        this.resources.clearWorkQueueCounters();
+        SectionMeshletStore.resetResidentPages(this.layout.sectionCapacity(), this.layout.meshletCapacity(), this.layout.vertexPayloadBytes(), this.layout.indexPayloadBytes());
+        writeTerrainMaterialRecords(this.resources, null, null);
+        this.terrainDataDirty.set(true);
+        this.visibleMeshletCursor = 0;
+        this.workQueueCursor = 0;
+        this.meshTaskCommandCursor = 0;
+        forgetRingLaps();
+    }
+    
+    public synchronized void shutdownNow() {
+        destroyRetiredResourcesNow();
+        this.resources.destroyNow();
+        this.resources = TerrainGpuResources.empty();
+        this.layout = TerrainDescriptorHeapLayout.unconfigured();
+        SectionMeshletStore.resetResidentPages(0, 0, 0L, 0L);
+        this.uploadStats = TerrainUploadStats.empty();
+        this.textureBindings.clear();
+        this.descriptorBufferWrites.reset();
+        this.descriptorBufferMissing.reset();
+        this.materialTableWrites.reset();
+        this.materialTableMissing.reset();
+        this.terrainCapacityGrowths.reset();
+        this.terrainUploadDeviceIdleWaits.reset();
+        this.terrainUploadFenceWaits.reset();
+        this.terrainUploadFenceDeferrals.reset();
+        this.terrainUploadFenceFailures.reset();
+        this.visibleMeshletListUploads.reset();
+        this.visibleMeshletRecordsUploaded.reset();
+        this.visibleMeshletRecordsDropped.reset();
+        this.visibleMeshletListDeferrals.reset();
+        this.visibleMeshletRingWraps.reset();
+        this.terrainWorkQueueUploads.reset();
+        this.terrainWorkQueueRecordsUploaded.reset();
+        this.terrainWorkQueueRecordsDropped.reset();
+        this.terrainWorkQueueDeferrals.reset();
+        this.terrainWorkQueueRingWraps.reset();
+        this.terrainMeshTaskCommandUploads.reset();
+        this.terrainMeshTaskCommandReservations.reset();
+        this.terrainMeshTaskCommandDrops.reset();
+        this.terrainMeshTaskCommandDeferrals.reset();
+        this.terrainMeshTaskCommandRingWraps.reset();
+        this.lastVisibleMeshletUpload = TerrainVisibleMeshletStats.empty();
+        this.lastWorkQueueUpload = TerrainWorkQueueStats.empty();
+        this.lastMeshTaskCommandUpload = TerrainMeshTaskCommandStats.empty();
+        this.visibleMeshletCursor = 0;
+        this.workQueueCursor = 0;
+        this.meshTaskCommandCursor = 0;
+        this.terrainDataDirty.set(false);
+        forgetRingLaps();
+        this.device = null;
+        this.lastCapacityGrowthReason = "";
+    }
+    
+    private void retireResources(TerrainGpuResources resources) {
+        if (!resources.allocated()) {
+            return;
+        }
+        resources.close();
+        this.retiredResources.add(resources);
+    }
+    
+    private void destroyRetiredResourcesNow() {
+        for (TerrainGpuResources resources : this.retiredResources) {
+            resources.destroyNow();
+        }
+        this.retiredResources.clear();
+    }
+    
+    private synchronized GpuResourceRetirementStats retiredResourceStats() {
+        GpuResourceRetirementStats stats = GpuResourceRetirementStats.empty();
+        for (TerrainGpuResources resources : this.retiredResources) {
+            stats = stats.plus(resources.retirementStats());
+        }
+        return stats;
+    }
+    
+    /**
+     * Records an image the terrain fragment stage reads texel by texel, which takes no sampler.
+     */
+    public void recordImageBinding(String name, GpuTextureView view) {
+        if (!(view instanceof VulkanGpuTextureView vulkanView)) {
+            this.textureBindings.put(name, TerrainTextureBinding.unavailable(name, view, null));
+            return;
+        }
+        this.textureBindings.put(name, new TerrainTextureBinding(name, vulkanView.vkImageView(), 0L, view.getWidth(0), view.getHeight(0), view.baseMipLevel(), view.mipLevels(), 0, "none", "none", "none", view.isClosed(), false));
+    }
+    
+    public boolean imageBindingReady(String name) {
+        TerrainTextureBinding binding = this.textureBindings.get(name);
+        return binding != null && !binding.unavailable() && !binding.closed() && binding.imageView() != 0L;
+    }
+    
+    public void recordTextureBinding(String name, GpuTextureView view, GpuSampler sampler) {
+        if (!(view instanceof VulkanGpuTextureView vulkanView) || !(sampler instanceof VulkanGpuSampler vulkanSampler)) {
+            this.textureBindings.put(name, TerrainTextureBinding.unavailable(name, view, sampler));
+            return;
+        }
+        
+        // Minecraft binds the same atlas and lightmap for every group of every frame.
+        TerrainTextureBinding known = this.textureBindings.get(name);
+        if (known != null && !known.unavailable() && known.imageView() == vulkanView.vkImageView() && known.sampler() == vulkanSampler.vkSampler() && known.closed() == view.isClosed()) {
+            return;
+        }
+        this.textureBindings.put(name, new TerrainTextureBinding(name, vulkanView.vkImageView(), vulkanSampler.vkSampler(), view.getWidth(0), view.getHeight(0), view.baseMipLevel(), view.mipLevels(), sampler.getMaxAnisotropy(), String.valueOf(sampler.getMinFilter()), String.valueOf(sampler.getMagFilter()), String.valueOf(sampler.getMaxLod()), view.isClosed(), false));
+        writeTerrainMaterialRecords(this.resources, this.textureBindings.get("Sampler0"), this.textureBindings.get("Sampler2"));
+    }
+    
+    private boolean textureBindingMissing(String name) {
+        TerrainTextureBinding binding = this.textureBindings.get(name);
+        return binding == null || binding.unavailable() || binding.closed() || binding.imageView() == 0L || binding.sampler() == 0L;
+    }
+    
+    public long textureImageView(String name) {
+        TerrainTextureBinding binding = this.textureBindings.get(name);
+        return binding == null ? 0L : binding.imageView();
+    }
+    
+    public void markTerrainDataDirty() {
+        this.terrainDataDirty.set(true);
+    }
+    
+    /**
+     * Copies the pages of section layers that changed to the GPU. Called while no render pass is
+     * open. A page that did not change is not touched.
+     */
+    public synchronized void uploadDirtyTerrainData() {
+        if (!this.terrainDataDirty.compareAndSet(true, false)) {
+            return;
+        }
+        TerrainGpuResources activeResources = this.resources;
+        VulkanDevice activeDevice = this.device;
+        if (activeDevice == null || !activeResources.readyForTerrainMetadata()) {
+            this.terrainDataDirty.set(true);
+            return;
+        }
+        VulkanCommandEncoder encoder = activeDevice.createCommandEncoder();
+        if (TerrainRenderPassAccess.insideRenderPass(encoder)) {
+            this.terrainDataDirty.set(true);
+            return;
+        }
+        
+        long startedNanos = System.nanoTime();
+        List<MeshletPageUpload> uploads = SectionMeshletStore.collectPageUploads(PAGE_UPLOAD_BYTES_PER_FRAME, PAGE_UPLOADS_PER_FRAME);
+        ResidentPageTableChanges tableChanges = SectionMeshletStore.takePageTableChanges();
+        if (!uploads.isEmpty() || tableChanges.any()) {
+            waitIdleIfRequested(activeDevice);
+            copyPagesToGpu(activeDevice, encoder, activeResources, uploads, tableChanges);
+            this.pageUploads.add(uploads.size());
+        }
+        ResidentPageStats pages = SectionMeshletStore.residentPageStats();
+        this.uploadStats = this.uploadStats.afterPageUpload(SectionMeshletStore.liveSectionCount(), pages, System.nanoTime() - startedNanos);
+        GpuWorldDatabase.get().recordResidentTerrainUsage(pages.livePages(), pages.vertexBytesUsed() + pages.indexBytesUsed() + pages.meshletsUsed() * TerrainGpuLayout.MESHLET_HEADER_STRIDE + pages.slotsUsed() * TerrainGpuLayout.SECTION_METADATA_STRIDE, activeResources.residentTerrainBytes(), pages.allocationRefusals());
+        if (pages.pendingPages() > 0) {
+            this.terrainDataDirty.set(true);
+        }
+        growTerrainResourcesIfNeeded(SectionMeshletStore.takePageShortage());
+    }
+    
+    private void waitIdleIfRequested(VulkanDevice activeDevice) {
+        if (!TerrainRendererDebugConfig.waitIdleBeforeTerrainUpload()) {
+            return;
+        }
+        VulkanUtils.crashIfFailure(activeDevice, VK12.vkDeviceWaitIdle(activeDevice.vkDevice()), "Failed to wait for Vulkan Improvement terrain upload safety");
+        this.terrainUploadDeviceIdleWaits.increment();
+    }
+    
+    /**
+     * Writes the pages into a staging buffer and records the copies into the GPU buffers, after
+     * clearing the page-table records of pages given back, in the command buffer Minecraft records
+     * the frame into. The copies run in command order, after every draw recorded before them, so a
+     * range that was given back and handed out again is never overwritten while an earlier draw
+     * still reads it.
+     */
+    private void copyPagesToGpu(VulkanDevice activeDevice, VulkanCommandEncoder encoder, TerrainGpuResources target, List<MeshletPageUpload> uploads, ResidentPageTableChanges tableChanges) {
+        long stagingBytes = 0L;
+        for (MeshletPageUpload upload : uploads) {
+            stagingBytes += upload.bytes();
+        }
+        DeviceBuffer staging = stagingBytes > 0L ? new DeviceBuffer(activeDevice, "VIM Terrain Page Staging", stagingBytes, VK10.VK_BUFFER_USAGE_TRANSFER_SRC_BIT, DeviceBufferPlacement.HOST) : null;
+        VkBufferCopy.Buffer vertexRegions = VkBufferCopy.calloc(uploads.size());
+        VkBufferCopy.Buffer indexRegions = VkBufferCopy.calloc(uploads.size());
+        VkBufferCopy.Buffer headerRegions = VkBufferCopy.calloc(uploads.size());
+        VkBufferCopy.Buffer recordRegions = VkBufferCopy.calloc(uploads.size());
+        try {
+            if (staging != null) {
+                MemorySegment staged = staging.mapped();
+                long cursor = 0L;
+                for (MeshletPageUpload upload : uploads) {
+                    ResidentTerrainPage page = upload.page();
+                    cursor = stage(staged, cursor, upload.vertices(), vertexRegions, page.vertexOffset());
+                    cursor = stage(staged, cursor, upload.indices(), indexRegions, page.indexOffset());
+                    cursor = stage(staged, cursor, upload.meshletHeaders(), headerRegions, (long) page.firstMeshlet() * TerrainGpuLayout.MESHLET_HEADER_STRIDE);
+                    cursor = stage(staged, cursor, upload.pageRecord(), recordRegions, (long) page.slot() * TerrainGpuLayout.SECTION_METADATA_STRIDE);
+                }
+                staging.flush();
+            }
+            
+            VkCommandBuffer commandBuffer = Objects.requireNonNull(TerrainRenderPassAccess.frameCommandBuffer(encoder), "no render pass is open");
+            try (MemoryStack stack = MemoryStack.stackPush()) {
+                VulkanCommandEncoder.memoryBarrier(commandBuffer, stack);
+                clearPageRecords(commandBuffer, target.sectionMetadata(), tableChanges, stack);
+                if (staging != null) {
+                    copy(commandBuffer, staging, target.meshletVertices(), vertexRegions);
+                    copy(commandBuffer, staging, target.meshletIndices(), indexRegions);
+                    copy(commandBuffer, staging, target.meshletHeaders(), headerRegions);
+                    copy(commandBuffer, staging, target.sectionMetadata(), recordRegions);
+                }
+                VulkanCommandEncoder.memoryBarrier(commandBuffer, stack);
+            }
+            this.pageUploadBytes.add(stagingBytes);
+        } finally {
+            vertexRegions.free();
+            indexRegions.free();
+            headerRegions.free();
+            recordRegions.free();
+            if (staging != null) {
+                staging.close();
+            }
+        }
+    }
+    
+    /**
      * Whether a ring may not start over yet: the frame that began its current lap has not finished
      * on the GPU, after a short wait for it.
      */
-    private boolean ringLapUnfinished(Ring ring) {
+    private boolean ringLapUnfinished(TerrainDescriptorRing ring) {
         GpuFence fence = this.ringLaps[ring.ordinal()];
         if (fence == null) {
             return false;
@@ -446,7 +444,7 @@ public final class DescriptorHeapTerrainResources {
     /**
      * Called when a ring hands out its first record again: the frame being recorded starts a lap.
      */
-    private void beginRingLap(Ring ring) {
+    private void beginRingLap(TerrainDescriptorRing ring) {
         VulkanDevice activeDevice = this.device;
         GpuFence previous = this.ringLaps[ring.ordinal()];
         if (previous != null) {
@@ -464,15 +462,11 @@ public final class DescriptorHeapTerrainResources {
         }
     }
     
-    private enum Ring {
-        VISIBLE, WORK_QUEUE, COMMANDS
-    }
-    
     /**
      * Replaces the terrain buffers by larger ones when a page did not fit. Every page is then
      * uploaded again, from the copies the section store keeps.
      */
-    private void growTerrainResourcesIfNeeded(ResidentTerrainPages.Shortage shortage) {
+    private void growTerrainResourcesIfNeeded(ResidentPageShortage shortage) {
         if (!shortage.any()) {
             return;
         }
@@ -481,7 +475,7 @@ public final class DescriptorHeapTerrainResources {
             this.terrainDataDirty.set(true);
             return;
         }
-        Layout grownLayout = this.layout.growFor(shortage);
+        TerrainDescriptorHeapLayout grownLayout = this.layout.growFor(shortage);
         if (grownLayout.equals(this.layout)) {
             this.terrainDataDirty.set(true);
             return;
@@ -490,10 +484,10 @@ public final class DescriptorHeapTerrainResources {
         this.lastCapacityGrowthReason = "short of pages=" + shortage.pages() + ", meshlets=" + shortage.meshlets() + ", vertexBytes=" + shortage.vertexBytes() + ", indexBytes=" + shortage.indexBytes();
         retireResources(this.resources);
         this.layout = grownLayout;
-        this.resources = GpuResources.create(activeDevice, grownLayout);
+        this.resources = TerrainGpuResources.create(activeDevice, grownLayout);
         this.resources.clearDebugCounters();
         this.resources.clearWorkQueueCounters();
-        this.uploadStats = UploadStats.empty();
+        this.uploadStats = TerrainUploadStats.empty();
         SectionMeshletStore.resetResidentPages(grownLayout.sectionCapacity(), grownLayout.meshletCapacity(), grownLayout.vertexPayloadBytes(), grownLayout.indexPayloadBytes());
         this.visibleMeshletCursor = 0;
         this.workQueueCursor = 0;
@@ -573,9 +567,9 @@ public final class DescriptorHeapTerrainResources {
      * @param improvedFog whether the draw reads the sky and cloud images, which then have to be
      *                    known; otherwise their descriptors are left as they are and not read
      */
-    public boolean writeTerrainTextureDescriptors(VulkanDevice device, TextureDescriptorLayout textureLayout, boolean improvedFog) {
-        GpuResources activeResources = this.resources;
-        if (!this.layout.descriptorBufferEnabled || !activeResources.readyForDescriptorBuffer() || textureBindingMissing("Sampler0") || textureBindingMissing("Sampler2")) {
+    public boolean writeTerrainTextureDescriptors(VulkanDevice device, TerrainTextureDescriptorLayout textureLayout, boolean improvedFog) {
+        TerrainGpuResources activeResources = this.resources;
+        if (!this.layout.descriptorBufferEnabled() || !activeResources.readyForDescriptorBuffer() || textureBindingMissing("Sampler0") || textureBindingMissing("Sampler2")) {
             this.descriptorBufferMissing.increment();
             return false;
         }
@@ -584,10 +578,10 @@ public final class DescriptorHeapTerrainResources {
             return false;
         }
         
-        TextureBinding blockAtlas = this.textureBindings.get("Sampler0");
-        TextureBinding lightmap = this.textureBindings.get("Sampler2");
+        TerrainTextureBinding blockAtlas = this.textureBindings.get("Sampler0");
+        TerrainTextureBinding lightmap = this.textureBindings.get("Sampler2");
         // The descriptors stay in the buffer; they are written again only when what they describe changes.
-        DescriptorWrite write = new DescriptorWrite(activeResources, textureLayout, blockAtlas.imageView(), blockAtlas.sampler(), lightmap.imageView(), lightmap.sampler(), improvedFog, improvedFog ? textureImageView(SKY_IMAGE) : 0L, improvedFog ? textureImageView(CLOUDS_IMAGE) : 0L, improvedFog ? textureImageView(CLOUDS_DEPTH_IMAGE) : 0L);
+        TerrainDescriptorWrite write = new TerrainDescriptorWrite(activeResources, textureLayout, blockAtlas.imageView(), blockAtlas.sampler(), lightmap.imageView(), lightmap.sampler(), improvedFog, improvedFog ? textureImageView(SKY_IMAGE) : 0L, improvedFog ? textureImageView(CLOUDS_IMAGE) : 0L, improvedFog ? textureImageView(CLOUDS_DEPTH_IMAGE) : 0L);
         if (write.equals(this.lastDescriptorWrite)) {
             return true;
         }
@@ -610,10 +604,7 @@ public final class DescriptorHeapTerrainResources {
         return true;
     }
     
-    private record DescriptorWrite(GpuResources resources, TextureDescriptorLayout layout, long atlasView, long atlasSampler, long lightmapView, long lightmapSampler, boolean improvedFog, long skyView, long cloudsView, long cloudsDepthView) {
-    }
-    
-    private void writeTerrainMaterialRecords(GpuResources activeResources, TextureBinding blockAtlas, TextureBinding lightmap) {
+    private void writeTerrainMaterialRecords(TerrainGpuResources activeResources, TerrainTextureBinding blockAtlas, TerrainTextureBinding lightmap) {
         DeviceBuffer materialTable = activeResources.materialTable();
         if (materialTable == null || !materialTable.hostVisible() || materialTable.size() < TerrainGpuLayout.MATERIAL_RECORD_STRIDE) {
             this.materialTableMissing.increment();
@@ -650,31 +641,31 @@ public final class DescriptorHeapTerrainResources {
      * reserves as much room again behind them for the list of those the GPU keeps. This short list
      * is all a frame uploads for a layer.
      */
-    public synchronized VisiblePageUpload writeVisiblePageList(SectionMeshletStore.PageList pages, int from, int to) {
+    public synchronized TerrainVisiblePageUpload writeVisiblePageList(MeshletPageList pages, int from, int to) {
         DeviceBuffer ring = this.resources.visibleMeshlets();
         int count = 0;
         for (int page = from; page < to; page++) {
             count += pages.tasks(page);
         }
         if (count <= 0 || ring == null || ring.deviceAddress() == 0L || !ring.hostVisible()) {
-            return VisiblePageUpload.unavailable();
+            return TerrainVisiblePageUpload.unavailable();
         }
         TerrainVisibleMeshletRing visibleRing = new TerrainVisibleMeshletRing(visibleMeshletRecordCapacity(ring), this.visibleMeshletCursor);
-        TerrainVisibleMeshletRing.Allocation allocation = visibleRing.allocate(count * 2, false);
+        VisibleMeshletAllocation allocation = visibleRing.allocate(count * 2, false);
         if (allocation.wrapBlocked()) {
-            if (ringLapUnfinished(Ring.VISIBLE)) {
+            if (ringLapUnfinished(TerrainDescriptorRing.VISIBLE)) {
                 this.visibleMeshletListDeferrals.increment();
-                return VisiblePageUpload.unavailable();
+                return TerrainVisiblePageUpload.unavailable();
             }
             allocation = visibleRing.allocate(count * 2, true);
         }
         if (!allocation.ready()) {
             this.visibleMeshletRecordsDropped.add(count);
-            return VisiblePageUpload.unavailable();
+            return TerrainVisiblePageUpload.unavailable();
         }
         this.visibleMeshletCursor = allocation.nextOffset();
         if (allocation.offset() == 0) {
-            beginRingLap(Ring.VISIBLE);
+            beginRingLap(TerrainDescriptorRing.VISIBLE);
         }
         if (allocation.wrapped()) {
             this.visibleMeshletRingWraps.increment();
@@ -685,14 +676,14 @@ public final class DescriptorHeapTerrainResources {
             int slot = pages.slot(page);
             float visibility = Math.clamp(pages.visibility(page), 0.0F, 1.0F);
             for (int task = 0, tasks = pages.tasks(page); task < tasks; task++, record += TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE) {
-                records.set(TerrainGpuRecords.INT, record + TerrainGpuRecords.VisibleRecord.MESHLET_INDEX, slot | task << TerrainGpuLayout.TASK_RECORD_PAGE_BITS);
-                records.set(TerrainGpuRecords.FLOAT, record + TerrainGpuRecords.VisibleRecord.VISIBILITY, visibility);
+                records.set(TerrainGpuRecords.INT, record + TerrainVisibleRecord.MESHLET_INDEX, slot | task << TerrainGpuLayout.TASK_RECORD_PAGE_BITS);
+                records.set(TerrainGpuRecords.FLOAT, record + TerrainVisibleRecord.VISIBILITY, visibility);
             }
         }
         ring.flush((long) allocation.offset() * TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE, (long) count * TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE);
         this.visiblePageListUploads.increment();
         this.visiblePageRecordsUploaded.add(count);
-        return new VisiblePageUpload(allocation.offset(), allocation.offset() + count, count, ring.deviceAddress(), true);
+        return new TerrainVisiblePageUpload(allocation.offset(), allocation.offset() + count, count, ring.deviceAddress(), true);
     }
     
     /**
@@ -701,10 +692,10 @@ public final class DescriptorHeapTerrainResources {
      * room for each layer's task records, as many as all the layer's pages would launch, which the
      * pass writes. A frame uploads a few kilobytes this way, however much terrain is in view.
      */
-    synchronized GpuDrivenFrame writeGpuDrivenFrame(VisibleSectionGrid sections, int[] layerTasks) {
+    synchronized TerrainGpuDrivenFrame writeGpuDrivenFrame(VisibleSectionGrid sections, int[] layerTasks) {
         DeviceBuffer ring = this.resources.visibleMeshlets();
         if (ring == null || ring.deviceAddress() == 0L || !ring.hostVisible()) {
-            return GpuDrivenFrame.unavailable();
+            return TerrainGpuDrivenFrame.unavailable();
         }
         int written = TerrainGpuLayout.SECTION_PAGES_COUNTER_RECORDS + sections.wordCount();
         long count = written;
@@ -712,24 +703,24 @@ public final class DescriptorHeapTerrainResources {
             count += tasks;
         }
         if (count > Integer.MAX_VALUE) {
-            return GpuDrivenFrame.unavailable();
+            return TerrainGpuDrivenFrame.unavailable();
         }
         TerrainVisibleMeshletRing visibleRing = new TerrainVisibleMeshletRing(visibleMeshletRecordCapacity(ring), this.visibleMeshletCursor);
-        TerrainVisibleMeshletRing.Allocation allocation = visibleRing.allocate((int) count, false);
+        VisibleMeshletAllocation allocation = visibleRing.allocate((int) count, false);
         if (allocation.wrapBlocked()) {
-            if (ringLapUnfinished(Ring.VISIBLE)) {
+            if (ringLapUnfinished(TerrainDescriptorRing.VISIBLE)) {
                 this.visibleMeshletListDeferrals.increment();
-                return GpuDrivenFrame.unavailable();
+                return TerrainGpuDrivenFrame.unavailable();
             }
             allocation = visibleRing.allocate((int) count, true);
         }
         if (!allocation.ready()) {
             this.visibleMeshletRecordsDropped.add(count);
-            return GpuDrivenFrame.unavailable();
+            return TerrainGpuDrivenFrame.unavailable();
         }
         this.visibleMeshletCursor = allocation.nextOffset();
         if (allocation.offset() == 0) {
-            beginRingLap(Ring.VISIBLE);
+            beginRingLap(TerrainDescriptorRing.VISIBLE);
         }
         if (allocation.wrapped()) {
             this.visibleMeshletRingWraps.increment();
@@ -741,68 +732,68 @@ public final class DescriptorHeapTerrainResources {
         MemorySegment.copy(sections.words(), 0, frame, TerrainGpuRecords.LONG, counterBytes, sections.wordCount());
         ring.flush(offsetBytes, frame.byteSize());
         this.gpuDrivenFrameUploads.increment();
-        return new GpuDrivenFrame(ring.deviceAddress(), allocation.offset(), allocation.offset() + written, true);
+        return new TerrainGpuDrivenFrame(ring.deviceAddress(), allocation.offset(), allocation.offset() + written, true);
     }
     
-    public synchronized VisibleMeshletUpload writeVisibleMeshletList(List<SectionMeshletStore.MeshletRange> ranges) {
+    public synchronized TerrainVisibleMeshletUpload writeVisibleMeshletList(List<MeshletRange> ranges) {
         int requiredRecords = visibleMeshletRecordCount(ranges);
         if (requiredRecords <= 0) {
-            TerrainVisibleMeshletRing.Allocation allocation = new TerrainVisibleMeshletRing(visibleMeshletRecordCapacity(), this.visibleMeshletCursor).allocate(requiredRecords, true);
-            this.lastVisibleMeshletUpload = VisibleMeshletStats.fromAllocation(0, 0, allocation);
-            return VisibleMeshletUpload.unavailable(0);
+            VisibleMeshletAllocation allocation = new TerrainVisibleMeshletRing(visibleMeshletRecordCapacity(), this.visibleMeshletCursor).allocate(requiredRecords, true);
+            this.lastVisibleMeshletUpload = TerrainVisibleMeshletStats.fromAllocation(0, 0, allocation);
+            return TerrainVisibleMeshletUpload.unavailable(0);
         }
         
-        GpuResources activeResources = this.resources;
+        TerrainGpuResources activeResources = this.resources;
         DeviceBuffer visibleMeshlets = activeResources.visibleMeshlets();
         if (visibleMeshlets == null || visibleMeshlets.deviceAddress() == 0L || !visibleMeshlets.hostVisible()) {
-            TerrainVisibleMeshletRing.Allocation allocation = new TerrainVisibleMeshletRing(0, 0).allocate(requiredRecords, true);
-            this.lastVisibleMeshletUpload = VisibleMeshletStats.fromAllocation(0, requiredRecords, allocation);
+            VisibleMeshletAllocation allocation = new TerrainVisibleMeshletRing(0, 0).allocate(requiredRecords, true);
+            this.lastVisibleMeshletUpload = TerrainVisibleMeshletStats.fromAllocation(0, requiredRecords, allocation);
             this.visibleMeshletRecordsDropped.add(requiredRecords);
-            return VisibleMeshletUpload.unavailable(requiredRecords);
+            return TerrainVisibleMeshletUpload.unavailable(requiredRecords);
         }
         
         int capacity = visibleMeshletRecordCapacity(visibleMeshlets);
         TerrainVisibleMeshletRing ring = new TerrainVisibleMeshletRing(capacity, this.visibleMeshletCursor);
-        TerrainVisibleMeshletRing.Allocation allocation = ring.allocate(requiredRecords, false);
+        VisibleMeshletAllocation allocation = ring.allocate(requiredRecords, false);
         if (allocation.wrapBlocked()) {
-            if (ringLapUnfinished(Ring.VISIBLE)) {
+            if (ringLapUnfinished(TerrainDescriptorRing.VISIBLE)) {
                 this.visibleMeshletListDeferrals.increment();
-                this.lastVisibleMeshletUpload = VisibleMeshletStats.fromAllocation(0, 0, allocation);
-                return VisibleMeshletUpload.unavailable(requiredRecords);
+                this.lastVisibleMeshletUpload = TerrainVisibleMeshletStats.fromAllocation(0, 0, allocation);
+                return TerrainVisibleMeshletUpload.unavailable(requiredRecords);
             }
             allocation = ring.allocate(requiredRecords, true);
         }
         if (!allocation.ready()) {
-            this.lastVisibleMeshletUpload = VisibleMeshletStats.fromAllocation(0, requiredRecords, allocation);
+            this.lastVisibleMeshletUpload = TerrainVisibleMeshletStats.fromAllocation(0, requiredRecords, allocation);
             this.visibleMeshletRecordsDropped.add(requiredRecords);
-            return VisibleMeshletUpload.unavailable(requiredRecords);
+            return TerrainVisibleMeshletUpload.unavailable(requiredRecords);
         }
         
         int firstRecord = allocation.offset();
         this.visibleMeshletCursor = allocation.nextOffset();
         if (firstRecord == 0) {
-            beginRingLap(Ring.VISIBLE);
+            beginRingLap(TerrainDescriptorRing.VISIBLE);
         }
         if (allocation.wrapped()) {
             this.visibleMeshletRingWraps.increment();
         }
         MemorySegment visibleRecords = visibleMeshlets.mapped();
         long record = (long) firstRecord * TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE;
-        for (SectionMeshletStore.MeshletRange range : ranges) {
+        for (MeshletRange range : ranges) {
             float visibility = Math.clamp(range.visibility(), 0.0F, 1.0F);
             for (int i = 0; i < range.count(); i++, record += TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE) {
-                visibleRecords.set(TerrainGpuRecords.INT, record + TerrainGpuRecords.VisibleRecord.MESHLET_INDEX, range.offset() + i);
-                visibleRecords.set(TerrainGpuRecords.FLOAT, record + TerrainGpuRecords.VisibleRecord.VISIBILITY, visibility);
+                visibleRecords.set(TerrainGpuRecords.INT, record + TerrainVisibleRecord.MESHLET_INDEX, range.offset() + i);
+                visibleRecords.set(TerrainGpuRecords.FLOAT, record + TerrainVisibleRecord.VISIBILITY, visibility);
             }
         }
         visibleMeshlets.flush();
         this.visibleMeshletListUploads.increment();
         this.visibleMeshletRecordsUploaded.add(requiredRecords);
-        this.lastVisibleMeshletUpload = VisibleMeshletStats.fromAllocation(requiredRecords, 0, allocation);
-        return new VisibleMeshletUpload(firstRecord, requiredRecords, visibleMeshlets.deviceAddress(), 0, true);
+        this.lastVisibleMeshletUpload = TerrainVisibleMeshletStats.fromAllocation(requiredRecords, 0, allocation);
+        return new TerrainVisibleMeshletUpload(firstRecord, requiredRecords, visibleMeshlets.deviceAddress(), 0, true);
     }
     
-    public synchronized TerrainWorkQueueUpload writeVisibleWorkQueue(List<SectionMeshletStore.MeshletRange> ranges, int layerOrdinal) {
+    public synchronized TerrainWorkQueueUpload writeVisibleWorkQueue(List<MeshletRange> ranges, int layerOrdinal) {
         int requiredRecords = visibleMeshletRecordCount(ranges);
         if (requiredRecords <= 0) {
             this.lastWorkQueueUpload = TerrainWorkQueueStats.unavailable(0, workQueueRecordCapacity(), this.workQueueCursor, "no visible terrain work queue records requested", false);
@@ -825,7 +816,7 @@ public final class DescriptorHeapTerrainResources {
         
         boolean wrapped = false;
         if (this.workQueueCursor + requiredRecords > capacity) {
-            if (ringLapUnfinished(Ring.WORK_QUEUE)) {
+            if (ringLapUnfinished(TerrainDescriptorRing.WORK_QUEUE)) {
                 this.terrainWorkQueueDeferrals.increment();
                 this.lastWorkQueueUpload = TerrainWorkQueueStats.unavailable(requiredRecords, capacity, this.workQueueCursor, "visible terrain work queue wrap requires the frame that began the lap to finish", true);
                 return TerrainWorkQueueUpload.unavailable(requiredRecords);
@@ -836,19 +827,19 @@ public final class DescriptorHeapTerrainResources {
         
         int firstRecord = this.workQueueCursor;
         if (firstRecord == 0) {
-            beginRingLap(Ring.WORK_QUEUE);
+            beginRingLap(TerrainDescriptorRing.WORK_QUEUE);
         }
         this.workQueueCursor += requiredRecords;
         MemorySegment queue = workQueue.mapped();
         queue.asSlice(0L, TerrainGpuLayout.TERRAIN_WORK_QUEUE_COUNTER_BYTES).fill((byte) 0);
         queue.set(TerrainGpuRecords.INT, 0L, requiredRecords);
         long record = TerrainWorkQueueLayout.recordOffset(firstRecord);
-        for (SectionMeshletStore.MeshletRange range : ranges) {
+        for (MeshletRange range : ranges) {
             for (int i = 0; i < range.count(); i++, record += TerrainGpuLayout.TERRAIN_WORK_QUEUE_RECORD_STRIDE) {
-                queue.set(TerrainGpuRecords.INT, record + TerrainGpuRecords.WorkQueueRecord.MESHLET_INDEX, range.offset() + i);
-                queue.set(TerrainGpuRecords.INT, record + TerrainGpuRecords.WorkQueueRecord.LAYER_ORDINAL, layerOrdinal);
-                queue.set(TerrainGpuRecords.INT, record + TerrainGpuRecords.WorkQueueRecord.LOD_LEVEL, 0);
-                queue.set(TerrainGpuRecords.INT, record + TerrainGpuRecords.WorkQueueRecord.FLAGS, 0);
+                queue.set(TerrainGpuRecords.INT, record + TerrainWorkQueueRecord.MESHLET_INDEX, range.offset() + i);
+                queue.set(TerrainGpuRecords.INT, record + TerrainWorkQueueRecord.LAYER_ORDINAL, layerOrdinal);
+                queue.set(TerrainGpuRecords.INT, record + TerrainWorkQueueRecord.LOD_LEVEL, 0);
+                queue.set(TerrainGpuRecords.INT, record + TerrainWorkQueueRecord.FLAGS, 0);
             }
         }
         workQueue.flush();
@@ -890,40 +881,31 @@ public final class DescriptorHeapTerrainResources {
         return upload;
     }
     
-    /**
-     * A command that launches some tasks in one row of one layer.
-     */
-    private static void writeMeshTaskCommand(MemorySegment commands, long offset, int taskCount) {
-        commands.set(TerrainGpuRecords.INT, offset + TerrainGpuRecords.MeshTaskCommand.GROUP_COUNT_X, taskCount);
-        commands.set(TerrainGpuRecords.INT, offset + TerrainGpuRecords.MeshTaskCommand.GROUP_COUNT_Y, 1);
-        commands.set(TerrainGpuRecords.INT, offset + TerrainGpuRecords.MeshTaskCommand.GROUP_COUNT_Z, 1);
-    }
-    
     private TerrainMeshTaskCommandUpload allocateMeshTaskCommand(int taskCount, boolean gpuGenerated) {
         if (taskCount <= 0) {
-            this.lastMeshTaskCommandUpload = MeshTaskCommandStats.unavailable(0, meshTaskCommandCapacity(), this.meshTaskCommandCursor, "no terrain mesh-task command requested", false, gpuGenerated);
+            this.lastMeshTaskCommandUpload = TerrainMeshTaskCommandStats.unavailable(0, meshTaskCommandCapacity(), this.meshTaskCommandCursor, "no terrain mesh-task command requested", false, gpuGenerated);
             return TerrainMeshTaskCommandUpload.unavailable(0);
         }
         
         DeviceBuffer meshTaskCommands = this.resources.meshTaskCommands();
         if (meshTaskCommands == null || meshTaskCommands.vkBuffer() == 0L || !meshTaskCommands.hostVisible()) {
-            this.lastMeshTaskCommandUpload = MeshTaskCommandStats.unavailable(1, 0, this.meshTaskCommandCursor, "terrain mesh-task command buffer unavailable", false, gpuGenerated);
+            this.lastMeshTaskCommandUpload = TerrainMeshTaskCommandStats.unavailable(1, 0, this.meshTaskCommandCursor, "terrain mesh-task command buffer unavailable", false, gpuGenerated);
             this.terrainMeshTaskCommandDrops.increment();
             return TerrainMeshTaskCommandUpload.unavailable(1);
         }
         
         int capacity = meshTaskCommandCapacity(meshTaskCommands);
         if (capacity <= 0) {
-            this.lastMeshTaskCommandUpload = MeshTaskCommandStats.unavailable(1, capacity, this.meshTaskCommandCursor, "terrain mesh-task command buffer has no capacity", false, gpuGenerated);
+            this.lastMeshTaskCommandUpload = TerrainMeshTaskCommandStats.unavailable(1, capacity, this.meshTaskCommandCursor, "terrain mesh-task command buffer has no capacity", false, gpuGenerated);
             this.terrainMeshTaskCommandDrops.increment();
             return TerrainMeshTaskCommandUpload.unavailable(1);
         }
         
         boolean wrapped = false;
         if (this.meshTaskCommandCursor + 1 > capacity) {
-            if (ringLapUnfinished(Ring.COMMANDS)) {
+            if (ringLapUnfinished(TerrainDescriptorRing.COMMANDS)) {
                 this.terrainMeshTaskCommandDeferrals.increment();
-                this.lastMeshTaskCommandUpload = MeshTaskCommandStats.unavailable(1, capacity, this.meshTaskCommandCursor, "terrain mesh-task command wrap requires the frame that began the lap to finish", true, gpuGenerated);
+                this.lastMeshTaskCommandUpload = TerrainMeshTaskCommandStats.unavailable(1, capacity, this.meshTaskCommandCursor, "terrain mesh-task command wrap requires the frame that began the lap to finish", true, gpuGenerated);
                 return TerrainMeshTaskCommandUpload.unavailable(1);
             }
             this.meshTaskCommandCursor = 0;
@@ -932,14 +914,14 @@ public final class DescriptorHeapTerrainResources {
         
         int commandIndex = this.meshTaskCommandCursor;
         if (commandIndex == 0) {
-            beginRingLap(Ring.COMMANDS);
+            beginRingLap(TerrainDescriptorRing.COMMANDS);
         }
         this.meshTaskCommandCursor++;
         long offsetBytes = TerrainMeshTaskCommandLayout.commandOffset(commandIndex);
         if (wrapped) {
             this.terrainMeshTaskCommandRingWraps.increment();
         }
-        this.lastMeshTaskCommandUpload = new MeshTaskCommandStats(1, 0, commandIndex, capacity, this.meshTaskCommandCursor, wrapped, false, "", gpuGenerated);
+        this.lastMeshTaskCommandUpload = new TerrainMeshTaskCommandStats(1, 0, commandIndex, capacity, this.meshTaskCommandCursor, wrapped, false, "", gpuGenerated);
         return new TerrainMeshTaskCommandUpload(commandIndex, taskCount, meshTaskCommands.vkBuffer(), offsetBytes, TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_STRIDE, meshTaskCommands.deviceAddress() + offsetBytes, 0, true, gpuGenerated);
     }
     
@@ -958,7 +940,7 @@ public final class DescriptorHeapTerrainResources {
         return meshTaskCommands == null ? 0 : meshTaskCommandCapacity(meshTaskCommands);
     }
     
-    public Layout layout() {
+    public TerrainDescriptorHeapLayout layout() {
         return this.layout;
     }
     
@@ -1003,7 +985,7 @@ public final class DescriptorHeapTerrainResources {
         map.put("terrainWorkQueueDeferrals", this.terrainWorkQueueDeferrals.sum());
         map.put("terrainWorkQueueRingWraps", this.terrainWorkQueueRingWraps.sum());
         map.put("lastTerrainWorkQueueUpload", this.lastWorkQueueUpload.asMap());
-        map.put("terrainWorkQueueLayout", TerrainWorkQueueLayout.asMap(this.layout.meshletCapacity));
+        map.put("terrainWorkQueueLayout", TerrainWorkQueueLayout.asMap(this.layout.meshletCapacity()));
         map.put("terrainMeshTaskCommandUploads", this.terrainMeshTaskCommandUploads.sum());
         map.put("terrainMeshTaskCommandReservations", this.terrainMeshTaskCommandReservations.sum());
         map.put("terrainMeshTaskCommandDrops", this.terrainMeshTaskCommandDrops.sum());
@@ -1026,593 +1008,5 @@ public final class DescriptorHeapTerrainResources {
         Map<String, Object> map = new LinkedHashMap<>();
         this.textureBindings.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> map.put(entry.getKey(), entry.getValue().asMap()));
         return map;
-    }
-    
-    public enum Slot {
-        BLOCK_ATLAS("blockAtlas", "sampledImage"), LIGHTMAP("lightmap", "sampledImage"), GLOBAL_UNIFORMS("globalUniforms", "uniformBuffer"), SECTION_METADATA("sectionMetadata", "storageBuffer"), MESHLET_HEADERS("meshletHeaders", "storageBuffer"), MESHLET_VERTICES("meshletVertices", "storageBuffer"), MESHLET_INDICES("meshletIndices", "storageBuffer"), VISIBLE_MESHLETS("visibleMeshlets", "storageBuffer"), TERRAIN_WORK_QUEUE("terrainWorkQueue", "storageBuffer"), MESH_TASK_COMMANDS("meshTaskCommands", "storageBuffer"), MATERIAL_TABLE("materialTable", "storageBuffer"), DEBUG_COUNTERS("debugCounters", "storageBuffer");
-        
-        private final String id;
-        private final String descriptorType;
-        
-        Slot(String id, String descriptorType) {
-            this.id = id;
-            this.descriptorType = descriptorType;
-        }
-    }
-    
-    /**
-     * Where a GPU-driven frame's data went in the visible list: the list's address, the record the
-     * frame's counters begin at, followed by the sections in view, and the record the task records
-     * begin at, one layer after another.
-     */
-    public record GpuDrivenFrame(long address, int frameRecord, int firstTaskRecord, boolean ready) {
-        static GpuDrivenFrame unavailable() {
-            return new GpuDrivenFrame(0L, 0, 0, false);
-        }
-    }
-    
-    /**
-     * @param inputOffset  where the frame's visible pages of a layer start in the visible list
-     * @param outputOffset where the GPU writes the pages it keeps
-     * @param count        how many pages were listed; no more can be kept
-     */
-    public record VisiblePageUpload(int inputOffset, int outputOffset, int count, long address, boolean ready) {
-        static VisiblePageUpload unavailable() {
-            return new VisiblePageUpload(0, 0, 0, 0L, false);
-        }
-    }
-    
-    public record VisibleMeshletUpload(int offset, int count, long address, int dropped, boolean ready) {
-        static VisibleMeshletUpload unavailable(int dropped) {
-            return new VisibleMeshletUpload(0, 0, 0L, dropped, false);
-        }
-    }
-    
-    public record TerrainWorkQueueUpload(int offset, int count, long address, int dropped, boolean ready) {
-        static TerrainWorkQueueUpload unavailable(int dropped) {
-            return new TerrainWorkQueueUpload(0, 0, 0L, dropped, false);
-        }
-    }
-    
-    public record TerrainMeshTaskCommandUpload(int commandIndex, int taskCount, long vkBuffer, long offsetBytes, int strideBytes, long address, int dropped, boolean ready, boolean gpuGenerated) {
-        static TerrainMeshTaskCommandUpload unavailable(int dropped) {
-            return new TerrainMeshTaskCommandUpload(0, 0, 0L, 0L, 0, 0L, dropped, false, false);
-        }
-    }
-    
-    private record VisibleMeshletStats(int uploaded, int dropped, int offset, int capacity, int nextOffset, boolean wrapped, boolean wrapBlocked, String reason) {
-        static VisibleMeshletStats empty() {
-            return new VisibleMeshletStats(0, 0, 0, 0, 0, false, false, "");
-        }
-        
-        static VisibleMeshletStats fromAllocation(int uploaded, int dropped, TerrainVisibleMeshletRing.Allocation allocation) {
-            return new VisibleMeshletStats(uploaded, dropped, allocation.offset(), allocation.capacity(), allocation.nextOffset(), allocation.wrapped(), allocation.wrapBlocked(), allocation.reason());
-        }
-        
-        Map<String, Object> asMap() {
-            Map<String, Object> map = new LinkedHashMap<>();
-            map.put("uploaded", this.uploaded);
-            map.put("dropped", this.dropped);
-            map.put("offset", this.offset);
-            map.put("capacity", this.capacity);
-            map.put("nextOffset", this.nextOffset);
-            map.put("wrapped", this.wrapped);
-            map.put("wrapBlocked", this.wrapBlocked);
-            map.put("reason", this.reason);
-            map.put("recordStride", TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE);
-            return map;
-        }
-    }
-    
-    private record TerrainWorkQueueStats(int uploaded, int dropped, int offset, int capacity, int nextOffset, boolean wrapped, boolean wrapBlocked, String reason) {
-        static TerrainWorkQueueStats empty() {
-            return new TerrainWorkQueueStats(0, 0, 0, 0, 0, false, false, "");
-        }
-        
-        static TerrainWorkQueueStats unavailable(int dropped, int capacity, int nextOffset, String reason, boolean wrapBlocked) {
-            return new TerrainWorkQueueStats(0, dropped, 0, capacity, nextOffset, false, wrapBlocked, reason);
-        }
-        
-        Map<String, Object> asMap() {
-            Map<String, Object> map = new LinkedHashMap<>();
-            map.put("uploaded", this.uploaded);
-            map.put("dropped", this.dropped);
-            map.put("offset", this.offset);
-            map.put("capacity", this.capacity);
-            map.put("nextOffset", this.nextOffset);
-            map.put("wrapped", this.wrapped);
-            map.put("wrapBlocked", this.wrapBlocked);
-            map.put("reason", this.reason);
-            map.put("recordStride", TerrainGpuLayout.TERRAIN_WORK_QUEUE_RECORD_STRIDE);
-            return map;
-        }
-    }
-    
-    private record MeshTaskCommandStats(int uploaded, int dropped, int offset, int capacity, int nextOffset, boolean wrapped, boolean wrapBlocked, String reason, boolean gpuGenerated) {
-        static MeshTaskCommandStats empty() {
-            return new MeshTaskCommandStats(0, 0, 0, 0, 0, false, false, "", false);
-        }
-        
-        static MeshTaskCommandStats unavailable(int dropped, int capacity, int nextOffset, String reason, boolean wrapBlocked, boolean gpuGenerated) {
-            return new MeshTaskCommandStats(0, dropped, 0, capacity, nextOffset, false, wrapBlocked, reason, gpuGenerated);
-        }
-        
-        Map<String, Object> asMap() {
-            Map<String, Object> map = new LinkedHashMap<>();
-            map.put("uploaded", this.uploaded);
-            map.put("dropped", this.dropped);
-            map.put("offset", this.offset);
-            map.put("capacity", this.capacity);
-            map.put("nextOffset", this.nextOffset);
-            map.put("wrapped", this.wrapped);
-            map.put("wrapBlocked", this.wrapBlocked);
-            map.put("reason", this.reason);
-            map.put("gpuGenerated", this.gpuGenerated);
-            map.put("commandStride", TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_STRIDE);
-            return map;
-        }
-    }
-    
-    public record TextureDescriptorLayout(long layoutBytes, long blockAtlasImageOffset, long blockAtlasSamplerOffset, long lightmapImageOffset, long lightmapSamplerOffset, long skyImageOffset, long cloudsImageOffset, long cloudsDepthImageOffset, long sampledImageDescriptorBytes, long samplerDescriptorBytes) {
-        public Map<String, Object> asMap() {
-            Map<String, Object> map = new LinkedHashMap<>();
-            map.put("layoutBytes", this.layoutBytes);
-            map.put("blockAtlasImageOffset", this.blockAtlasImageOffset);
-            map.put("blockAtlasSamplerOffset", this.blockAtlasSamplerOffset);
-            map.put("lightmapImageOffset", this.lightmapImageOffset);
-            map.put("lightmapSamplerOffset", this.lightmapSamplerOffset);
-            map.put("skyImageOffset", this.skyImageOffset);
-            map.put("cloudsImageOffset", this.cloudsImageOffset);
-            map.put("cloudsDepthImageOffset", this.cloudsDepthImageOffset);
-            map.put("sampledImageDescriptorBytes", this.sampledImageDescriptorBytes);
-            map.put("samplerDescriptorBytes", this.samplerDescriptorBytes);
-            return map;
-        }
-    }
-    
-    public record Layout(boolean configured, boolean descriptorHeapEnabled, boolean descriptorBufferEnabled, int sectionCapacity, int meshletCapacity, long vertexPayloadBytes, long indexPayloadBytes, long visibleMeshletBytes, long workQueueBytes, long meshTaskCommandBytes, long materialTableBytes, long samplerHeapBytes, long resourceHeapBytes, long samplerDescriptorBufferBytes, long resourceDescriptorBufferBytes, long sectionMetadataBytes, long meshletHeaderBytes, long samplerDescriptorBytes, long imageDescriptorBytes, long bufferDescriptorBytes, long descriptorBufferAlignment, long descriptorBufferSamplerDescriptorBytes, long descriptorBufferSampledImageDescriptorBytes, long descriptorBufferUniformBufferDescriptorBytes, long descriptorBufferStorageBufferDescriptorBytes, Map<String, String> slots) {
-        static Layout unconfigured() {
-            return new Layout(false, false, false, 0, 0, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 1L, 0L, 0L, 0L, 0L, Map.of());
-        }
-        
-        static Layout from(VulkanImprovementCapabilities.Snapshot capabilities) {
-            Map<String, String> slots = new LinkedHashMap<>();
-            int sampledImages = 0;
-            int uniformBuffers = 0;
-            int storageBuffers = 0;
-            for (Slot slot : Slot.values()) {
-                slots.put(slot.id, slot.descriptorType);
-                if ("sampledImage".equals(slot.descriptorType)) {
-                    sampledImages++;
-                }
-                else if ("uniformBuffer".equals(slot.descriptorType)) {
-                    uniformBuffers++;
-                }
-                else {
-                    storageBuffers++;
-                }
-            }
-            
-            int sectionCapacity = Math.min(TerrainGpuLayout.MAX_PAGES, TerrainRendererDebugConfig.initialSectionCapacity());
-            int meshletCapacity = TerrainRendererDebugConfig.initialMeshletCapacity();
-            long vertexPayloadBytes = TerrainRendererDebugConfig.initialVertexPayloadBytes();
-            long indexPayloadBytes = TerrainRendererDebugConfig.initialIndexPayloadBytes();
-            long samplerDescriptorBytes = Math.max(capabilities.samplerDescriptorSize(), 1L);
-            long imageDescriptorBytes = Math.max(capabilities.imageDescriptorSize(), 1L);
-            long bufferDescriptorBytes = Math.max(capabilities.bufferDescriptorSize(), 1L);
-            long alignment = Math.max(capabilities.descriptorBufferOffsetAlignment(), 1L);
-            long descriptorBufferSamplerBytes = Math.max(capabilities.descriptorBufferSamplerDescriptorSize(), 1L);
-            long descriptorBufferSampledImageBytes = Math.max(capabilities.descriptorBufferSampledImageDescriptorSize(), 1L);
-            long descriptorBufferUniformBytes = Math.max(capabilities.descriptorBufferUniformBufferDescriptorSize(), 1L);
-            long descriptorBufferStorageBytes = Math.max(capabilities.descriptorBufferStorageBufferDescriptorSize(), 1L);
-            long samplerHeapBytes = align(Math.max(samplerDescriptorBytes * sampledImages, 256L), 256L);
-            long resourceHeapBytes = align(Math.max(sampledImages * imageDescriptorBytes + (uniformBuffers + storageBuffers) * bufferDescriptorBytes, 1024L), 256L);
-            long samplerDescriptorBufferBytes = align(Math.max(descriptorBufferSamplerBytes * sampledImages, 256L), alignment);
-            long resourceDescriptorBufferBytes = align(Math.max(sampledImages * (descriptorBufferSampledImageBytes + descriptorBufferSamplerBytes) + uniformBuffers * descriptorBufferUniformBytes + storageBuffers * descriptorBufferStorageBytes, 1024L), alignment);
-            long sectionMetadataBytes = (long) sectionCapacity * TerrainGpuLayout.SECTION_METADATA_STRIDE;
-            long meshletHeaderBytes = (long) meshletCapacity * TerrainGpuLayout.MESHLET_HEADER_STRIDE;
-            long visibleMeshletBytes = (long) meshletCapacity * TerrainGpuLayout.VISIBLE_MESHLET_RING_MULTIPLIER * TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE;
-            long workQueueBytes = TerrainWorkQueueLayout.bytesForCapacity(meshletCapacity);
-            long meshTaskCommandBytes = TerrainMeshTaskCommandLayout.bytesForCapacity();
-            long materialTableBytes = (long) TerrainGpuLayout.MATERIAL_TABLE_CAPACITY * TerrainGpuLayout.MATERIAL_RECORD_STRIDE;
-            return new Layout(true, capabilities.descriptorHeapExtension(), capabilities.descriptorBufferEnabled(), sectionCapacity, meshletCapacity, vertexPayloadBytes, indexPayloadBytes, visibleMeshletBytes, workQueueBytes, meshTaskCommandBytes, materialTableBytes, samplerHeapBytes, resourceHeapBytes, samplerDescriptorBufferBytes, resourceDescriptorBufferBytes, sectionMetadataBytes, meshletHeaderBytes, samplerDescriptorBytes, imageDescriptorBytes, bufferDescriptorBytes, alignment, descriptorBufferSamplerBytes, descriptorBufferSampledImageBytes, descriptorBufferUniformBytes, descriptorBufferStorageBytes, Map.copyOf(slots));
-        }
-        
-        private static int growIntCapacity(int current, int required) {
-            if (required <= current) {
-                return current;
-            }
-            long headroom = required + Math.max(1024L, required / 4L);
-            long doubled = Math.max(1L, current) * 2L;
-            return (int) Math.min(Integer.MAX_VALUE, nextPowerOfTwo(Math.max(headroom, doubled)));
-        }
-        
-        /**
-         * A payload buffer's next size: at most as large as the device lets one buffer be. A page
-         * that does not fit even then is turned away.
-         */
-        private static long growLongCapacity(long current, long required) {
-            if (required <= current) {
-                return current;
-            }
-            long headroom = required + Math.max(1L << 20, required / 4L);
-            long doubled = Math.max(1L, current) * 2L;
-            long grown = Math.min(VulkanImprovementCapabilities.maxBufferBytes(), nextPowerOfTwo(Math.max(headroom, doubled)));
-            // Never smaller than now, though the device's limit may be: it is 0 before a device was looked at.
-            return Math.max(current, grown);
-        }
-        
-        private static int growMeshletCapacity(int current, int required) {
-            int grown = Math.min(maxMeshletCapacity(), growIntCapacity(current, required));
-            return Math.max(current, grown);
-        }
-        
-        /**
-         * How many meshlets the buffers kept per meshlet may hold, at most: the headers and the
-         * visible list, whichever takes more bytes a meshlet, may not outgrow one buffer.
-         */
-        private static int maxMeshletCapacity() {
-            long bytesPerMeshlet = Math.max(TerrainGpuLayout.MESHLET_HEADER_STRIDE, (long) TerrainGpuLayout.VISIBLE_MESHLET_RING_MULTIPLIER * TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE);
-            return (int) Math.min(Integer.MAX_VALUE, VulkanImprovementCapabilities.maxBufferBytes() / bytesPerMeshlet);
-        }
-        
-        private static long nextPowerOfTwo(long value) {
-            if (value <= 1L) {
-                return 1L;
-            }
-            if (value >= (1L << 62)) {
-                return Long.MAX_VALUE;
-            }
-            return 1L << (Long.SIZE - Long.numberOfLeadingZeros(value - 1L));
-        }
-        
-        private static long align(long value, long alignment) {
-            return (value + alignment - 1L) / alignment * alignment;
-        }
-        
-        /**
-         * The layout with every buffer that turned a page away made larger. Free space in pieces
-         * does not help a page that needs one range, so a buffer that was short grows from its
-         * whole capacity, not from what it holds.
-         */
-        Layout growFor(ResidentTerrainPages.Shortage shortage) {
-            int grownSectionCapacity = shortage.pages() > 0 ? Math.min(TerrainGpuLayout.MAX_PAGES, growIntCapacity(this.sectionCapacity, Math.addExact(this.sectionCapacity, shortage.pages()))) : this.sectionCapacity;
-            int grownMeshletCapacity = shortage.meshlets() > 0L ? growMeshletCapacity(this.meshletCapacity, Math.toIntExact(this.meshletCapacity + shortage.meshlets())) : this.meshletCapacity;
-            long grownVertexPayloadBytes = shortage.vertexBytes() > 0L ? growLongCapacity(this.vertexPayloadBytes, this.vertexPayloadBytes + shortage.vertexBytes()) : this.vertexPayloadBytes;
-            long grownIndexPayloadBytes = shortage.indexBytes() > 0L ? growLongCapacity(this.indexPayloadBytes, this.indexPayloadBytes + shortage.indexBytes()) : this.indexPayloadBytes;
-            if (grownSectionCapacity == this.sectionCapacity && grownMeshletCapacity == this.meshletCapacity && grownVertexPayloadBytes == this.vertexPayloadBytes && grownIndexPayloadBytes == this.indexPayloadBytes) {
-                return this;
-            }
-            
-            return new Layout(this.configured, this.descriptorHeapEnabled, this.descriptorBufferEnabled, grownSectionCapacity, grownMeshletCapacity, grownVertexPayloadBytes, grownIndexPayloadBytes, (long) grownMeshletCapacity * TerrainGpuLayout.VISIBLE_MESHLET_RING_MULTIPLIER * TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE, TerrainWorkQueueLayout.bytesForCapacity(grownMeshletCapacity), this.meshTaskCommandBytes, this.materialTableBytes, this.samplerHeapBytes, this.resourceHeapBytes, this.samplerDescriptorBufferBytes, this.resourceDescriptorBufferBytes, (long) grownSectionCapacity * TerrainGpuLayout.SECTION_METADATA_STRIDE, (long) grownMeshletCapacity * TerrainGpuLayout.MESHLET_HEADER_STRIDE, this.samplerDescriptorBytes, this.imageDescriptorBytes, this.bufferDescriptorBytes, this.descriptorBufferAlignment, this.descriptorBufferSamplerDescriptorBytes, this.descriptorBufferSampledImageDescriptorBytes, this.descriptorBufferUniformBufferDescriptorBytes, this.descriptorBufferStorageBufferDescriptorBytes, this.slots);
-        }
-        
-        public Map<String, Object> asMap() {
-            Map<String, Object> map = new LinkedHashMap<>();
-            map.put("configured", this.configured);
-            map.put("descriptorHeapEnabled", this.descriptorHeapEnabled);
-            map.put("descriptorBufferEnabled", this.descriptorBufferEnabled);
-            map.put("sectionCapacity", this.sectionCapacity);
-            map.put("meshletCapacity", this.meshletCapacity);
-            map.put("vertexPayloadBytes", this.vertexPayloadBytes);
-            map.put("indexPayloadBytes", this.indexPayloadBytes);
-            map.put("visibleMeshletBytes", this.visibleMeshletBytes);
-            map.put("workQueueBytes", this.workQueueBytes);
-            map.put("terrainWorkQueueRecordStride", TerrainGpuLayout.TERRAIN_WORK_QUEUE_RECORD_STRIDE);
-            map.put("terrainWorkQueueCounterBytes", TerrainGpuLayout.TERRAIN_WORK_QUEUE_COUNTER_BYTES);
-            map.put("meshTaskCommandBytes", this.meshTaskCommandBytes);
-            map.put("terrainMeshTaskCommandStride", TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_STRIDE);
-            map.put("terrainMeshTaskCommandCapacity", TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_CAPACITY);
-            map.put("materialTableBytes", this.materialTableBytes);
-            map.put("materialRecordStride", TerrainGpuLayout.MATERIAL_RECORD_STRIDE);
-            map.put("materialTableCapacity", TerrainGpuLayout.MATERIAL_TABLE_CAPACITY);
-            map.put("visibleMeshletRecordStride", TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE);
-            map.put("visibleMeshletRingMultiplier", TerrainGpuLayout.VISIBLE_MESHLET_RING_MULTIPLIER);
-            map.put("samplerHeapBytes", this.samplerHeapBytes);
-            map.put("resourceHeapBytes", this.resourceHeapBytes);
-            map.put("samplerDescriptorBufferBytes", this.samplerDescriptorBufferBytes);
-            map.put("resourceDescriptorBufferBytes", this.resourceDescriptorBufferBytes);
-            map.put("sectionMetadataBytes", this.sectionMetadataBytes);
-            map.put("meshletHeaderBytes", this.meshletHeaderBytes);
-            map.put("samplerDescriptorBytes", this.samplerDescriptorBytes);
-            map.put("imageDescriptorBytes", this.imageDescriptorBytes);
-            map.put("bufferDescriptorBytes", this.bufferDescriptorBytes);
-            map.put("descriptorBufferAlignment", this.descriptorBufferAlignment);
-            map.put("descriptorBufferSamplerDescriptorBytes", this.descriptorBufferSamplerDescriptorBytes);
-            map.put("descriptorBufferSampledImageDescriptorBytes", this.descriptorBufferSampledImageDescriptorBytes);
-            map.put("descriptorBufferUniformBufferDescriptorBytes", this.descriptorBufferUniformBufferDescriptorBytes);
-            map.put("descriptorBufferStorageBufferDescriptorBytes", this.descriptorBufferStorageBufferDescriptorBytes);
-            map.put("slots", this.slots);
-            return map;
-        }
-    }
-    
-    public record UploadStats(int sectionsUploaded, int layersUploaded, int meshletsUploaded, int sectionsDropped, long vertexBytesUploaded, long indexBytesUploaded, int[] meshletOffsetsByLayer, int[] meshletCountsByLayer, int[] customIndexMeshletCountsByLayer, long uploadCount, long lastUploadCpuNanos, long totalUploadCpuNanos) {
-        public UploadStats {
-            meshletOffsetsByLayer = meshletOffsetsByLayer.clone();
-            meshletCountsByLayer = meshletCountsByLayer.clone();
-            customIndexMeshletCountsByLayer = customIndexMeshletCountsByLayer.clone();
-        }
-        
-        static UploadStats empty() {
-            return new UploadStats(0, 0, 0, 0, 0L, 0L, emptyLayerCounters(), emptyLayerCounters(), emptyLayerCounters(), 0L, 0L, 0L);
-        }
-        
-        private static int[] emptyLayerCounters() {
-            return new int[ChunkSectionLayer.values().length];
-        }
-        
-        private static long nanosToMicros(long nanos) {
-            return nanos / 1_000L;
-        }
-        
-        UploadStats nextUpload(int sections, int layers, int meshlets, int droppedSections, long vertexBytesUploaded, long indexBytesUploaded, int[] meshletOffsetsByLayer, int[] meshletCountsByLayer, int[] customIndexMeshletCountsByLayer) {
-            return new UploadStats(sections, layers, meshlets, droppedSections, vertexBytesUploaded, indexBytesUploaded, meshletOffsetsByLayer, meshletCountsByLayer, customIndexMeshletCountsByLayer, this.uploadCount + 1L, 0L, this.totalUploadCpuNanos);
-        }
-        
-        UploadStats withCpuNanos(long cpuNanos) {
-            long measuredNanos = Math.max(cpuNanos, 0L);
-            return new UploadStats(this.sectionsUploaded, this.layersUploaded, this.meshletsUploaded, this.sectionsDropped, this.vertexBytesUploaded, this.indexBytesUploaded, this.meshletOffsetsByLayer, this.meshletCountsByLayer, this.customIndexMeshletCountsByLayer, this.uploadCount, measuredNanos, this.totalUploadCpuNanos + measuredNanos);
-        }
-        
-        /**
-         * The state after a frame's page uploads. A page lives where the allocator put it, so a
-         * layer's meshlets are not one range and the per-layer offsets stay zero.
-         */
-        UploadStats afterPageUpload(int liveSections, ResidentTerrainPages.Stats pages, long cpuNanos) {
-            int layerCount = this.meshletCountsByLayer.length;
-            return nextUpload(liveSections, pages.livePages(), pages.meshlets(), pages.pendingPages(), pages.vertexBytesUsed(), pages.indexBytesUsed(), new int[layerCount], Arrays.copyOf(pages.meshletsByLayer(), layerCount), Arrays.copyOf(pages.customIndexMeshletsByLayer(), layerCount)).withCpuNanos(cpuNanos);
-        }
-        
-        int meshletCountForLayer(int layerOrdinal) {
-            if (layerOrdinal < 0 || layerOrdinal >= this.meshletCountsByLayer.length) {
-                return this.meshletsUploaded;
-            }
-            return this.meshletCountsByLayer[layerOrdinal];
-        }
-        
-        int customIndexMeshletCountForLayer(int layerOrdinal) {
-            if (layerOrdinal < 0 || layerOrdinal >= this.customIndexMeshletCountsByLayer.length) {
-                return 0;
-            }
-            return this.customIndexMeshletCountsByLayer[layerOrdinal];
-        }
-        
-        Map<String, Object> asMap() {
-            Map<String, Object> map = new LinkedHashMap<>();
-            map.put("sectionsUploaded", this.sectionsUploaded);
-            map.put("layersUploaded", this.layersUploaded);
-            map.put("meshletsUploaded", this.meshletsUploaded);
-            map.put("sectionsDropped", this.sectionsDropped);
-            map.put("vertexBytesUploaded", this.vertexBytesUploaded);
-            map.put("indexBytesUploaded", this.indexBytesUploaded);
-            map.put("meshletRangesByLayer", meshletRangesByLayer());
-            map.put("customIndexMeshletsByLayer", customIndexMeshletsByLayer());
-            map.put("uploadCount", this.uploadCount);
-            map.put("lastUploadCpuMicros", nanosToMicros(this.lastUploadCpuNanos));
-            map.put("totalUploadCpuMicros", nanosToMicros(this.totalUploadCpuNanos));
-            map.put("averageUploadCpuMicros", this.uploadCount == 0L ? 0L : nanosToMicros(this.totalUploadCpuNanos / this.uploadCount));
-            return map;
-        }
-        
-        private Map<String, Object> meshletRangesByLayer() {
-            Map<String, Object> ranges = new LinkedHashMap<>();
-            for (ChunkSectionLayer layer : ChunkSectionLayer.values()) {
-                int ordinal = layer.ordinal();
-                ranges.put(layer.label(), Map.of("offset", ordinal < this.meshletOffsetsByLayer.length ? this.meshletOffsetsByLayer[ordinal] : 0, "count", ordinal < this.meshletCountsByLayer.length ? this.meshletCountsByLayer[ordinal] : 0));
-            }
-            return ranges;
-        }
-        
-        private Map<String, Object> customIndexMeshletsByLayer() {
-            Map<String, Object> ranges = new LinkedHashMap<>();
-            for (ChunkSectionLayer layer : ChunkSectionLayer.values()) {
-                int ordinal = layer.ordinal();
-                ranges.put(layer.label(), ordinal < this.customIndexMeshletCountsByLayer.length ? this.customIndexMeshletCountsByLayer[ordinal] : 0);
-            }
-            return ranges;
-        }
-    }
-    
-    private record GpuResources(DeviceBuffer samplerHeap, DeviceBuffer resourceHeap, DeviceBuffer samplerDescriptorBuffer, DeviceBuffer resourceDescriptorBuffer, DeviceBuffer sectionMetadata, DeviceBuffer meshletHeaders, DeviceBuffer meshletVertices, DeviceBuffer meshletIndices, DeviceBuffer visibleMeshlets, DeviceBuffer workQueue, DeviceBuffer meshTaskCommands, DeviceBuffer materialTable, DeviceBuffer debugCounters) {
-        static GpuResources empty() {
-            return new GpuResources(null, null, null, null, null, null, null, null, null, null, null, null, null);
-        }
-        
-        static GpuResources create(VulkanDevice device, Layout layout) {
-            if (!layout.configured) {
-                return empty();
-            }
-            int descriptorHeapUsage = VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | EXTDescriptorHeap.VK_BUFFER_USAGE_DESCRIPTOR_HEAP_BIT_EXT;
-            int samplerDescriptorBufferUsage = VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | EXTDescriptorBuffer.VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT;
-            int resourceDescriptorBufferUsage = VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | EXTDescriptorBuffer.VK_BUFFER_USAGE_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT | EXTDescriptorBuffer.VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT;
-            int storageUsage = VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK10.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-            int indirectStorageUsage = storageUsage | VK10.VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
-            DeviceBuffer samplerHeap = layout.descriptorHeapEnabled ? new DeviceBuffer(device, "VIM Terrain Sampler Descriptor Heap", layout.samplerHeapBytes, descriptorHeapUsage, DeviceBuffer.Placement.DEVICE_MAPPED) : null;
-            DeviceBuffer resourceHeap = layout.descriptorHeapEnabled ? new DeviceBuffer(device, "VIM Terrain Resource Descriptor Heap", layout.resourceHeapBytes, descriptorHeapUsage, DeviceBuffer.Placement.DEVICE_MAPPED) : null;
-            DeviceBuffer samplerDescriptorBuffer = layout.descriptorBufferEnabled ? new DeviceBuffer(device, "VIM Terrain Sampler Descriptor Buffer", layout.samplerDescriptorBufferBytes, samplerDescriptorBufferUsage, DeviceBuffer.Placement.DEVICE_MAPPED) : null;
-            DeviceBuffer resourceDescriptorBuffer = layout.descriptorBufferEnabled ? new DeviceBuffer(device, "VIM Terrain Resource Descriptor Buffer", layout.resourceDescriptorBufferBytes, resourceDescriptorBufferUsage, DeviceBuffer.Placement.DEVICE_MAPPED) : null;
-            // The page table and what the pages hold live in device memory and are written by copies only.
-            DeviceBuffer sectionMetadata = new DeviceBuffer(device, "VIM Terrain Page Table", layout.sectionMetadataBytes, storageUsage, DeviceBuffer.Placement.DEVICE);
-            DeviceBuffer meshletHeaders = new DeviceBuffer(device, "VIM Terrain Meshlet Headers", layout.meshletHeaderBytes, storageUsage, DeviceBuffer.Placement.DEVICE);
-            DeviceBuffer meshletVertices = new DeviceBuffer(device, "VIM Terrain Meshlet Vertex Payload", layout.vertexPayloadBytes, storageUsage, DeviceBuffer.Placement.DEVICE);
-            DeviceBuffer meshletIndices = new DeviceBuffer(device, "VIM Terrain Meshlet Index Payload", layout.indexPayloadBytes, storageUsage, DeviceBuffer.Placement.DEVICE);
-            // What the CPU writes each frame and the GPU reads or counts up in the same frame. In host
-            // memory every read and every atomic of the GPU crosses the bus: one atomic a meshlet
-            // in host memory cost the opaque layers two milliseconds a frame.
-            DeviceBuffer visibleMeshlets = new DeviceBuffer(device, "VIM Terrain Visible Meshlet List", layout.visibleMeshletBytes, storageUsage, DeviceBuffer.Placement.DEVICE_MAPPED);
-            DeviceBuffer workQueue = new DeviceBuffer(device, "VIM Terrain Work Queue", layout.workQueueBytes, storageUsage, DeviceBuffer.Placement.DEVICE_MAPPED);
-            DeviceBuffer meshTaskCommands = new DeviceBuffer(device, "VIM Terrain Mesh Task Commands", layout.meshTaskCommandBytes, indirectStorageUsage, DeviceBuffer.Placement.DEVICE_MAPPED);
-            DeviceBuffer materialTable = new DeviceBuffer(device, "VIM Terrain Material Table", layout.materialTableBytes, storageUsage, DeviceBuffer.Placement.DEVICE_MAPPED);
-            DeviceBuffer debugCounters = new DeviceBuffer(device, "VIM Terrain Debug Counters", TerrainGpuLayout.DEBUG_COUNTER_BYTES, storageUsage, DeviceBuffer.Placement.DEVICE_MAPPED);
-            return new GpuResources(samplerHeap, resourceHeap, samplerDescriptorBuffer, resourceDescriptorBuffer, sectionMetadata, meshletHeaders, meshletVertices, meshletIndices, visibleMeshlets, workQueue, meshTaskCommands, materialTable, debugCounters);
-        }
-        
-        private static Map<String, Object> bufferMap(DeviceBuffer buffer) {
-            Map<String, Object> map = new LinkedHashMap<>();
-            map.put("allocated", buffer != null);
-            if (buffer != null) {
-                map.put("label", buffer.label());
-                map.put("vkBuffer", buffer.vkBuffer());
-                map.put("vkBufferHex", buffer.vkBufferHex());
-                map.put("size", buffer.size());
-                map.put("deviceAddress", buffer.deviceAddress());
-                map.put("hostVisible", buffer.hostVisible());
-                map.put("closed", buffer.closed());
-                map.put("destroyed", buffer.destroyed());
-            }
-            return map;
-        }
-        
-        private static void close(DeviceBuffer buffer) {
-            if (buffer != null) {
-                buffer.close();
-            }
-        }
-        
-        private static void destroyNow(DeviceBuffer buffer) {
-            if (buffer != null) {
-                buffer.destroyNow();
-            }
-        }
-        
-        private static int bufferCount(DeviceBuffer buffer) {
-            return buffer == null ? 0 : 1;
-        }
-        
-        private static long bufferBytes(DeviceBuffer buffer) {
-            return buffer == null ? 0L : buffer.size();
-        }
-        
-        boolean allocated() {
-            return this.samplerHeap != null || this.resourceHeap != null || this.samplerDescriptorBuffer != null || this.resourceDescriptorBuffer != null || this.sectionMetadata != null || this.meshletHeaders != null || this.meshletVertices != null || this.meshletIndices != null || this.visibleMeshlets != null || this.workQueue != null || this.meshTaskCommands != null || this.materialTable != null || this.debugCounters != null;
-        }
-        
-        GpuResourceRetirementStats retirementStats() {
-            return GpuResourceRetirementStats.singleSet(allocatedBufferCount(), allocatedBytes());
-        }
-        
-        private int allocatedBufferCount() {
-            return bufferCount(this.samplerHeap) + bufferCount(this.resourceHeap) + bufferCount(this.samplerDescriptorBuffer) + bufferCount(this.resourceDescriptorBuffer) + bufferCount(this.sectionMetadata) + bufferCount(this.meshletHeaders) + bufferCount(this.meshletVertices) + bufferCount(this.meshletIndices) + bufferCount(this.visibleMeshlets) + bufferCount(this.workQueue) + bufferCount(this.meshTaskCommands) + bufferCount(this.materialTable) + bufferCount(this.debugCounters);
-        }
-        
-        private long allocatedBytes() {
-            return bufferBytes(this.samplerHeap) + bufferBytes(this.resourceHeap) + bufferBytes(this.samplerDescriptorBuffer) + bufferBytes(this.resourceDescriptorBuffer) + bufferBytes(this.sectionMetadata) + bufferBytes(this.meshletHeaders) + bufferBytes(this.meshletVertices) + bufferBytes(this.meshletIndices) + bufferBytes(this.visibleMeshlets) + bufferBytes(this.workQueue) + bufferBytes(this.meshTaskCommands) + bufferBytes(this.materialTable) + bufferBytes(this.debugCounters);
-        }
-        
-        long residentTerrainBytes() {
-            return bufferBytes(this.sectionMetadata) + bufferBytes(this.meshletHeaders) + bufferBytes(this.meshletVertices) + bufferBytes(this.meshletIndices);
-        }
-        
-        boolean readyForTerrainMetadata() {
-            return this.sectionMetadata != null && this.meshletHeaders != null && this.meshletVertices != null && this.meshletIndices != null;
-        }
-        
-        void clearDebugCounters() {
-            if (this.debugCounters != null) {
-                this.debugCounters.mapped().asSlice(0L, TerrainGpuLayout.DEBUG_COUNTER_BYTES).fill((byte) 0);
-                this.debugCounters.flush();
-            }
-        }
-        
-        void clearWorkQueueCounters() {
-            if (this.workQueue != null) {
-                this.workQueue.mapped().asSlice(0L, TerrainGpuLayout.TERRAIN_WORK_QUEUE_COUNTER_BYTES).fill((byte) 0);
-                this.workQueue.flush();
-            }
-        }
-        
-        Map<String, Object> debugCounterMap() {
-            Map<String, Object> map = new LinkedHashMap<>();
-            map.put("allocated", this.debugCounters != null);
-            if (this.debugCounters != null) {
-                this.debugCounters.invalidate();
-                MemorySegment counters = this.debugCounters.mapped();
-                // Counted only where the mesh stage culls meshlets itself, on the CPU work-queue path.
-                map.put("culledMeshlets", Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, 4L)));
-                map.put("visibilityInputPages", Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET)));
-                map.put("visibilityCulledPages", Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET + Integer.BYTES)));
-                map.put("visibilityVisiblePages", Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET + 2 * Integer.BYTES)));
-            }
-            return map;
-        }
-        
-        boolean readyForDescriptorBuffer() {
-            return this.resourceDescriptorBuffer != null && this.resourceDescriptorBuffer.deviceAddress() != 0L && this.resourceDescriptorBuffer.hostVisible();
-        }
-        
-        void close() {
-            close(this.debugCounters);
-            close(this.materialTable);
-            close(this.meshTaskCommands);
-            close(this.workQueue);
-            close(this.visibleMeshlets);
-            close(this.meshletIndices);
-            close(this.meshletVertices);
-            close(this.meshletHeaders);
-            close(this.sectionMetadata);
-            close(this.resourceDescriptorBuffer);
-            close(this.samplerDescriptorBuffer);
-            close(this.resourceHeap);
-            close(this.samplerHeap);
-        }
-        
-        void destroyNow() {
-            destroyNow(this.debugCounters);
-            destroyNow(this.materialTable);
-            destroyNow(this.meshTaskCommands);
-            destroyNow(this.workQueue);
-            destroyNow(this.visibleMeshlets);
-            destroyNow(this.meshletIndices);
-            destroyNow(this.meshletVertices);
-            destroyNow(this.meshletHeaders);
-            destroyNow(this.sectionMetadata);
-            destroyNow(this.resourceDescriptorBuffer);
-            destroyNow(this.samplerDescriptorBuffer);
-            destroyNow(this.resourceHeap);
-            destroyNow(this.samplerHeap);
-        }
-        
-        Map<String, Object> asMap() {
-            Map<String, Object> map = new LinkedHashMap<>();
-            map.put("samplerHeap", bufferMap(this.samplerHeap));
-            map.put("resourceHeap", bufferMap(this.resourceHeap));
-            map.put("samplerDescriptorBuffer", bufferMap(this.samplerDescriptorBuffer));
-            map.put("resourceDescriptorBuffer", bufferMap(this.resourceDescriptorBuffer));
-            map.put("sectionMetadata", bufferMap(this.sectionMetadata));
-            map.put("meshletHeaders", bufferMap(this.meshletHeaders));
-            map.put("meshletVertices", bufferMap(this.meshletVertices));
-            map.put("meshletIndices", bufferMap(this.meshletIndices));
-            map.put("visibleMeshlets", bufferMap(this.visibleMeshlets));
-            map.put("workQueue", bufferMap(this.workQueue));
-            map.put("meshTaskCommands", bufferMap(this.meshTaskCommands));
-            map.put("materialTable", bufferMap(this.materialTable));
-            map.put("debugCounters", bufferMap(this.debugCounters));
-            return map;
-        }
-    }
-    
-    private record TextureBinding(String name, long imageView, long sampler, int width, int height, int baseMipLevel, int mipLevels, int maxAnisotropy, String minFilter, String magFilter, String maxLod, boolean closed, boolean unavailable) {
-        private static TextureBinding unavailable(String name, GpuTextureView view, GpuSampler sampler) {
-            return new TextureBinding(name, 0L, 0L, view == null ? 0 : view.getWidth(0), view == null ? 0 : view.getHeight(0), view == null ? 0 : view.baseMipLevel(), view == null ? 0 : view.mipLevels(), sampler == null ? 0 : sampler.getMaxAnisotropy(), sampler == null ? "unavailable" : String.valueOf(sampler.getMinFilter()), sampler == null ? "unavailable" : String.valueOf(sampler.getMagFilter()), sampler == null ? "unavailable" : String.valueOf(sampler.getMaxLod()), view == null || view.isClosed(), true);
-        }
-        
-        private Map<String, Object> asMap() {
-            Map<String, Object> map = new LinkedHashMap<>();
-            map.put("name", this.name);
-            map.put("imageView", this.imageView);
-            map.put("sampler", this.sampler);
-            map.put("width", this.width);
-            map.put("height", this.height);
-            map.put("baseMipLevel", this.baseMipLevel);
-            map.put("mipLevels", this.mipLevels);
-            map.put("maxAnisotropy", this.maxAnisotropy);
-            map.put("minFilter", this.minFilter);
-            map.put("magFilter", this.magFilter);
-            map.put("maxLod", this.maxLod);
-            map.put("closed", this.closed);
-            map.put("unavailable", this.unavailable);
-            return map;
-        }
     }
 }

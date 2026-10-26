@@ -3,11 +3,10 @@ package com.temotskipa.vulkanimprovement.mixin.client;
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.llamalad7.mixinextras.sugar.Local;
 import com.mojang.renderpearl.api.pipeline.BlendFunction;
-import com.mojang.renderpearl.api.pipeline.CompiledRenderPipeline;
+import com.mojang.renderpearl.api.pipeline.CompiledRenderPipeline.CreateInfo;
 import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
 import com.mojang.renderpearl.backend.vulkan.VulkanRenderPipeline;
-import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelMeshPipelines;
-import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelMeshShader;
+import com.temotskipa.vulkanimprovement.client.vulkan.model.*;
 import it.unimi.dsi.fastutil.longs.LongList;
 import org.jspecify.annotations.Nullable;
 import org.lwjgl.vulkan.EXTMeshShader;
@@ -29,7 +28,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * pipeline shares its layout.
  */
 @Mixin(VulkanRenderPipeline.class)
-public abstract class VulkanRenderPipelineMeshMixin implements ModelMeshPipelines.Holder {
+public abstract class VulkanRenderPipelineMeshMixin implements ModelMeshPipelineHolder {
     @Shadow
     @Final
     private VulkanDevice device;
@@ -39,7 +38,7 @@ public abstract class VulkanRenderPipelineMeshMixin implements ModelMeshPipeline
     private LongList shaderModules;
     
     @Unique
-    private ModelMeshPipelines.@Nullable MeshPipeline vim$meshPipeline;
+    private @Nullable ModelMeshPipeline vim$meshPipeline;
     
     @Shadow
     private static void applyBlendInformation(VkPipelineColorBlendAttachmentState.Buffer blendAttachments, BlendFunction blendFunction) {
@@ -47,18 +46,18 @@ public abstract class VulkanRenderPipelineMeshMixin implements ModelMeshPipeline
     }
     
     @ModifyArg(method = "compile", at = @At(value = "INVOKE", target = "Lorg/lwjgl/vulkan/VkDescriptorSetLayoutBinding;stageFlags(I)Lorg/lwjgl/vulkan/VkDescriptorSetLayoutBinding;"))
-    private static int vim$showDescriptorsToMeshStage(int stageFlags, @Local(argsOnly = true, name = "pipelineCreateInfo") CompiledRenderPipeline.CreateInfo pipelineCreateInfo) {
+    private static int vim$showDescriptorsToMeshStage(int stageFlags, @Local(argsOnly = true, name = "pipelineCreateInfo") CreateInfo pipelineCreateInfo) {
         return ModelMeshPipelines.pending(pipelineCreateInfo.name()) == null ? stageFlags : stageFlags | EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT;
     }
     
     @ModifyExpressionValue(method = "compile", at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/api/pipeline/CompiledRenderPipeline$CreateInfo;pushConstantsSize()I"))
-    private static int vim$makeRoomForMeshConstants(int pushConstantsSize, @Local(argsOnly = true, name = "pipelineCreateInfo") CompiledRenderPipeline.CreateInfo pipelineCreateInfo) {
-        ModelMeshPipelines.Pending pending = ModelMeshPipelines.pending(pipelineCreateInfo.name());
+    private static int vim$makeRoomForMeshConstants(int pushConstantsSize, @Local(argsOnly = true, name = "pipelineCreateInfo") CreateInfo pipelineCreateInfo) {
+        PendingModelMeshStage pending = ModelMeshPipelines.pending(pipelineCreateInfo.name());
         return pending == null ? pushConstantsSize : pending.pushConstantOffset() + ModelMeshShader.PUSH_CONSTANT_BYTES;
     }
     
     @Inject(method = "compile", at = @At("RETURN"))
-    private static void vim$buildMeshPipeline(VulkanDevice device, CompiledRenderPipeline.CreateInfo pipelineCreateInfo, CallbackInfoReturnable<VulkanRenderPipeline> cir) {
+    private static void vim$buildMeshPipeline(VulkanDevice device, CreateInfo pipelineCreateInfo, CallbackInfoReturnable<VulkanRenderPipeline> cir) {
         VulkanRenderPipeline pipeline = cir.getReturnValue();
         ModelMeshPipelines.build(device, pipelineCreateInfo, pipeline, pipeline.pipelineLayout(), VulkanRenderPipelineMeshMixin::applyBlendInformation);
     }
@@ -72,12 +71,12 @@ public abstract class VulkanRenderPipelineMeshMixin implements ModelMeshPipeline
     }
     
     @Override
-    public ModelMeshPipelines.@Nullable MeshPipeline vim$meshPipeline() {
+    public @Nullable ModelMeshPipeline vim$meshPipeline() {
         return this.vim$meshPipeline;
     }
     
     @Override
-    public void vim$setMeshPipeline(ModelMeshPipelines.MeshPipeline meshPipeline) {
+    public void vim$setMeshPipeline(ModelMeshPipeline meshPipeline) {
         this.vim$meshPipeline = meshPipeline;
     }
     

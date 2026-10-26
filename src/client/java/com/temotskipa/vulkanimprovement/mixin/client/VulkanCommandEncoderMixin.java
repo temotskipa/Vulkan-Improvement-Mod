@@ -1,13 +1,10 @@
 package com.temotskipa.vulkanimprovement.mixin.client;
 
-import com.mojang.renderpearl.backend.vulkan.VulkanCommandEncoder;
-import com.mojang.renderpearl.backend.vulkan.VulkanDebug;
-import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
-import com.mojang.renderpearl.backend.vulkan.VulkanInstance;
-import com.mojang.renderpearl.backend.vulkan.VulkanRenderPass;
+import com.mojang.renderpearl.backend.vulkan.*;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ComputeCommands;
+import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ComputeCommandsBackend;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ComputePipeline;
-import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRenderPassAccess;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainCommandEncoderAccess;
 import org.jspecify.annotations.Nullable;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VK10;
@@ -27,13 +24,22 @@ import java.util.function.Supplier;
  * {@link ComputeCommands}.
  */
 @Mixin(VulkanCommandEncoder.class)
-public abstract class VulkanCommandEncoderMixin implements TerrainRenderPassAccess.Encoder, ComputeCommands.Backend {
+public abstract class VulkanCommandEncoderMixin implements TerrainCommandEncoderAccess, ComputeCommandsBackend {
     @Shadow
     @Final
     private VulkanDevice device;
     
     @Shadow
     private @Nullable VulkanRenderPass currentRenderPass;
+    
+    /**
+     * The instance's debug utilities. The instance is Minecraft's, which closes it when the game
+     * ends.
+     */
+    @Unique
+    private static VulkanDebug vim$debug(VulkanInstance instance) {
+        return instance.debug();
+    }
     
     @Shadow
     private VkCommandBuffer commandBuffer() {
@@ -68,14 +74,5 @@ public abstract class VulkanCommandEncoderMixin implements TerrainRenderPassAcce
             VulkanCommandEncoder.memoryBarrier(commandBuffer, stack);
         }
         debug.endDebugGroup(commandBuffer);
-    }
-    
-    /**
-     * The instance's debug utilities. The instance is Minecraft's, which closes it when the game
-     * ends.
-     */
-    @Unique
-    private static VulkanDebug vim$debug(VulkanInstance instance) {
-        return instance.debug();
     }
 }

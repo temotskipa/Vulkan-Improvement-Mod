@@ -9,11 +9,7 @@ import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VK10;
 import org.lwjgl.vulkan.VkPhysicalDeviceProperties;
 
-import java.util.Arrays;
-import java.util.LinkedHashMap;
-import java.util.Locale;
-import java.util.Map;
-import java.util.OptionalLong;
+import java.util.*;
 
 /**
  * Measures what terrain costs a frame, for vanilla terrain and the mesh path alike. The time
@@ -59,6 +55,22 @@ public final class TerrainPerformanceMonitor {
     
     public static TerrainPerformanceMonitor get() {
         return INSTANCE;
+    }
+    
+    private static long percentile(long[] sorted, double fraction) {
+        return sorted[Math.min(sorted.length - 1, (int) Math.floor(fraction * (sorted.length - 1)))];
+    }
+    
+    /**
+     * The frame rate of the slowest hundredth of the frames.
+     */
+    private static double lowFps(long[] sorted) {
+        int count = Math.max(1, sorted.length / 100);
+        double sum = 0.0;
+        for (int i = sorted.length - count; i < sorted.length; i++) {
+            sum += sorted[i];
+        }
+        return sum > 0.0 ? 1.0e9 * count / sum : 0.0;
     }
     
     synchronized void configure(VulkanDevice device) {
@@ -169,22 +181,6 @@ public final class TerrainPerformanceMonitor {
     
     private double meanMs(int index) {
         return this.gpuSamples[index] == 0L ? 0.0 : this.gpuNanos[index] / (double) this.gpuSamples[index] / 1.0e6;
-    }
-    
-    private static long percentile(long[] sorted, double fraction) {
-        return sorted[Math.min(sorted.length - 1, (int) Math.floor(fraction * (sorted.length - 1)))];
-    }
-    
-    /**
-     * The frame rate of the slowest hundredth of the frames.
-     */
-    private static double lowFps(long[] sorted) {
-        int count = Math.max(1, sorted.length / 100);
-        double sum = 0.0;
-        for (int i = sorted.length - count; i < sorted.length; i++) {
-            sum += sorted[i];
-        }
-        return sum > 0.0 ? 1.0e9 * count / sum : 0.0;
     }
     
     /**

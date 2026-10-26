@@ -13,9 +13,9 @@ public final class RendererDomainObserver {
             if (domain == RendererDomain.TERRAIN || domain == RendererDomain.DIAGNOSTICS) {
                 continue;
             }
-            registry.set(domain, RendererDomainRegistry.DomainState.vanilla("observed vanilla Minecraft renderer path"));
+            registry.set(domain, RendererDomainState.vanilla("observed vanilla Minecraft renderer path"));
         }
-        registry.set(RendererDomain.DIAGNOSTICS, RendererDomainRegistry.DomainState.vanilla("log output, video options, and vim.dumpRendererDiagnostics key"));
+        registry.set(RendererDomain.DIAGNOSTICS, RendererDomainState.vanilla("log output, video options, and vim.dumpRendererDiagnostics key"));
     }
     
     /**
@@ -23,15 +23,15 @@ public final class RendererDomainObserver {
      * mode; it is the selected path only while it draws.
      */
     public static void observeTerrainMode() {
-        RendererDomainRegistry.DomainState state;
+        RendererDomainState state;
         if (!TerrainRendererDebugConfig.replaceVanillaTerrain()) {
-            state = RendererDomainRegistry.DomainState.vanilla(TerrainRendererDebugConfig.terrainCaptureBootstrapEnabled() ? "vanilla terrain; meshlet capture runs beside it" : "vanilla terrain; mesh path configured and not selected");
+            state = RendererDomainState.vanilla(TerrainRendererDebugConfig.terrainCaptureBootstrapEnabled() ? "vanilla terrain; meshlet capture runs beside it" : "vanilla terrain; mesh path configured and not selected");
         }
         else if (TerrainRendererDebugConfig.strictMeshTerrainReplacement()) {
-            state = RendererDomainRegistry.DomainState.meshTerrainGpu("mesh terrain replaces vanilla solid and cutout terrain; translucent terrain stays vanilla");
+            state = RendererDomainState.meshTerrainGpu("mesh terrain replaces vanilla solid and cutout terrain; translucent terrain stays vanilla");
         }
         else {
-            state = RendererDomainRegistry.DomainState.meshTerrainGpu("mesh terrain drawn over vanilla terrain, which stays visible");
+            state = RendererDomainState.meshTerrainGpu("mesh terrain drawn over vanilla terrain, which stays visible");
         }
         RendererDomainRegistry.get().set(RendererDomain.TERRAIN, state);
     }

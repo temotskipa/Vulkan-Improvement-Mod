@@ -2,8 +2,8 @@ package com.temotskipa.vulkanimprovement.mixin.client;
 
 import com.mojang.renderpearl.backend.api.CommandEncoderBackend;
 import com.mojang.renderpearl.frontend.FrontendCommandEncoder;
-import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ComputeCommands.Backend;
-import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ComputeCommands.Frontend;
+import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ComputeCommandsBackend;
+import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ComputeCommandsFrontend;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ComputePipeline;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -17,7 +17,7 @@ import java.util.function.Supplier;
  * commands, then handed to the backend, which records it.
  */
 @Mixin(FrontendCommandEncoder.class)
-public abstract class FrontendCommandEncoderMixin implements Frontend {
+public abstract class FrontendCommandEncoderMixin implements ComputeCommandsFrontend {
     @Shadow
     @Final
     private CommandEncoderBackend backend;
@@ -39,7 +39,7 @@ public abstract class FrontendCommandEncoderMixin implements Frontend {
         if (groupsX < 0 || groupsY < 0 || groupsZ < 0) {
             throw new IllegalArgumentException("Workgroup counts must not be negative: " + groupsX + "x" + groupsY + "x" + groupsZ);
         }
-        if (!(this.backend instanceof Backend computeBackend)) {
+        if (!(this.backend instanceof ComputeCommandsBackend computeBackend)) {
             throw new UnsupportedOperationException("No compute dispatch on " + this.backend.getClass().getName());
         }
         computeBackend.vim$dispatchCompute(label, pipeline, pushConstants, groupsX, groupsY, groupsZ);

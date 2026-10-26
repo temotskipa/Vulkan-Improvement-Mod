@@ -44,7 +44,7 @@ final class TerrainQuadMeshlets {
      * @return a copy of the vertices in facing order, outside the Java heap, and their meshlets;
      * or {@code null} when the vertices are not whole quads
      */
-    static @Nullable Built build(long sectionNode, ChunkSectionLayer layer, MemorySegment vertices) {
+    static @Nullable BuiltQuadMeshlets build(long sectionNode, ChunkSectionLayer layer, MemorySegment vertices) {
         long bytes = vertices.byteSize();
         if (bytes % QUAD_BYTES != 0) {
             return null;
@@ -75,7 +75,7 @@ final class TerrainQuadMeshlets {
                 meshlets.add(TerrainMeshlet.quads(sectionNode, layer, first * 4, quads * 4, bounds, group));
             }
         }
-        return new Built(sorted, List.copyOf(meshlets));
+        return new BuiltQuadMeshlets(sorted, List.copyOf(meshlets));
     }
     
     /**
@@ -143,8 +143,5 @@ final class TerrainQuadMeshlets {
             }
         }
         return bounds;
-    }
-    
-    record Built(MemorySegment vertices, List<TerrainMeshlet> meshlets) {
     }
 }

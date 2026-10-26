@@ -6,7 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
-public record TerrainMeshTaskDispatch(int meshletOffset, int layerOrdinal, int requestedMeshlets, int taskCount, long visibleMeshletListAddress, long workQueueAddress, long indirectCommandBuffer, long indirectCommandOffset, int indirectCommandStride, long indirectCommandAddress, boolean indirectCommandGpuGenerated, Source source, String reason) {
+public record TerrainMeshTaskDispatch(int meshletOffset, int layerOrdinal, int requestedMeshlets, int taskCount, long visibleMeshletListAddress, long workQueueAddress, long indirectCommandBuffer, long indirectCommandOffset, int indirectCommandStride, long indirectCommandAddress, boolean indirectCommandGpuGenerated, TerrainMeshTaskSource source, String reason) {
     static final int MAX_DIRECT_TASKS = 65_535;
     
     public TerrainMeshTaskDispatch {
@@ -57,26 +57,26 @@ public record TerrainMeshTaskDispatch(int meshletOffset, int layerOrdinal, int r
     }
     
     static TerrainMeshTaskDispatch unavailable(String reason) {
-        return new TerrainMeshTaskDispatch(0, -1, 0, 0, 0L, 0L, 0L, 0L, 0, 0L, false, Source.UNAVAILABLE, reason);
+        return new TerrainMeshTaskDispatch(0, -1, 0, 0, 0L, 0L, 0L, 0L, 0, 0L, false, TerrainMeshTaskSource.UNAVAILABLE, reason);
     }
     
     static TerrainMeshTaskDispatch fullLayer(int meshletOffset, int layerOrdinal, int meshletCount) {
-        return new TerrainMeshTaskDispatch(meshletOffset, layerOrdinal, Math.max(meshletCount, 0), Math.clamp(meshletCount, 0, MAX_DIRECT_TASKS), 0L, 0L, 0L, 0L, 0, 0L, false, Source.DIRECT_LAYER, "");
+        return new TerrainMeshTaskDispatch(meshletOffset, layerOrdinal, Math.max(meshletCount, 0), Math.clamp(meshletCount, 0, MAX_DIRECT_TASKS), 0L, 0L, 0L, 0L, 0, 0L, false, TerrainMeshTaskSource.DIRECT_LAYER, "");
     }
     
-    static TerrainMeshTaskDispatch cpuVisibleList(DescriptorHeapTerrainResources.VisibleMeshletUpload upload, int layerOrdinal) {
+    static TerrainMeshTaskDispatch cpuVisibleList(TerrainVisibleMeshletUpload upload, int layerOrdinal) {
         if (upload == null || !upload.ready()) {
             return unavailable("visible meshlet upload unavailable");
         }
-        return new TerrainMeshTaskDispatch(upload.offset(), layerOrdinal, Math.max(upload.count(), 0), Math.clamp(upload.count(), 0, MAX_DIRECT_TASKS), upload.address(), 0L, 0L, 0L, 0, 0L, false, Source.CPU_VISIBLE_LIST, "");
+        return new TerrainMeshTaskDispatch(upload.offset(), layerOrdinal, Math.max(upload.count(), 0), Math.clamp(upload.count(), 0, MAX_DIRECT_TASKS), upload.address(), 0L, 0L, 0L, 0, 0L, false, TerrainMeshTaskSource.CPU_VISIBLE_LIST, "");
     }
     
-    static TerrainMeshTaskDispatch cpuWorkQueue(DescriptorHeapTerrainResources.TerrainWorkQueueUpload upload, int layerOrdinal, int requestedMeshlets) {
+    static TerrainMeshTaskDispatch cpuWorkQueue(TerrainWorkQueueUpload upload, int layerOrdinal, int requestedMeshlets) {
         if (upload == null || !upload.ready()) {
             return unavailable("terrain work queue upload unavailable");
         }
         int requested = Math.max(requestedMeshlets, upload.count());
-        return new TerrainMeshTaskDispatch(upload.offset(), layerOrdinal, requested, Math.min(upload.count(), MAX_DIRECT_TASKS), 0L, upload.address(), 0L, 0L, 0, 0L, false, Source.CPU_WORK_QUEUE, "");
+        return new TerrainMeshTaskDispatch(upload.offset(), layerOrdinal, requested, Math.min(upload.count(), MAX_DIRECT_TASKS), 0L, upload.address(), 0L, 0L, 0, 0L, false, TerrainMeshTaskSource.CPU_WORK_QUEUE, "");
     }
     
     /**
@@ -84,11 +84,11 @@ public record TerrainMeshTaskDispatch(int meshletOffset, int layerOrdinal, int r
      * per {@link com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout#MESHLETS_PER_TASK}
      * of a page's meshlets; the task stage drops what is out of view.
      */
-    static TerrainMeshTaskDispatch listedPages(DescriptorHeapTerrainResources.VisiblePageUpload upload, int layerOrdinal) {
+    static TerrainMeshTaskDispatch listedPages(TerrainVisiblePageUpload upload, int layerOrdinal) {
         if (upload == null || !upload.ready()) {
             return unavailable("listed pages unavailable");
         }
-        return new TerrainMeshTaskDispatch(upload.inputOffset(), layerOrdinal, upload.count(), Math.min(upload.count(), MAX_DIRECT_TASKS), upload.address(), 0L, 0L, 0L, 0, 0L, false, Source.LISTED_PAGES, "");
+        return new TerrainMeshTaskDispatch(upload.inputOffset(), layerOrdinal, upload.count(), Math.min(upload.count(), MAX_DIRECT_TASKS), upload.address(), 0L, 0L, 0L, 0, 0L, false, TerrainMeshTaskSource.LISTED_PAGES, "");
     }
     
     /**
@@ -96,11 +96,11 @@ public record TerrainMeshTaskDispatch(int meshletOffset, int layerOrdinal, int r
      * many as were listed for it. The pass writes the command that says how many, so this dispatch
      * is only drawn with that command.
      */
-    static TerrainMeshTaskDispatch gpuVisiblePages(DescriptorHeapTerrainResources.VisiblePageUpload upload, int layerOrdinal) {
+    static TerrainMeshTaskDispatch gpuVisiblePages(TerrainVisiblePageUpload upload, int layerOrdinal) {
         if (upload == null || !upload.ready()) {
             return unavailable("visible page upload unavailable");
         }
-        return new TerrainMeshTaskDispatch(upload.outputOffset(), layerOrdinal, upload.count(), Math.min(upload.count(), MAX_DIRECT_TASKS), upload.address(), 0L, 0L, 0L, 0, 0L, false, Source.GPU_VISIBLE_PAGES, "");
+        return new TerrainMeshTaskDispatch(upload.outputOffset(), layerOrdinal, upload.count(), Math.min(upload.count(), MAX_DIRECT_TASKS), upload.address(), 0L, 0L, 0L, 0, 0L, false, TerrainMeshTaskSource.GPU_VISIBLE_PAGES, "");
     }
     
     /**
@@ -108,15 +108,15 @@ public record TerrainMeshTaskDispatch(int meshletOffset, int layerOrdinal, int r
      * {@code recordOffset} on, at most {@code maxTasks}. The pass also writes the command that says
      * how many, so this dispatch is only drawn with that command.
      */
-    static TerrainMeshTaskDispatch gpuDrivenPages(DescriptorHeapTerrainResources.GpuDrivenFrame frame, int recordOffset, int maxTasks, int layerOrdinal) {
+    static TerrainMeshTaskDispatch gpuDrivenPages(TerrainGpuDrivenFrame frame, int recordOffset, int maxTasks, int layerOrdinal) {
         if (frame == null || !frame.ready() || maxTasks <= 0) {
             return unavailable("GPU-driven pages unavailable");
         }
         int tasks = Math.min(maxTasks, MAX_DIRECT_TASKS);
-        return new TerrainMeshTaskDispatch(recordOffset, layerOrdinal, tasks, tasks, frame.address(), 0L, 0L, 0L, 0, 0L, false, Source.GPU_DRIVEN_PAGES, "");
+        return new TerrainMeshTaskDispatch(recordOffset, layerOrdinal, tasks, tasks, frame.address(), 0L, 0L, 0L, 0, 0L, false, TerrainMeshTaskSource.GPU_DRIVEN_PAGES, "");
     }
     
-    TerrainMeshTaskDispatch withIndirectCommand(DescriptorHeapTerrainResources.TerrainMeshTaskCommandUpload upload) {
+    TerrainMeshTaskDispatch withIndirectCommand(TerrainMeshTaskCommandUpload upload) {
         if (upload == null || !upload.ready()) {
             return this;
         }
@@ -124,7 +124,7 @@ public record TerrainMeshTaskDispatch(int meshletOffset, int layerOrdinal, int r
     }
     
     boolean ready() {
-        return this.source != Source.UNAVAILABLE && this.taskCount > 0;
+        return this.source != TerrainMeshTaskSource.UNAVAILABLE && this.taskCount > 0;
     }
     
     boolean usesVisibleMeshletList() {
@@ -169,31 +169,5 @@ public record TerrainMeshTaskDispatch(int meshletOffset, int layerOrdinal, int r
         map.put("directMeshTaskLimit", MAX_DIRECT_TASKS);
         map.put("reason", this.reason);
         return map;
-    }
-    
-    public enum Source {
-        UNAVAILABLE("unavailable", false, false), DIRECT_LAYER("direct-layer", false, false), CPU_VISIBLE_LIST("cpu-visible-list", true, false), CPU_WORK_QUEUE("cpu-work-queue", false, true), GPU_VISIBLE_PAGES("gpu-visible-pages", true, false), LISTED_PAGES("listed-pages", true, false), GPU_DRIVEN_PAGES("gpu-driven-pages", true, false);
-        
-        private final String id;
-        private final boolean requiresVisibleMeshletList;
-        private final boolean requiresWorkQueue;
-        
-        Source(String id, boolean requiresVisibleMeshletList, boolean requiresWorkQueue) {
-            this.id = id;
-            this.requiresVisibleMeshletList = requiresVisibleMeshletList;
-            this.requiresWorkQueue = requiresWorkQueue;
-        }
-        
-        String id() {
-            return this.id;
-        }
-        
-        boolean requiresVisibleMeshletList() {
-            return this.requiresVisibleMeshletList;
-        }
-        
-        boolean requiresWorkQueue() {
-            return this.requiresWorkQueue;
-        }
     }
 }

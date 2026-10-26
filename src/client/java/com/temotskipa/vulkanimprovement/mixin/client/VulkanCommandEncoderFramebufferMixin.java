@@ -6,6 +6,7 @@ import com.mojang.renderpearl.backend.vulkan.Destroyable;
 import com.mojang.renderpearl.backend.vulkan.VulkanCommandEncoder;
 import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.FramebufferCache;
+import com.temotskipa.vulkanimprovement.client.vulkan.gpu.FramebufferCacheOwner;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
 import org.jspecify.annotations.Nullable;
 import org.lwjgl.vulkan.VK10;
@@ -27,7 +28,7 @@ import java.nio.LongBuffer;
  * render pass and destroying it two submits later ({@link FramebufferCache}).
  */
 @Mixin(VulkanCommandEncoder.class)
-public abstract class VulkanCommandEncoderFramebufferMixin implements FramebufferCache.Owner {
+public abstract class VulkanCommandEncoderFramebufferMixin implements FramebufferCacheOwner {
     @Shadow
     @Final
     private VulkanDevice device;
