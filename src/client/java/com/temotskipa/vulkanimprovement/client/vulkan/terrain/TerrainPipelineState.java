@@ -1,10 +1,6 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
-import com.mojang.renderpearl.api.GpuFormat;
-import com.mojang.renderpearl.api.pipeline.ColorTargetState;
-import com.mojang.renderpearl.api.pipeline.CompiledRenderPipeline;
-import com.mojang.renderpearl.api.pipeline.DepthStencilState;
-import com.mojang.renderpearl.api.pipeline.PolygonMode;
+import com.mojang.renderpearl.api.pipeline.*;
 import com.mojang.renderpearl.backend.api.BackendRenderPipeline;
 import org.jspecify.annotations.Nullable;
 
@@ -15,15 +11,15 @@ import java.util.List;
 /**
  * The fixed-function state Minecraft compiled a pipeline with. A Vulkan pipeline no longer carries
  * it, so it is remembered when the pipeline is compiled; the mesh terrain pipeline that stands in
- * for a vanilla terrain pipeline is built from it and for the same render pass.
+ * for a vanilla terrain pipeline is built from it and for the same subpass.
  */
-public record TerrainPipelineState(String name, PolygonMode polygonMode, boolean cull, @Nullable DepthStencilState depthStencilState, GpuFormat depthStencilFormat, List<@Nullable ColorTargetState> colorTargetStates) {
+public record TerrainPipelineState(String name, PolygonMode polygonMode, boolean cull, @Nullable DepthStencilState depthStencilState, RenderPassLayout.Subpass subpass, List<@Nullable ColorTargetState> colorTargetStates) {
     public TerrainPipelineState {
         colorTargetStates = Collections.unmodifiableList(new ArrayList<>(colorTargetStates));
     }
     
     public static TerrainPipelineState from(CompiledRenderPipeline.CreateInfo info) {
-        return new TerrainPipelineState(info.name(), info.polygonMode(), info.cull(), info.depthStencilState(), info.depthStencilFormat(), info.colorTargetStates());
+        return new TerrainPipelineState(info.name(), info.polygonMode(), info.cull(), info.depthStencilState(), info.subpass(), info.colorTargetStates());
     }
     
     /**
@@ -40,9 +36,5 @@ public record TerrainPipelineState(String name, PolygonMode polygonMode, boolean
         if (pipeline instanceof TerrainPipelineStateHolder holder) {
             holder.vim$rememberTerrainPipelineState(state);
         }
-    }
-    
-    public boolean hasDepth() {
-        return this.depthStencilState != null;
     }
 }

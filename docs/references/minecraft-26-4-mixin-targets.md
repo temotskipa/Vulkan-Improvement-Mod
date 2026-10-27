@@ -1,13 +1,19 @@
 # Minecraft 26.4 Mixin Targets
 
-Verified with mcdev static analysis for Minecraft `26.4-snapshot-5` on
-2026-10-26, and at runtime by starting the client with every mixin applied.
-From `26.4-snapshot-4` eight of the target classes changed. In
-`ChunkSectionsToRender.DrawIndirect` and `DrawSeparate`, `render` takes a
-wireframe flag and an `OitStage` where it took two override pipelines, and the
-two mixins take the new parameters. In `ChunkSectionsToRender`, `VulkanDevice`,
-`VulkanGpuSurface`, `LevelRenderer`, `VideoSettingsScreen` and `FogRenderer`
-none of the members or invocation points below changed.
+Verified with mcdev static analysis for Minecraft `26.4-snapshot-6` on
+2026-10-28, and at runtime by starting the client with every mixin applied.
+From `26.4-snapshot-5` twelve of the target classes changed. Snapshot-6
+describes a render pass by a `RenderPassLayout` of attachment formats and
+subpasses, and compiles a pipeline once for each subpass it draws in:
+`PipelineBuilder.generateBackendCreateInfo` takes the subpass, the create info
+carries it in place of a depth format, and `VulkanRenderPipeline.compile`
+builds the pipeline for the layout's render pass and the subpass's index.
+`VulkanRenderPipeline.compile` sets a descriptor's stages in two calls, and
+`VulkanCommandEncoder.createRenderPass` takes its clear values from the native
+heap and never frees them. In `VulkanConst`, `VulkanDevice`, `VulkanRenderPass`,
+`FrontendCommandEncoder`, `FrontendRenderPass`, `SPIRVModule`, `LevelRenderer`
+and `ChunkSectionsToRender.DrawIndirect` and `DrawSeparate` none of the members
+or invocation points below changed.
 
 This manifest records the Mojang classes, fields, methods, and invocation
 points touched by the client mixins.
@@ -102,8 +108,9 @@ inside a render pass the level renderer has already opened.
 - Target: `com.mojang.renderpearl.backend.vulkan.VulkanRenderPipeline`.
 - mcdev 26.4 surface: public static
   `compile(VulkanDevice, CompiledRenderPipeline.CreateInfo)` builds one Vulkan
-  pipeline for a render pass taken from `RenderPassCache`; the final class
-  keeps the handles but not the create info.
+  pipeline for the create info's subpass, in the render pass `RenderPassCache`
+  gives the subpass's layout; the final class keeps the handles but not the
+  create info.
 - Source tokens: `method = "compile"`,
   `CompiledRenderPipeline.CreateInfo pipelineCreateInfo`.
 - Purpose: remember the rasterization, depth and blend state a pipeline was
@@ -133,11 +140,11 @@ inside a render pass the level renderer has already opened.
 ### VulkanCommandEncoderFramebufferMixin
 
 - Target: `com.mojang.renderpearl.backend.vulkan.VulkanCommandEncoder`.
-- mcdev 26.4 surface: `createRenderPass` fills a `VkFramebufferCreateInfo`
-  with the render pass from `RenderPassCache`, every attachment's image view
-  in order (`VK_NULL_HANDLE` for an absent color attachment) and the size of
-  the last color attachment, or of the depth attachment if there is no color
-  attachment; calls `VK12.vkCreateFramebuffer`, then queues the framebuffer's
+- mcdev 26.4 surface: `createRenderPass(RenderPassDescriptor)` fills a
+  `VkFramebufferCreateInfo` with the render pass `RenderPassCache` gives the
+  descriptor's layout and attachments, every attachment's image view in the
+  layout's order and the size of the first attachment; calls
+  `VK12.vkCreateFramebuffer`, then queues the framebuffer's
   destruction with `queueForDestroy(Destroyable)`, its only call of that
   method, which `DestructionQueue` runs two submits later, in the order
   queued. `destroy()` waits for the queue to idle and then empties the
@@ -148,6 +155,19 @@ inside a render pass the level renderer has already opened.
   `private VulkanDevice device`.
 - Purpose: keep framebuffers across frames (`FramebufferCache`), behind
   `vim.keepFramebuffers`.
+
+### VulkanCommandEncoderClearValuesMixin
+
+- Target: `com.mojang.renderpearl.backend.vulkan.VulkanCommandEncoder`.
+- mcdev 26.4 surface: `createRenderPass(RenderPassDescriptor)` opens a
+  `MemoryStack` named `stack` for the whole pass setup, but takes the clear
+  value of each attachment from `VkClearValue.calloc(int)`, the native heap,
+  and never frees the buffer after `vkCmdBeginRenderPass2` reads it. Its only
+  call of that method.
+- Source tokens: `method = "createRenderPass"`, `VkClearValue;calloc(I)`,
+  `MemoryStack stack`.
+- Purpose: take the clear values from that memory stack, where snapshot-5 took
+  them, so a render pass leaks no memory.
 
 ### VulkanCommandEncoderBarrierMixin
 
@@ -499,18 +519,22 @@ pipelines.
 
 - Target: `com.mojang.blaze3d.pipeline.PipelineBuilder`.
 - mcdev 26.4 surface: private `generateBackendCreateInfo(RenderPipeline,
-  ShaderSource)` compiles each shader of the pipeline with
+  RenderPassLayout.Subpass, ShaderSource)` compiles each shader of the
+  pipeline with
   `GlslCompiler.compileToSpv(String, String, ShaderType, ShaderDefines,
   ShaderSource, DeviceInfo)`, vertex before fragment, then reflects the
   modules and numbers their uniforms by name across the stages;
-  `compilePipeline(RenderPipeline, ShaderSource)` hands the create info to the
-  device on the same thread, one of the threads Minecraft compiles pipelines
-  on.
+  `compilePipeline(RenderPipeline, RenderPassLayout.Subpass, ShaderSource)`
+  hands the create info, which carries the subpass, to the device on the same
+  thread, one of the threads Minecraft compiles pipelines on. Minecraft
+  compiles a pipeline once for each subpass it is drawn in, and may compile
+  them at the same time.
 - Source tokens: `method = "generateBackendCreateInfo"`,
-  `GlslCompiler;compileToSpv(`, `RenderPipeline pipeline`.
+  `GlslCompiler;compileToSpv(`, `RenderPipeline pipeline`,
+  `RenderPassLayout.Subpass subpass`.
 - Purpose: compile the GPU model mesh stage of an entity pipeline's vertex
-  shader with Minecraft's compiler, defines and includes
-  (`ModelMeshPipelines`).
+  shader with Minecraft's compiler, defines and includes, for the subpass
+  being compiled (`ModelMeshPipelines`).
 
 ### GlslCompilerMixin
 
@@ -542,14 +566,18 @@ pipelines.
 
 - Target: `com.mojang.renderpearl.backend.vulkan.VulkanRenderPipeline`.
 - mcdev 26.4 surface: static `compile(VulkanDevice,
-  CompiledRenderPipeline.CreateInfo)` gives every descriptor of its one set
-  layout the stage flags 17 (vertex and fragment) through
-  `VkDescriptorSetLayoutBinding.stageFlags(int)`; reads
+  CompiledRenderPipeline.CreateInfo)` sets the stages of every descriptor of
+  its one set layout with two calls of
+  `VkDescriptorSetLayoutBinding.stageFlags(int)`: the fragment stage (16), and
+  then the vertex stage too (17) unless the descriptor is an input attachment;
+  reads
   `CreateInfo.pushConstantsSize()` twice and, when it is not 0, adds one push
   constant range of that size for every stage; creates one shader module per
   stage into `shaderModules`, in the order of `CreateInfo.shaders()`; and
-  builds the pipeline for the `RenderPassCache` render pass of its attachment
-  formats, viewport and scissor dynamic, front faces clockwise, depth bias
+  builds the pipeline for the create info's subpass in the `RenderPassCache`
+  render pass of the subpass's layout, with a blend state for each color
+  attachment of the subpass, viewport and scissor dynamic, front faces
+  clockwise, depth bias
   when either factor is not 0, and blending from private static
   `applyBlendInformation(VkPipelineColorBlendAttachmentState.Buffer,
   BlendFunction)`. `destroy()` destroys what `compile` created. Final fields
@@ -557,9 +585,9 @@ pipelines.
 - Source tokens: `method = "compile"`, `VkDescriptorSetLayoutBinding;stageFlags(`,
   `CreateInfo;pushConstantsSize()`, `method = "destroy"`,
   `private LongList shaderModules`, `private static void applyBlendInformation`.
-- Purpose: open an entity pipeline's layout to the mesh stage, build the GPU
-  model mesh pipeline beside it with its layout, fragment module and state,
-  and destroy the mesh pipeline with it.
+- Purpose: open to the mesh stage what an entity pipeline's layout opens to
+  the vertex stage, build the GPU model mesh pipeline beside it with its
+  layout, fragment module and state, and destroy the mesh pipeline with it.
 
 ### VulkanRenderPassModelMeshMixin
 

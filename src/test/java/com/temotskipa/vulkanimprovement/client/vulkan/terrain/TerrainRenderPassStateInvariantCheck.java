@@ -99,12 +99,13 @@ public final class TerrainRenderPassStateInvariantCheck {
     
     /**
      * Minecraft records terrain inside a render pass object, so a pipeline drawn there has to be
-     * created for that pass and not for dynamic rendering.
+     * created for that pass and the subpass Minecraft's pipeline was compiled for, and not for
+     * dynamic rendering.
      */
     private static void checkMeshPipelineIsBuiltForMinecraftsRenderPass(String meshProgram, String pipelineKey) {
         String createPipeline = methodBody(meshProgram, "private TerrainMeshPipeline createPipeline");
-        require(createPipeline.contains("device.renderpassCache().getRenderPass("), "the mesh pipeline must be created for the render pass Minecraft's pipeline uses");
-        require(createPipeline.contains(".renderPass(renderPass).subpass(0)"), "the mesh pipeline must name its render pass and subpass");
+        require(createPipeline.contains("device.renderpassCache().getRenderPass(subpass.renderPassLayout())"), "the mesh pipeline must be created for the render pass of the layout Minecraft's pipeline was compiled for");
+        require(createPipeline.contains(".renderPass(renderPass).subpass(subpass.index())"), "the mesh pipeline must name its render pass and Minecraft's subpass");
         require(!createPipeline.contains("VkPipelineRenderingCreateInfo"), "the mesh pipeline must not be created for dynamic rendering");
         require(meshProgram.contains("Map<TerrainPipelineKey, TerrainMeshPipeline> pipelineCache") && pipelineKey.contains("record TerrainPipelineKey(TerrainPipelineState state, boolean alphaTest)"), "mesh pipelines must be cached by the vanilla pipeline state they stand in for and whether the layer tests alpha");
         require(meshProgram.contains("alphaTestValue.putInt(0, alphaTest ? VK10.VK_TRUE : VK10.VK_FALSE);"), "a solid layer's mesh pipeline must be specialized without the alpha test, so depth is tested before its fragments run");

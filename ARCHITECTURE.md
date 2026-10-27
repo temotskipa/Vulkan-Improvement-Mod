@@ -18,7 +18,9 @@ the mod keeps its work inside them.
 2. Where Minecraft's Vulkan backend is slow or lacks a feature, the mod
    improves the backend in place, so vanilla rendering and other mods gain
    too: barriers that wait only for what a resource needs, framebuffers kept
-   across frames, compute dispatch on the command encoder, more buffer usages.
+   across frames, compute dispatch on the command encoder, more buffer usages,
+   and render pass clear values on the memory stack, which 26.4-snapshot-6
+   takes from the native heap and never frees.
 3. GPU-driven execution (compute passes, mesh shading, visibility on the GPU)
    is the mod's own code, built on Minecraft's objects: its buffers come from
    `GpuDevice.createBuffer`, its commands go into Minecraft's command buffer,

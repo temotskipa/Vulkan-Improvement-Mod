@@ -3,6 +3,7 @@ package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 import com.mojang.renderpearl.api.pipeline.BlendFunction;
 import com.mojang.renderpearl.api.pipeline.ColorTargetState;
 import com.mojang.renderpearl.api.pipeline.DepthStencilState;
+import com.mojang.renderpearl.api.pipeline.RenderPassLayout;
 import com.mojang.renderpearl.backend.vulkan.VulkanCommandEncoder;
 import com.mojang.renderpearl.backend.vulkan.VulkanConst;
 import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
@@ -566,8 +567,10 @@ public final class MeshShaderTerrainProgram {
                 depthStencilState.depthTestEnable(true).depthWriteEnable(depthStencilStateInfo.writeDepth()).depthCompareOp(VulkanConst.toVk(depthStencilStateInfo.depthTest()));
             }
             
+            // One blend state for each color attachment of the subpass, as Minecraft gives its own
+            // pipeline; an attachment the pipeline has no target for is not written.
             List<ColorTargetState> colorTargets = pipelineInfo.colorTargetStates();
-            VkPipelineColorBlendAttachmentState.Buffer colorAttachments = VkPipelineColorBlendAttachmentState.calloc(colorTargets.size(), stack);
+            VkPipelineColorBlendAttachmentState.Buffer colorAttachments = VkPipelineColorBlendAttachmentState.calloc(pipelineInfo.subpass().colorAttachments().size(), stack);
             for (int i = 0; i < colorTargets.size(); i++) {
                 ColorTargetState colorTarget = colorTargets.get(i);
                 VkPipelineColorBlendAttachmentState attachment = colorAttachments.get(i);
@@ -584,10 +587,11 @@ public final class MeshShaderTerrainProgram {
             VkPipelineDynamicStateCreateInfo dynamicState = VkPipelineDynamicStateCreateInfo.calloc(stack).sType$Default().pDynamicStates(dynamicStates);
             
             // Minecraft records terrain inside a render pass object, so the pipeline is created for
-            // the pass Minecraft's own pipeline with these attachment formats was created for.
-            long renderPass = device.renderpassCache().getRenderPass(pipelineInfo.hasDepth() ? VulkanConst.toVk(pipelineInfo.depthStencilFormat()) : 0, colorTargets);
+            // the subpass of the render pass layout Minecraft's own pipeline was created for.
+            RenderPassLayout.Subpass subpass = pipelineInfo.subpass();
+            long renderPass = device.renderpassCache().getRenderPass(subpass.renderPassLayout());
             
-            VkGraphicsPipelineCreateInfo.Buffer pipelineCreateInfo = VkGraphicsPipelineCreateInfo.calloc(1, stack).sType$Default().flags(EXTDescriptorBuffer.VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT).pStages(shaderStages).pRasterizationState(rasterizationState).pDepthStencilState(depthStencilState).pColorBlendState(colorBlendState).pViewportState(viewportState).pMultisampleState(multisampleState).pDynamicState(dynamicState).layout(pipelineLayout).renderPass(renderPass).subpass(0);
+            VkGraphicsPipelineCreateInfo.Buffer pipelineCreateInfo = VkGraphicsPipelineCreateInfo.calloc(1, stack).sType$Default().flags(EXTDescriptorBuffer.VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT).pStages(shaderStages).pRasterizationState(rasterizationState).pDepthStencilState(depthStencilState).pColorBlendState(colorBlendState).pViewportState(viewportState).pMultisampleState(multisampleState).pDynamicState(dynamicState).layout(pipelineLayout).renderPass(renderPass).subpass(subpass.index());
             
             LongBuffer pipelineHandle = stack.callocLong(1);
             VulkanUtils.crashIfFailure(device, VK12.vkCreateGraphicsPipelines(device.vkDevice(), 0L, pipelineCreateInfo, null, pipelineHandle), "Failed to create VIM terrain mesh pipeline for " + pipelineInfo.name());

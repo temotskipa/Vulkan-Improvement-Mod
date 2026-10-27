@@ -1,7 +1,7 @@
 # Minecraft 26.4 Renderer Domain Owners
 
-Verified with mcdev static analysis for Minecraft `26.4-snapshot-5` on
-2026-10-26.
+Verified with mcdev static analysis for Minecraft `26.4-snapshot-6` on
+2026-10-28.
 
 Each renderer domain in `RendererDomainContract` names the Mojang class that
 owns the vanilla path for it. This file records what mcdev shows for those

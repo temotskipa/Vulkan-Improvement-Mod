@@ -16,6 +16,7 @@ import com.mojang.renderpearl.frontend.FrontendRenderPipeline;
 import com.mojang.renderpearl.util.ShaderCompileException;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.VulkanObjectNames;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
+import net.minecraft.client.renderer.RenderPassLayouts;
 import net.minecraft.client.renderer.oit.OitStage;
 import net.minecraft.client.renderer.rendertype.PreparedRenderType;
 import org.jspecify.annotations.Nullable;
@@ -39,7 +40,7 @@ import java.util.function.Function;
  * quads, its vertex shader is compiled a second time, by Minecraft's compiler, as the mesh stage.
  * When Minecraft builds the Vulkan pipeline, its descriptors are made visible to the mesh stage and
  * its push constant range grows by the mesh stage's constants; the mesh pipeline is built with that
- * layout, Minecraft's fragment module and fixed-function state, for the same render pass, so the
+ * layout, Minecraft's fragment module and fixed-function state, for the same subpass, so the
  * descriptors Minecraft binds for a draw serve the mesh pipeline too. It is destroyed with
  * Minecraft's.
  *
@@ -50,9 +51,9 @@ import java.util.function.Function;
 public final class ModelMeshPipelines {
     private static final Logger LOGGER = LogUtils.getLogger();
     /**
-     * Mesh stages compiled for pipelines Minecraft is about to build, by pipeline name.
+     * Mesh stages compiled for pipelines Minecraft is about to build, by pipeline and subpass.
      */
-    private static final Map<String, PendingModelMeshStage> PENDING = new ConcurrentHashMap<>();
+    private static final Map<ModelMeshStageKey, PendingModelMeshStage> PENDING = new ConcurrentHashMap<>();
     private static final ThreadLocal<Boolean> COMPILING_MESH_STAGE = ThreadLocal.withInitial(() -> false);
     private static final LongAdder BUILT = new LongAdder();
     private static final LongAdder UNSUPPORTED = new LongAdder();
@@ -94,11 +95,13 @@ public final class ModelMeshPipelines {
     
     /**
      * Compiles the mesh stage of a pipeline's vertex shader with Minecraft's compiler, which
-     * {@code compiler} calls with the mesh stage's source, for when Minecraft builds the pipeline.
+     * {@code compiler} calls with the mesh stage's source, for when Minecraft builds the pipeline
+     * for {@code subpass}.
      */
-    public static void compileMeshStage(RenderPipeline pipeline, String vertexSource, Function<String, ByteBuffer> compiler) {
+    public static void compileMeshStage(RenderPipeline pipeline, RenderPassLayout.Subpass subpass, String vertexSource, Function<String, ByteBuffer> compiler) {
         String name = pipeline.getLocation().toString();
-        discard(name);
+        ModelMeshStageKey key = new ModelMeshStageKey(name, subpass);
+        discard(key);
         int pushConstantOffset = Math.ceilDiv(pipeline.pushConstantSize(), 16) * 16;
         String meshSource = ModelMeshShader.generate(vertexSource, pushConstantOffset);
         if (meshSource == null) {
@@ -108,7 +111,7 @@ public final class ModelMeshPipelines {
         }
         COMPILING_MESH_STAGE.set(true);
         try {
-            PENDING.put(name, new PendingModelMeshStage(compiler.apply(meshSource), pushConstantOffset));
+            PENDING.put(key, new PendingModelMeshStage(compiler.apply(meshSource), pushConstantOffset));
         } catch (Exception e) {
             FAILED.increment();
             LOGGER.warn("[Vulkan Improvement] Couldn't compile the mesh stage for {}", name, e);
@@ -120,12 +123,12 @@ public final class ModelMeshPipelines {
     /**
      * The mesh stage compiled for a pipeline Minecraft is building, if any.
      */
-    public static @Nullable PendingModelMeshStage pending(String pipelineName) {
-        return PENDING.get(pipelineName);
+    public static @Nullable PendingModelMeshStage pending(CreateInfo createInfo) {
+        return PENDING.get(ModelMeshStageKey.of(createInfo));
     }
     
-    private static void discard(String pipelineName) {
-        PendingModelMeshStage pending = PENDING.remove(pipelineName);
+    private static void discard(ModelMeshStageKey key) {
+        PendingModelMeshStage pending = PENDING.remove(key);
         if (pending != null) {
             MemoryUtil.memFree(pending.spirv());
         }
@@ -140,7 +143,7 @@ public final class ModelMeshPipelines {
      * @param blend          applies a blend function to a color attachment as Minecraft does
      */
     public static void build(VulkanDevice device, CreateInfo createInfo, BackendRenderPipeline pipeline, long pipelineLayout, BiConsumer<Buffer, BlendFunction> blend) {
-        PendingModelMeshStage pending = PENDING.remove(createInfo.name());
+        PendingModelMeshStage pending = PENDING.remove(ModelMeshStageKey.of(createInfo));
         if (pending == null) {
             return;
         }
@@ -193,7 +196,7 @@ public final class ModelMeshPipelines {
     
     /**
      * The mesh pipeline: the mesh stage and Minecraft's fragment stage, with the rasterization,
-     * depth and blend state Minecraft built its pipeline with, its layout and its render pass.
+     * depth and blend state Minecraft built its pipeline with, its layout and its subpass.
      */
     private static long createPipeline(VulkanDevice device, CompiledRenderPipeline.CreateInfo createInfo, long pipelineLayout, ModelMeshPipelineHolder pipeline, long meshModule, BiConsumer<VkPipelineColorBlendAttachmentState.Buffer, BlendFunction> blend) {
         int fragmentStage = -1;
@@ -220,8 +223,10 @@ public final class ModelMeshPipelines {
                 depthStencilState.depthTestEnable(true).depthWriteEnable(depthStencil.writeDepth()).depthCompareOp(VulkanConst.toVk(depthStencil.depthTest()));
             }
             
+            // One blend state for each color attachment of the subpass, as Minecraft gives the
+            // pipeline; an attachment the pipeline has no target for is not written.
             List<@Nullable ColorTargetState> colorTargets = createInfo.colorTargetStates();
-            VkPipelineColorBlendAttachmentState.Buffer attachments = VkPipelineColorBlendAttachmentState.calloc(colorTargets.size(), stack);
+            VkPipelineColorBlendAttachmentState.Buffer attachments = VkPipelineColorBlendAttachmentState.calloc(createInfo.subpass().colorAttachments().size(), stack);
             for (ColorTargetState colorTarget : colorTargets) {
                 attachments.colorWriteMask(colorTarget == null ? 0 : VulkanConst.toVk(colorTarget));
                 if (colorTarget != null) {
@@ -235,9 +240,10 @@ public final class ModelMeshPipelines {
             VkPipelineViewportStateCreateInfo viewportState = VkPipelineViewportStateCreateInfo.calloc(stack).sType$Default().viewportCount(1).scissorCount(1);
             VkPipelineMultisampleStateCreateInfo multisampleState = VkPipelineMultisampleStateCreateInfo.calloc(stack).sType$Default().rasterizationSamples(VK10.VK_SAMPLE_COUNT_1_BIT).sampleShadingEnable(false);
             VkPipelineDynamicStateCreateInfo dynamicState = VkPipelineDynamicStateCreateInfo.calloc(stack).sType$Default().pDynamicStates(stack.ints(VK10.VK_DYNAMIC_STATE_VIEWPORT, VK10.VK_DYNAMIC_STATE_SCISSOR));
-            long renderPass = device.renderpassCache().getRenderPass(depthStencil != null ? VulkanConst.toVk(createInfo.depthStencilFormat()) : 0, colorTargets);
+            RenderPassLayout.Subpass subpass = createInfo.subpass();
+            long renderPass = device.renderpassCache().getRenderPass(subpass.renderPassLayout());
             
-            VkGraphicsPipelineCreateInfo.Buffer pipelineCreateInfo = VkGraphicsPipelineCreateInfo.calloc(1, stack).sType$Default().pStages(stages).pRasterizationState(rasterizationState).pDepthStencilState(depthStencilState).pColorBlendState(colorBlendState).pViewportState(viewportState).pMultisampleState(multisampleState).pDynamicState(dynamicState).layout(pipelineLayout).renderPass(renderPass).subpass(0);
+            VkGraphicsPipelineCreateInfo.Buffer pipelineCreateInfo = VkGraphicsPipelineCreateInfo.calloc(1, stack).sType$Default().pStages(stages).pRasterizationState(rasterizationState).pDepthStencilState(depthStencilState).pColorBlendState(colorBlendState).pViewportState(viewportState).pMultisampleState(multisampleState).pDynamicState(dynamicState).layout(pipelineLayout).renderPass(renderPass).subpass(subpass.index());
             LongBuffer handle = stack.callocLong(1);
             VulkanUtils.crashIfFailure(device, VK10.vkCreateGraphicsPipelines(device.vkDevice(), VK10.VK_NULL_HANDLE, pipelineCreateInfo, null, handle), "Failed to create the VIM model mesh pipeline for " + createInfo.name());
             VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_PIPELINE, handle.get(0), "VIM Model Mesh " + createInfo.name());
@@ -257,14 +263,18 @@ public final class ModelMeshPipelines {
      * its order-independent transparency stages.
      */
     static boolean drawsWithMesh(PreparedRenderType renderType) {
-        // As Minecraft draws a render type: the pipeline for no stage, and the pipeline of each
-        // stage it has one for.
+        // As Minecraft draws a render type and compiles its pipelines ahead: the pipeline for no
+        // stage in the color and depth pass, and the pipeline of each stage it has one for in that
+        // stage's subpass.
         Function<OitStage, RenderPipeline> pipelines = renderType.pipelineProvider();
-        return hasMeshPipeline(pipelines.apply(null)) && Arrays.stream(OitStage.values()).map(pipelines).allMatch(pipeline -> pipeline == null || hasMeshPipeline(pipeline));
+        return hasMeshPipeline(pipelines.apply(null), RenderPassLayouts.COLOR_DEPTH.subpass(0)) && Arrays.stream(OitStage.values()).allMatch(stage -> {
+            RenderPipeline pipeline = pipelines.apply(stage);
+            return pipeline == null || hasMeshPipeline(pipeline, stage.subpass());
+        });
     }
     
-    private static boolean hasMeshPipeline(@Nullable RenderPipeline pipeline) {
-        return pipeline != null && RenderSystem.getCompiledPipelineNullable(pipeline) instanceof FrontendRenderPipeline compiled && of(compiled.backendRenderPipeline()) != null;
+    private static boolean hasMeshPipeline(@Nullable RenderPipeline pipeline, RenderPassLayout.Subpass subpass) {
+        return pipeline != null && RenderSystem.getCompiledPipelineNullable(pipeline, subpass) instanceof FrontendRenderPipeline compiled && of(compiled.backendRenderPipeline()) != null;
     }
     
     public static Map<String, Object> asMap() {

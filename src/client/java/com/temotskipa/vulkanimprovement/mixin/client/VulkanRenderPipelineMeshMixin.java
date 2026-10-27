@@ -10,6 +10,7 @@ import com.temotskipa.vulkanimprovement.client.vulkan.model.*;
 import it.unimi.dsi.fastutil.longs.LongList;
 import org.jspecify.annotations.Nullable;
 import org.lwjgl.vulkan.EXTMeshShader;
+import org.lwjgl.vulkan.VK10;
 import org.lwjgl.vulkan.VkPipelineColorBlendAttachmentState;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -45,14 +46,22 @@ public abstract class VulkanRenderPipelineMeshMixin implements ModelMeshPipeline
         throw new AssertionError();
     }
     
+    /**
+     * Shows the mesh stage what Minecraft shows the vertex stage it stands in for. Minecraft sets a
+     * binding's stages twice, the fragment stage and then the vertex stage too unless the binding is
+     * an input attachment, which only the fragment stage may read.
+     */
     @ModifyArg(method = "compile", at = @At(value = "INVOKE", target = "Lorg/lwjgl/vulkan/VkDescriptorSetLayoutBinding;stageFlags(I)Lorg/lwjgl/vulkan/VkDescriptorSetLayoutBinding;"))
     private static int vim$showDescriptorsToMeshStage(int stageFlags, @Local(argsOnly = true, name = "pipelineCreateInfo") CreateInfo pipelineCreateInfo) {
-        return ModelMeshPipelines.pending(pipelineCreateInfo.name()) == null ? stageFlags : stageFlags | EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT;
+        if ((stageFlags & VK10.VK_SHADER_STAGE_VERTEX_BIT) == 0 || ModelMeshPipelines.pending(pipelineCreateInfo) == null) {
+            return stageFlags;
+        }
+        return stageFlags | EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT;
     }
     
     @ModifyExpressionValue(method = "compile", at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/api/pipeline/CompiledRenderPipeline$CreateInfo;pushConstantsSize()I"))
     private static int vim$makeRoomForMeshConstants(int pushConstantsSize, @Local(argsOnly = true, name = "pipelineCreateInfo") CreateInfo pipelineCreateInfo) {
-        PendingModelMeshStage pending = ModelMeshPipelines.pending(pipelineCreateInfo.name());
+        PendingModelMeshStage pending = ModelMeshPipelines.pending(pipelineCreateInfo);
         return pending == null ? pushConstantsSize : pending.pushConstantOffset() + ModelMeshShader.PUSH_CONSTANT_BYTES;
     }
     
