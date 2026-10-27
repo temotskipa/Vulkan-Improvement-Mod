@@ -34,6 +34,9 @@ manual.
   validation.
 - The project targets Java 25. Do not lower the Java target unless the mod's
   supported Minecraft/Fabric versions change.
+- Gradle runs on an installed Java 25 whatever JDK starts it
+  (`gradle/gradle-daemon-jvm.properties`): Loom needs at least 25, and GitHub's
+  automatic dependency submission starts Gradle on Java 21.
 
 ## Working Rules
 
