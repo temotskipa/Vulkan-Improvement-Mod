@@ -306,12 +306,14 @@ frame rates are compared with the timers off.
 
 ## Follow-Up
 
-- At the horizon the render thread waits on the D3D12 swapchain's frame
-  latency object for a tenth of its time, in both modes. Minecraft presents
-  through D3D12: every frame is blitted by Vulkan into one shared image, which
-  the D3D12 queue copies to the swapchain after waiting on a Vulkan semaphore,
-  with a frame latency of two. Whether that hand-off can let more of the GPU's
-  work overlap is open; it is Minecraft's presentation, not the terrain path.
+- At the horizon the render thread waited on the D3D12 swapchain's frame
+  latency object for a tenth of its time, in both modes, when Minecraft
+  presented through D3D12: every frame blitted by Vulkan into one shared
+  image, which the D3D12 queue copied to the swapchain after waiting on a
+  Vulkan semaphore, with a frame latency of two. Since 26.4-snapshot-5
+  Minecraft presents through the Vulkan swapchain unless its experimental
+  Prefer DXGI Present option is on, so this wait needs measuring again there,
+  with present pacing acting on the swapchain.
 - At render distance 16 on the ground the GPU-driven frame spends about
   0.18 ms more outside the render thread's work than the listed path, though
   its CPU and GPU times are both lower. A GPU trace of both modes would show
