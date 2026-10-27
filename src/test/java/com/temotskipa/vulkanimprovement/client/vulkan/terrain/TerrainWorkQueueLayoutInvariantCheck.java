@@ -44,7 +44,7 @@ public final class TerrainWorkQueueLayoutInvariantCheck {
         Object fields = diagnostics.get("recordFields");
         require(fields instanceof Map<?, ?>, "diagnostics must include record field offsets");
         require(((Map<?, ?>) fields).get("meshletIndex").equals(0), "record diagnostics must include meshlet index offset");
-        require(((Map<?, ?>) fields).get("flags").equals(12), "record diagnostics must include flags offset");
+        require(((Map<?, ?>) fields).get("visibility").equals(12), "record diagnostics must include visibility offset");
     }
     
     private static void checkInvalidInputsRejected() {

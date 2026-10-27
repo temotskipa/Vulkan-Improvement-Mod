@@ -4,14 +4,14 @@ import java.lang.foreign.MemoryLayout;
 import java.lang.foreign.StructLayout;
 
 /**
- * A record of the CPU-written work queue: one meshlet of a layer.
+ * A record of the CPU-written work queue: one meshlet of a layer, and its section's fade-in.
  */
 public final class TerrainWorkQueueRecord {
-    public static final StructLayout LAYOUT = MemoryLayout.structLayout(TerrainGpuRecords.INT.withName("meshletIndex"), TerrainGpuRecords.INT.withName("layerOrdinal"), TerrainGpuRecords.INT.withName("lodLevel"), TerrainGpuRecords.INT.withName("flags")).withName("TerrainWorkQueueRecord");
+    public static final StructLayout LAYOUT = MemoryLayout.structLayout(TerrainGpuRecords.INT.withName("meshletIndex"), TerrainGpuRecords.INT.withName("layerOrdinal"), TerrainGpuRecords.INT.withName("lodLevel"), TerrainGpuRecords.FLOAT.withName("visibility")).withName("TerrainWorkQueueRecord");
     public static final long MESHLET_INDEX = TerrainGpuRecords.offset(LAYOUT, "meshletIndex");
     public static final long LAYER_ORDINAL = TerrainGpuRecords.offset(LAYOUT, "layerOrdinal");
     public static final long LOD_LEVEL = TerrainGpuRecords.offset(LAYOUT, "lodLevel");
-    public static final long FLAGS = TerrainGpuRecords.offset(LAYOUT, "flags");
+    public static final long VISIBILITY = TerrainGpuRecords.offset(LAYOUT, "visibility");
     
     private TerrainWorkQueueRecord() {
     }

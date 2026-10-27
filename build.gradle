@@ -537,7 +537,7 @@ tasks.register("checkTerrainLayoutManifest") {
                 "struct VisibleMeshletRecord { uint meshletIndex; float visibility; };")
         requireNormalizedText("task terrain shader",
                 taskShader,
-                "struct TerrainWorkQueueRecord { uint meshletIndex; uint layerOrdinal; uint lodLevel; uint flags; };")
+                "struct TerrainWorkQueueRecord { uint meshletIndex; uint layerOrdinal; uint lodLevel; float visibility; };")
         requireNormalizedText("task terrain shader",
                 taskShader,
                 "layout(buffer_reference, scalar, buffer_reference_align = 4) readonly buffer TerrainWorkQueue { uint producedCount; uint consumedCount; uint droppedCount; uint reserved; TerrainWorkQueueRecord records[]; };")

@@ -38,7 +38,7 @@ struct TerrainWorkQueueRecord {
     uint meshletIndex;
     uint layerOrdinal;
     uint lodLevel;
-    uint flags;
+    float visibility;
 };
 
 // A section layer's place on the GPU. Only where its meshlets are and how many matter here.
@@ -215,7 +215,7 @@ void main() {
             TerrainWorkQueue queue = TerrainWorkQueue(pc.workQueue);
             TerrainWorkQueueRecord record = queue.records[pc.meshletOffset + localMeshlet];
             taskPayload.meshlets[0] = record.meshletIndex;
-            taskPayload.meshletVisibility = 1.0;
+            taskPayload.meshletVisibility = clamp(record.visibility, 0.0, 1.0);
         }
         else if (pc.visibleMeshlets != uint64_t(0)) {
             VisibleMeshlets visible = VisibleMeshlets(pc.visibleMeshlets);

@@ -220,8 +220,8 @@ renderer code does not drift back into a catch-all root package.
   always (`vim.cullMeshlets`).
 - `TerrainMeshTaskDispatch` records where a dispatch's tasks come from. The
   GPU-driven path is `gpu-driven-pages`, the listed path `listed-pages`, the
-  visibility pass's `gpu-visible-pages`. The older sources remain as fallback and diagnostics: a CPU-written work queue with one record per visible meshlet
-  (`cpu-work-queue`, used when `vim.enableGpuGeneratedMeshTaskCommands=false`
+  visibility pass's `gpu-visible-pages`. The older sources remain as fallback and diagnostics: a CPU-written work queue with one record per visible meshlet,
+  carrying its section's fade-in (`cpu-work-queue`, used when `vim.enableGpuGeneratedMeshTaskCommands=false`
   or a frame's command could not be prepared), the visible meshlet ring, and
   direct per-page draws for `vim.drawAllCapturedTerrainLayers`.
 - `TerrainVisibleMeshletRing` owns the pure allocation rules for the CPU-written

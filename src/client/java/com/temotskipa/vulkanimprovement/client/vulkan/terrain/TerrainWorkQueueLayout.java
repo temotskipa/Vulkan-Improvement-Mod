@@ -34,7 +34,7 @@ final class TerrainWorkQueueLayout {
         map.put("recordCapacity", recordCapacity);
         map.put("recordsOffset", recordsOffset());
         map.put("bytes", bytesForCapacity(recordCapacity));
-        map.put("recordFields", Map.of("meshletIndex", 0, "layerOrdinal", 4, "lodLevel", 8, "flags", 12));
+        map.put("recordFields", Map.of("meshletIndex", 0, "layerOrdinal", 4, "lodLevel", 8, "visibility", 12));
         return map;
     }
 }

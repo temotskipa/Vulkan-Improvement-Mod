@@ -835,11 +835,12 @@ public final class DescriptorHeapTerrainResources {
         queue.set(TerrainGpuRecords.INT, 0L, requiredRecords);
         long record = TerrainWorkQueueLayout.recordOffset(firstRecord);
         for (MeshletRange range : ranges) {
+            float visibility = Math.clamp(range.visibility(), 0.0F, 1.0F);
             for (int i = 0; i < range.count(); i++, record += TerrainGpuLayout.TERRAIN_WORK_QUEUE_RECORD_STRIDE) {
                 queue.set(TerrainGpuRecords.INT, record + TerrainWorkQueueRecord.MESHLET_INDEX, range.offset() + i);
                 queue.set(TerrainGpuRecords.INT, record + TerrainWorkQueueRecord.LAYER_ORDINAL, layerOrdinal);
                 queue.set(TerrainGpuRecords.INT, record + TerrainWorkQueueRecord.LOD_LEVEL, 0);
-                queue.set(TerrainGpuRecords.INT, record + TerrainWorkQueueRecord.FLAGS, 0);
+                queue.set(TerrainGpuRecords.FLOAT, record + TerrainWorkQueueRecord.VISIBILITY, visibility);
             }
         }
         workQueue.flush();
