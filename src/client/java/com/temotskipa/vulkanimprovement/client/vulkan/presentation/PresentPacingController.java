@@ -3,6 +3,7 @@ package com.temotskipa.vulkanimprovement.client.vulkan.presentation;
 import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
 import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanCapabilitySnapshot;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
+import org.jspecify.annotations.Nullable;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.*;
 
@@ -23,9 +24,22 @@ public final class PresentPacingController {
     private volatile boolean presentIdAvailable;
     private volatile boolean presentWaitAvailable;
     private volatile boolean disabled;
+    /**
+     * Whether Minecraft presents through the Vulkan swapchain, which pacing acts on, or through
+     * DXGI, where it has nothing to act on; null until Minecraft creates its surface.
+     */
+    private volatile @Nullable Boolean vulkanSwapchain;
     
     public static PresentPacingController get() {
         return INSTANCE;
+    }
+    
+    /**
+     * Notes the surface Minecraft created for its window: its Vulkan swapchain, or, with the
+     * experimental Prefer DXGI Present option on, a DXGI swapchain that D3D12 presents.
+     */
+    public void surfaceCreated(boolean vulkanSwapchain) {
+        this.vulkanSwapchain = vulkanSwapchain;
     }
     
     public void configure(VulkanCapabilitySnapshot capabilities) {
@@ -88,7 +102,9 @@ public final class PresentPacingController {
         map.put("presentWaits", this.presentWaits.get());
         map.put("presentWaitFailures", this.presentWaitFailures.get());
         map.put("lastPresentDurationMicros", this.lastPresentDurationNanos.get() / 1_000L);
-        map.put("mode", this.disabled ? "disabled" : "present-id-wait");
+        Boolean swapchain = this.vulkanSwapchain;
+        map.put("presentSurface", swapchain == null ? "none" : swapchain ? "vulkan-swapchain" : "dxgi");
+        map.put("mode", this.disabled ? "disabled" : Boolean.FALSE.equals(swapchain) ? "inactive" : "present-id-wait");
         return map;
     }
 }

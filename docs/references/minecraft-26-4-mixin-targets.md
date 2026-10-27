@@ -68,12 +68,15 @@ inside a render pass the level renderer has already opened.
 - mcdev 26.4 surface: constructor receives `VulkanInstance`,
   `VulkanPhysicalDevice`, the enabled `FeatureSet`, `VkDevice`, the VMA handle
   and `CheckpointExtension`, and closes the physical device before it creates
-  the command encoder; field `vkDevice`; method `close`.
+  the command encoder; field `vkDevice`; method `close`;
+  `createSurface(long, BooleanSupplier, boolean)` returns a `VulkanGpuSurface`,
+  or a `D3D12GpuSurface` when its last argument asks for DXGI presentation.
 - Source tokens: `private VkDevice vkDevice`, `method = "<init>"`,
   `FeatureSet enabledFeatureSet`, `VulkanPhysicalDevice;close()V`,
-  `method = "close"`.
+  `method = "close"`, `method = "createSurface"`, `instanceof VulkanGpuSurface`.
 - Purpose: capture VIM runtime capabilities before the physical-device wrapper
-  is closed, set up the GPU model path on the new device, and shut renderer
+  is closed, set up the GPU model path on the new device, tell present pacing
+  whether Minecraft presents through the Vulkan swapchain, and shut renderer
   services down before the Vulkan device is destroyed.
 
 ### VulkanGpuSurfaceMixin
