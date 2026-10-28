@@ -1,5 +1,6 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.presentation;
 
+import com.mojang.renderpearl.api.device.GpuSurface.PresentMode;
 import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
 import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanCapabilitySnapshot;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
@@ -36,6 +37,12 @@ public final class PresentPacingController {
      * DXGI, where it has nothing to act on; null until Minecraft creates its surface.
      */
     private volatile @Nullable Boolean vulkanSwapchain;
+    /**
+     * How Minecraft's swapchain presents, null until it is configured. Presents are waited for only
+     * in vsync order: a present that is shown at once reaches the screen of a composed window at
+     * its next refresh, so waiting for one holds the frame rate near the refresh rate.
+     */
+    private volatile @Nullable PresentMode presentMode;
     
     public static PresentPacingController get() {
         return INSTANCE;
@@ -47,6 +54,18 @@ public final class PresentPacingController {
      */
     public void surfaceCreated(boolean vulkanSwapchain) {
         this.vulkanSwapchain = vulkanSwapchain;
+    }
+    
+    /**
+     * Notes the present mode Minecraft configures its Vulkan swapchain with: FIFO with vsync on.
+     */
+    public void swapchainConfigured(PresentMode mode) {
+        this.presentMode = mode;
+    }
+    
+    private boolean presentsInVsyncOrder() {
+        PresentMode mode = this.presentMode;
+        return mode == PresentMode.FIFO || mode == PresentMode.FIFO_RELAXED;
     }
     
     public void configure(VulkanCapabilitySnapshot capabilities) {
@@ -69,7 +88,7 @@ public final class PresentPacingController {
     
     public int present(VulkanDevice device, VkQueue queue, long swapchain, VkPresentInfoKHR presentInfo) {
         this.disabled = TerrainRendererDebugConfig.disablePresentPacing();
-        if (this.disabled || !this.presentIdAvailable) {
+        if (this.disabled || !this.presentIdAvailable || !presentsInVsyncOrder()) {
             return KHRSwapchain.vkQueuePresentKHR(queue, presentInfo);
         }
         
@@ -120,7 +139,9 @@ public final class PresentPacingController {
         map.put("lastPresentDurationMicros", this.lastPresentDurationNanos.get() / 1_000L);
         Boolean swapchain = this.vulkanSwapchain;
         map.put("presentSurface", swapchain == null ? "none" : swapchain ? "vulkan-swapchain" : "dxgi");
-        map.put("mode", this.disabled ? "disabled" : Boolean.FALSE.equals(swapchain) ? "inactive" : "present-id-wait");
+        PresentMode mode = this.presentMode;
+        map.put("presentMode", mode == null ? "none" : mode.name());
+        map.put("mode", this.disabled ? "disabled" : Boolean.FALSE.equals(swapchain) ? "inactive" : presentsInVsyncOrder() ? "present-id-wait" : "unpaced-without-vsync");
         return map;
     }
 }

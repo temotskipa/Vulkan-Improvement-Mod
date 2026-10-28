@@ -19,7 +19,7 @@
   "options.vulkanimprovement.terrainFragmentShadingRateSize": "Terrain VRS Size",
   "options.vulkanimprovement.terrainFragmentShadingRateSize.tooltip": "Requested Vulkan fragment shading-rate tile size for terrain. The renderer clamps this to device limits.",
   "options.vulkanimprovement.presentPacing": "Present Pacing",
-  "options.vulkanimprovement.presentPacing.tooltip": "Uses Vulkan present-id and present-wait pacing when the device supports them.",
+  "options.vulkanimprovement.presentPacing.tooltip": "With VSync on, keeps Minecraft from running more than a frame ahead of the screen, using Vulkan present id and present wait where the device supports them.",
   "options.vulkanimprovement.waitIdleBeforeTerrainUpload": "Wait Idle Uploads",
   "options.vulkanimprovement.waitIdleBeforeTerrainUpload.tooltip": "Waits for the Vulkan device to idle before terrain uploads. Heavy validation mode.",
   "options.vulkanimprovement.allowCpuVisibleMeshletFallback": "CPU Visible Fallback",

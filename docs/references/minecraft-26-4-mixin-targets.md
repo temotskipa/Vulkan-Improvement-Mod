@@ -82,15 +82,18 @@ inside a render pass the level renderer has already opened.
 ### VulkanGpuSurfaceMixin
 
 - Target: `com.mojang.renderpearl.backend.vulkan.VulkanGpuSurface`.
-- mcdev 26.4 surface: fields `device` and `swapchain`; method `present`; call
+- mcdev 26.4 surface: fields `device` and `swapchain`; methods
+  `configure(GpuSurface.Configuration)`, whose configuration names the present
+  mode the swapchain is created with (FIFO with vsync on), and `present`; call
   to `KHRSwapchain.vkQueuePresentKHR`. With the experimental Prefer DXGI
   Present video option on at startup, Minecraft presents through
   `D3D12GpuSurface` instead and this class is not used. The option is off by
   default.
 - Source tokens: `private VulkanDevice device`, `private long swapchain`,
-  `method = "present"`, `vkQueuePresentKHR`.
+  `method = "configure"`, `method = "present"`, `vkQueuePresentKHR`.
 - Purpose: route present-id/present-wait pacing through
-  `PresentPacingController` while keeping vanilla swapchain ownership.
+  `PresentPacingController` while keeping vanilla swapchain ownership, and
+  tell it the swapchain's present mode, as it paces only in vsync order.
 
 ### VulkanRenderPassMixin
 

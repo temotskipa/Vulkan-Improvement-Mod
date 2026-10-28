@@ -1,5 +1,6 @@
 package com.temotskipa.vulkanimprovement.mixin.client;
 
+import com.mojang.renderpearl.api.device.GpuSurface.Configuration;
 import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
 import com.mojang.renderpearl.backend.vulkan.VulkanGpuSurface;
 import com.temotskipa.vulkanimprovement.client.vulkan.presentation.PresentPacingController;
@@ -21,6 +22,11 @@ public final class VulkanGpuSurfaceMixin {
     
     @Shadow
     private long swapchain;
+    
+    @Inject(method = "configure", at = @At("HEAD"))
+    private void vim$swapchainConfigured(Configuration config, CallbackInfo ci) {
+        PresentPacingController.get().swapchainConfigured(config.presentMode());
+    }
     
     @Inject(method = "present", at = @At("HEAD"))
     private void vim$beforePresent(CallbackInfo ci) {
