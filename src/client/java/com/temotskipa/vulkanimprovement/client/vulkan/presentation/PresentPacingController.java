@@ -24,6 +24,13 @@ public final class PresentPacingController {
     private volatile boolean presentIdAvailable;
     private volatile boolean presentWaitAvailable;
     private volatile boolean disabled;
+    private volatile int frameLatency = TerrainRendererDebugConfig.presentPacingFrameLatency();
+    /**
+     * The swapchain the last paced present went to, and the first present id it was given; a
+     * present id below that one was never presented to it, so it is not waited for.
+     */
+    private long pacedSwapchain;
+    private long firstPresentIdOfSwapchain;
     /**
      * Whether Minecraft presents through the Vulkan swapchain, which pacing acts on, or through
      * DXGI, where it has nothing to act on; null until Minecraft creates its surface.
@@ -68,6 +75,10 @@ public final class PresentPacingController {
         
         int result;
         long presentId = this.nextPresentId.getAndIncrement();
+        if (swapchain != this.pacedSwapchain) {
+            this.pacedSwapchain = swapchain;
+            this.firstPresentIdOfSwapchain = presentId;
+        }
         long oldPNext = presentInfo.pNext();
         try (MemoryStack stack = MemoryStack.stackPush()) {
             VkPresentIdKHR presentIdInfo = VkPresentIdKHR.calloc(stack).sType$Default();
@@ -80,8 +91,12 @@ public final class PresentPacingController {
         }
         this.presentIdsSubmitted.incrementAndGet();
         
-        if (this.presentWaitAvailable && result >= VK10.VK_SUCCESS) {
-            int waitResult = KHRPresentWait.vkWaitForPresentKHR(device.vkDevice(), swapchain, presentId, 50_000_000L);
+        // Waiting for the frame just presented would leave the GPU idle while Minecraft builds the
+        // next one; waiting for an earlier one keeps that many frames between Minecraft and the screen.
+        this.frameLatency = TerrainRendererDebugConfig.presentPacingFrameLatency();
+        long waitId = presentId - this.frameLatency;
+        if (this.presentWaitAvailable && result >= VK10.VK_SUCCESS && waitId >= this.firstPresentIdOfSwapchain) {
+            int waitResult = KHRPresentWait.vkWaitForPresentKHR(device.vkDevice(), swapchain, waitId, 50_000_000L);
             if (waitResult == VK10.VK_SUCCESS) {
                 this.presentWaits.incrementAndGet();
             }
@@ -97,6 +112,7 @@ public final class PresentPacingController {
         map.put("disabled", this.disabled);
         map.put("presentIdAvailable", this.presentIdAvailable);
         map.put("presentWaitAvailable", this.presentWaitAvailable);
+        map.put("frameLatency", this.frameLatency);
         map.put("presentCalls", this.presentCalls.get());
         map.put("presentIdsSubmitted", this.presentIdsSubmitted.get());
         map.put("presentWaits", this.presentWaits.get());

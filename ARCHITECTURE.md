@@ -114,7 +114,10 @@ the mod is idle (see `LevelRendererMixin` in
 - `client.vulkan.rtpt`: Owns RT/PT acceleration-data diagnostics and fallback
   accounting for future acceleration structure work.
 - `client.vulkan.presentation`: Owns Vulkan present pacing and present
-  ID/wait diagnostics.
+  ID/wait diagnostics. After each present, pacing waits until the frame
+  `vim.presentPacingFrameLatency` presents before it is on the screen, so
+  Minecraft runs at most that many frames ahead of the display and still
+  builds a frame while the GPU draws the last.
 - `mixin.client`: Owns integration points into Minecraft and Mojang's Vulkan
   classes. Keep mixin classes thin; move reusable behavior into the
   `client.vulkan.*` packages.
