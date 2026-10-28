@@ -12,7 +12,7 @@ import org.spongepowered.asm.mixin.injection.ModifyArg;
  * takes every shader but a fragment shader for a vertex shader ({@link ModelMeshPipelines}).
  */
 @Mixin(GlslCompiler.class)
-public abstract class GlslCompilerMixin {
+public final class GlslCompilerMixin {
     @ModifyArg(method = "compileToSpv", at = @At(value = "INVOKE", target = "Lorg/lwjgl/util/shaderc/Shaderc;shaderc_compile_into_spv(JLjava/nio/ByteBuffer;ILjava/nio/ByteBuffer;Ljava/nio/ByteBuffer;J)J"), index = 2)
     private int vim$compileMeshStage(int shaderKind) {
         return ModelMeshPipelines.compilingMeshStage() ? Shaderc.shaderc_mesh_shader : shaderKind;

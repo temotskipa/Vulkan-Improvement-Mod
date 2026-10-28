@@ -16,7 +16,7 @@ import org.spongepowered.asm.mixin.injection.At;
  * the model is set up and rendered by Minecraft either way.
  */
 @Mixin(ModelFeatureRenderer.class)
-public abstract class ModelFeatureRendererMixin {
+public final class ModelFeatureRendererMixin {
     @WrapOperation(method = "prepareModel", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/feature/ModelFeatureRenderer;getVertexBuilder(Lnet/minecraft/client/renderer/rendertype/RenderType;)Lcom/mojang/blaze3d/vertex/VertexConsumer;"))
     private VertexConsumer vim$offerToGpu(ModelFeatureRenderer renderer, RenderType renderType, Operation<VertexConsumer> original, @Local(argsOnly = true, name = "submit") ModelFeatureRenderer.Submit<?> submit) {
         ModelGpuVertices vertices = ModelGpuVertices.get();

@@ -24,7 +24,7 @@ import java.nio.ByteBuffer;
  * ({@link ModelMeshPipelines}).
  */
 @Mixin(PipelineBuilder.class)
-public abstract class PipelineBuilderMixin {
+public final class PipelineBuilderMixin {
     @WrapOperation(method = "generateBackendCreateInfo", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/pipeline/GlslCompiler;compileToSpv(Ljava/lang/String;Ljava/lang/String;Lcom/mojang/renderpearl/api/pipeline/ShaderType;Lnet/minecraft/client/renderer/ShaderDefines;Lcom/mojang/blaze3d/pipeline/ShaderSource;Lcom/mojang/renderpearl/api/device/DeviceInfo;)Ljava/nio/ByteBuffer;"))
     private ByteBuffer vim$compileModelMeshStage(GlslCompiler compiler, String name, String source, ShaderType type, ShaderDefines shaderDefines, ShaderSource shaderSource, DeviceInfo deviceInfo, Operation<ByteBuffer> original, @Local(argsOnly = true, name = "pipeline") RenderPipeline pipeline, @Local(argsOnly = true, name = "subpass") RenderPassLayout.Subpass subpass) {
         ByteBuffer spirv = original.call(compiler, name, source, type, shaderDefines, shaderSource, deviceInfo);

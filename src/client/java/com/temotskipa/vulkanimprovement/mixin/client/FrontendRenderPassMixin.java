@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.Shadow;
  * Leads from the render pass Minecraft's renderers are handed to the backend pass that records it.
  */
 @Mixin(FrontendRenderPass.class)
-public abstract class FrontendRenderPassMixin implements TerrainRenderPassFrontend {
+public final class FrontendRenderPassMixin implements TerrainRenderPassFrontend {
     @Shadow
     @Final
     private RenderPassBackend backend;

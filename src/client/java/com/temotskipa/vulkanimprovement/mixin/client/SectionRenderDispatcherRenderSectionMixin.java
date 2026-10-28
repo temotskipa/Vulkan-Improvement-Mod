@@ -6,7 +6,7 @@ import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDeb
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.chunk.CompiledSectionMesh;
 import net.minecraft.client.renderer.chunk.SectionMesh;
-import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
+import net.minecraft.client.renderer.chunk.SectionRenderDispatcher.RenderSection;
 import org.jspecify.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -16,7 +16,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.nio.ByteBuffer;
 
-@Mixin(SectionRenderDispatcher.RenderSection.class)
+@Mixin(RenderSection.class)
 public final class SectionRenderDispatcherRenderSectionMixin {
     @Shadow
     private long sectionNode;

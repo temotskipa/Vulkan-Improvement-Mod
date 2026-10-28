@@ -15,7 +15,7 @@ import org.spongepowered.asm.mixin.Shadow;
  * and the way to hand the pass back to Minecraft after drawing with a pipeline of its own.
  */
 @Mixin(VulkanRenderPass.class)
-public abstract class VulkanRenderPassMixin implements TerrainRenderPassAccess {
+public class VulkanRenderPassMixin implements TerrainRenderPassAccess {
     @Shadow
     @Nullable
     protected VulkanRenderPipeline pipeline;

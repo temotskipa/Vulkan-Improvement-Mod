@@ -8,6 +8,7 @@ import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelDrawGroup;
 import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelGpuVertices;
 import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelVertexDrawHolder;
 import net.minecraft.client.renderer.StagedVertexBuffer;
+import net.minecraft.client.renderer.StagedVertexBuffer.Draw;
 import net.minecraft.client.renderer.rendertype.PreparedRenderType;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import org.jspecify.annotations.Nullable;
@@ -35,14 +36,14 @@ public abstract class RenderTypeFeatureRendererGroupMixin implements ModelDrawGr
     private boolean canReorder;
     @Shadow
     @Final
-    private List<StagedVertexBuffer.Draw> draws;
+    private List<Draw> draws;
     @Shadow
     @Final
     private List<PreparedRenderType> drawRenderTypes;
     @Shadow
-    private StagedVertexBuffer.@Nullable Draw lastDraw;
+    private @Nullable Draw lastDraw;
     @Unique
-    private StagedVertexBuffer.@Nullable Draw vim$lastModelDraw;
+    private @Nullable Draw vim$lastModelDraw;
     @Unique
     private @Nullable RenderType vim$lastModelRenderType;
     

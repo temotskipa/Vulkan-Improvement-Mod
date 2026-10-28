@@ -29,7 +29,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * pipeline shares its layout.
  */
 @Mixin(VulkanRenderPipeline.class)
-public abstract class VulkanRenderPipelineMeshMixin implements ModelMeshPipelineHolder {
+public final class VulkanRenderPipelineMeshMixin implements ModelMeshPipelineHolder {
     @Shadow
     @Final
     private VulkanDevice device;

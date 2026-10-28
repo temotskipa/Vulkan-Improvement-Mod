@@ -9,7 +9,7 @@ import org.spongepowered.asm.mixin.Unique;
  * Lets a model cube remember where the GPU model path keeps its faces.
  */
 @Mixin(Cube.class)
-public abstract class ModelPartCubeMixin implements ModelCubeResidency {
+public final class ModelPartCubeMixin implements ModelCubeResidency {
     @Unique
     private int vim$residentStore;
     @Unique

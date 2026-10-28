@@ -22,9 +22,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * improved fog among them.
  */
 @Mixin(ChunkSectionsToRender.class)
-public abstract class ChunkSectionsToRenderMixin {
+public final class ChunkSectionsToRenderMixin {
     @Inject(method = "renderGroup", at = @At("HEAD"))
-    private void vim$observeTerrainGroup(ChunkSectionLayerGroup group, RenderPass renderPass, GpuSampler sampler, GpuTextureView atlas, ChunkSectionsToRender.@Nullable ImprovedFogTextures improvedFogTextures, boolean renderWireframeTerrain, CallbackInfo ci) {
+    private void vim$observeTerrainGroup(ChunkSectionLayerGroup group, RenderPass renderPass, GpuSampler sampler, GpuTextureView atlas, ChunkSectionsToRender.@Nullable ImprovedFogTextures improvedFogTextures, boolean wireframe, CallbackInfo ci) {
         if (!VulkanImprovementRuntime.isVulkanBackendActive()) {
             return;
         }
@@ -41,11 +41,11 @@ public abstract class ChunkSectionsToRenderMixin {
             resources.recordImageBinding(DescriptorHeapTerrainResources.CLOUDS_IMAGE, improvedFogTextures.cloudsView());
             resources.recordImageBinding(DescriptorHeapTerrainResources.CLOUDS_DEPTH_IMAGE, improvedFogTextures.cloudsDepthView());
         }
-        MeshTerrainRenderer.get().observeTerrainGroup(renderWireframeTerrain, improvedFogTextures != null);
+        MeshTerrainRenderer.get().observeTerrainGroup(wireframe, improvedFogTextures != null);
     }
     
     @Inject(method = "renderGroup", at = @At("RETURN"))
-    private void vim$leaveTerrainGroup(ChunkSectionLayerGroup group, RenderPass renderPass, GpuSampler sampler, GpuTextureView atlas, ChunkSectionsToRender.@Nullable ImprovedFogTextures improvedFogTextures, boolean renderWireframeTerrain, CallbackInfo ci) {
+    private void vim$leaveTerrainGroup(ChunkSectionLayerGroup group, RenderPass renderPass, GpuSampler sampler, GpuTextureView atlas, ChunkSectionsToRender.@Nullable ImprovedFogTextures improvedFogTextures, boolean wireframe, CallbackInfo ci) {
         if (VulkanImprovementRuntime.isVulkanBackendActive()) {
             TerrainPerformanceMonitor.get().markGroup(group, true);
         }

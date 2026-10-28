@@ -16,7 +16,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * Minecraft queues the view itself for destruction ({@link FramebufferCache}).
  */
 @Mixin(VulkanGpuTextureView.class)
-public abstract class VulkanGpuTextureViewMixin {
+public final class VulkanGpuTextureViewMixin {
     @Shadow
     @Final
     private VulkanDevice device;

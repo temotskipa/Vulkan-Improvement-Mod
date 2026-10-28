@@ -16,7 +16,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * Remembers the state a Vulkan pipeline was compiled with, which the pipeline itself no longer keeps.
  */
 @Mixin(VulkanRenderPipeline.class)
-public abstract class VulkanRenderPipelineMixin implements TerrainPipelineStateHolder {
+public final class VulkanRenderPipelineMixin implements TerrainPipelineStateHolder {
     @Unique
     private @Nullable TerrainPipelineState vim$terrainPipelineState;
     

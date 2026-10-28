@@ -8,6 +8,7 @@ import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelGpuVertices;
 import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelPartCubes;
 import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelPartResidency;
 import net.minecraft.client.model.geom.ModelPart;
+import net.minecraft.client.model.geom.ModelPart.Cube;
 import org.jspecify.annotations.Nullable;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -26,7 +27,7 @@ import java.util.List;
 public abstract class ModelPartMixin implements ModelPartResidency {
     @Shadow
     @Final
-    private List<ModelPart.Cube> cubes;
+    private List<Cube> cubes;
     @Unique
     private @Nullable ModelPartCubes vim$residentCubes;
     

@@ -14,7 +14,7 @@ import org.spongepowered.asm.mixin.injection.Redirect;
  * never frees them, which leaks a little memory on every render pass.
  */
 @Mixin(VulkanCommandEncoder.class)
-public abstract class VulkanCommandEncoderClearValuesMixin {
+public class VulkanCommandEncoderClearValuesMixin {
     @Redirect(method = "createRenderPass", at = @At(value = "INVOKE", target = "Lorg/lwjgl/vulkan/VkClearValue;calloc(I)Lorg/lwjgl/vulkan/VkClearValue$Buffer;"))
     private VkClearValue.Buffer vim$clearValuesOnStack(int capacity, @Local(name = "stack") MemoryStack stack) {
         return VkClearValue.calloc(capacity, stack);

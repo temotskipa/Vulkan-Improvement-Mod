@@ -20,7 +20,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * draws for the layer are skipped only when the mesh path says it covered them.
  */
 @Mixin(DrawSeparate.class)
-public abstract class ChunkSectionsToRenderDrawSeparateMixin {
+public final class ChunkSectionsToRenderDrawSeparateMixin {
     @Inject(method = "render", at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/api/commands/RenderPass;setPipeline(Lcom/mojang/renderpearl/api/pipeline/CompiledRenderPipeline;)V", shift = At.Shift.AFTER), cancellable = true)
     private void vim$drawMeshTerrainLayer(ChunkSectionLayer layer, RenderPass renderPass, @Nullable GpuBuffer defaultIndexBuffer, @Nullable IndexType defaultIndexType, boolean improvedFog, boolean wireframe, @Nullable OitStage oitStage, CallbackInfo ci) {
         if (VulkanImprovementRuntime.isVulkanBackendActive() && MeshTerrainRenderer.get().drawTerrainLayer(layer, renderPass)) {

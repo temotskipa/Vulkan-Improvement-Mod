@@ -25,7 +25,7 @@ import java.util.Objects;
  * shares the pipeline's layout ({@link ModelMeshPipelines}).
  */
 @Mixin(VulkanRenderPass.class)
-public abstract class VulkanRenderPassModelMeshMixin {
+public class VulkanRenderPassModelMeshMixin {
     @Shadow
     protected @Nullable VulkanRenderPipeline pipeline;
     

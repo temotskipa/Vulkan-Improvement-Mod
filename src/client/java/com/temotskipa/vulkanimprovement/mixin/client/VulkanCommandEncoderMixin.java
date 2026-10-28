@@ -24,7 +24,7 @@ import java.util.function.Supplier;
  * {@link ComputeCommands}.
  */
 @Mixin(VulkanCommandEncoder.class)
-public abstract class VulkanCommandEncoderMixin implements TerrainCommandEncoderAccess, ComputeCommandsBackend {
+public class VulkanCommandEncoderMixin implements TerrainCommandEncoderAccess, ComputeCommandsBackend {
     @Shadow
     @Final
     private VulkanDevice device;

@@ -14,7 +14,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * own terrain does.
  */
 @Mixin(FogRenderer.class)
-public abstract class FogRendererMixin {
+public final class FogRendererMixin {
     @Shadow
     private static boolean fogEnabled;
     

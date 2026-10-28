@@ -3,7 +3,7 @@ package com.temotskipa.vulkanimprovement.mixin.client;
 import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelVertexDraw;
 import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelVertexDrawHolder;
-import net.minecraft.client.renderer.StagedVertexBuffer;
+import net.minecraft.client.renderer.StagedVertexBuffer.Draw;
 import org.jspecify.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -14,7 +14,7 @@ import org.spongepowered.asm.mixin.Unique;
  * the GPU writes into it, so that Minecraft sizes its index buffer for them and does not take the
  * draw for empty.
  */
-@Mixin(StagedVertexBuffer.Draw.class)
+@Mixin(Draw.class)
 public abstract class StagedVertexBufferDrawMixin implements ModelVertexDrawHolder {
     @Shadow
     private int vertexCount;

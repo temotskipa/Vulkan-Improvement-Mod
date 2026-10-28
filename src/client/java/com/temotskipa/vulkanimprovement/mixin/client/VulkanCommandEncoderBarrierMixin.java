@@ -34,7 +34,7 @@ import java.util.Objects;
  * command buffer ends.
  */
 @Mixin(VulkanCommandEncoder.class)
-public abstract class VulkanCommandEncoderBarrierMixin {
+public class VulkanCommandEncoderBarrierMixin {
     @Shadow
     private @Nullable VkCommandBuffer currentCommandBuffer;
     

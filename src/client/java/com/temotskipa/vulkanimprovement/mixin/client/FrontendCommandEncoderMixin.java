@@ -17,7 +17,7 @@ import java.util.function.Supplier;
  * commands, then handed to the backend, which records it.
  */
 @Mixin(FrontendCommandEncoder.class)
-public abstract class FrontendCommandEncoderMixin implements ComputeCommandsFrontend {
+public final class FrontendCommandEncoderMixin implements ComputeCommandsFrontend {
     @Shadow
     @Final
     private CommandEncoderBackend backend;

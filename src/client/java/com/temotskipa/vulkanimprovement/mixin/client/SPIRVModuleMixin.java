@@ -17,7 +17,7 @@ import org.spongepowered.asm.mixin.injection.At;
  * ({@link ModelMeshPipelines}).
  */
 @Mixin(SPIRVModule.class)
-public abstract class SPIRVModuleMixin {
+public class SPIRVModuleMixin {
     @Shadow
     @Final
     private String name;
