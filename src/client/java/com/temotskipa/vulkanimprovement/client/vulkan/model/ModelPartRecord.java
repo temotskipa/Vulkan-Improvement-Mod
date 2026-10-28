@@ -17,6 +17,12 @@ public final class ModelPartRecord {
     public static final long COLOR = ModelGpuRecords.offset(LAYOUT, "color");
     public static final long OVERLAY = ModelGpuRecords.offset(LAYOUT, "overlay");
     public static final long LIGHT = ModelGpuRecords.offset(LAYOUT, "light");
+    public static final int WORDS = Math.toIntExact(BYTES / Integer.BYTES);
+    public static final int POSE_WORD = Math.toIntExact(POSE / Integer.BYTES);
+    public static final int NORMALS_WORD = Math.toIntExact(NORMALS / Integer.BYTES);
+    public static final int COLOR_WORD = Math.toIntExact(COLOR / Integer.BYTES);
+    public static final int OVERLAY_WORD = Math.toIntExact(OVERLAY / Integer.BYTES);
+    public static final int LIGHT_WORD = Math.toIntExact(LIGHT / Integer.BYTES);
     
     private ModelPartRecord() {
     }

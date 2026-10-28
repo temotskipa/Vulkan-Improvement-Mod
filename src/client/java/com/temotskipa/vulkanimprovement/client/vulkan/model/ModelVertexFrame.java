@@ -44,11 +44,19 @@ final class ModelVertexFrame {
     private static final int MAX_WORKGROUPS = 65_535;
     private static final int MAX_JOBS_PER_DISPATCH = MAX_WORKGROUPS * WORKGROUP_SIZE / ModelGpuRecords.MAX_CUBE_POLYGONS;
     private static final long RECORD_ALIGNMENT = 16L;
-    private static final Direction[] DIRECTIONS = Direction.values();
+    /**
+     * The directions along the positive axes; each one's opposite points along the negative axis.
+     */
+    private static final Direction[] POSITIVE_DIRECTIONS = {Direction.EAST, Direction.UP, Direction.SOUTH};
     
-    private final GrowingSegment parts = new GrowingSegment(4096L * ModelPartRecord.BYTES);
-    private final GrowingSegment jobs = new GrowingSegment(16_384L * ModelJobRecord.BYTES);
-    private final GrowingSegment sortedJobs = new GrowingSegment(16_384L * ModelJobRecord.BYTES);
+    /**
+     * The records, a word per element, written into Java arrays, which the render thread writes
+     * tens of thousands of times a frame faster than a {@link MemorySegment}; each array goes to
+     * the GPU in one copy.
+     */
+    private int[] parts = new int[4096 * ModelPartRecord.WORDS];
+    private int[] jobs = new int[16_384 * ModelJobRecord.WORDS];
+    private int[] sortedJobs = new int[16_384 * ModelJobRecord.WORDS];
     private final List<ModelVertexDraw> draws = new ArrayList<>();
     private int partCount;
     private int jobCount;
@@ -81,6 +89,18 @@ final class ModelVertexFrame {
     
     private static long align(long offset) {
         return Math.ceilDiv(offset, RECORD_ALIGNMENT) * RECORD_ALIGNMENT;
+    }
+    
+    /**
+     * The array, at least {@code words} long, holding what was written to it.
+     */
+    private static int[] reserve(int[] array, int words) {
+        if (words <= array.length) {
+            return array;
+        }
+        int[] grown = new int[Math.max(words, array.length * 2)];
+        System.arraycopy(array, 0, grown, 0, array.length);
+        return grown;
     }
     
     boolean isEmpty() {
@@ -123,17 +143,17 @@ final class ModelVertexFrame {
     }
     
     /**
-     * The part records written so far, in order.
+     * The part records written so far, in order, each word in the platform's byte order.
      */
     MemorySegment partRecords() {
-        return this.parts.segment();
+        return MemorySegment.ofArray(this.parts).asSlice(0L, (long) this.partCount * ModelPartRecord.BYTES);
     }
     
     /**
-     * The cube records written so far, in order.
+     * The cube records written so far, in order, each word in the platform's byte order.
      */
     MemorySegment jobRecords() {
-        return this.jobs.segment();
+        return MemorySegment.ofArray(this.jobs).asSlice(0L, (long) this.jobCount * ModelJobRecord.BYTES);
     }
     
     /**
@@ -159,25 +179,25 @@ final class ModelVertexFrame {
      * its vertices. Its normals are written as its cubes need them.
      */
     int addPart(PoseStack.Pose pose, int color, int overlay, int light) {
-        long offset = (long) this.partCount * ModelPartRecord.BYTES;
-        MemorySegment records = this.parts.reserve(offset, offset + ModelPartRecord.BYTES);
+        int offset = this.partCount * ModelPartRecord.WORDS;
+        int[] records = this.parts = reserve(this.parts, offset + ModelPartRecord.WORDS);
         Matrix4f matrix = pose.pose();
-        long poseOffset = offset + ModelPartRecord.POSE;
-        records.set(ModelGpuRecords.FLOAT, poseOffset, matrix.m00());
-        records.set(ModelGpuRecords.FLOAT, poseOffset + 4L, matrix.m01());
-        records.set(ModelGpuRecords.FLOAT, poseOffset + 8L, matrix.m02());
-        records.set(ModelGpuRecords.FLOAT, poseOffset + 12L, matrix.m10());
-        records.set(ModelGpuRecords.FLOAT, poseOffset + 16L, matrix.m11());
-        records.set(ModelGpuRecords.FLOAT, poseOffset + 20L, matrix.m12());
-        records.set(ModelGpuRecords.FLOAT, poseOffset + 24L, matrix.m20());
-        records.set(ModelGpuRecords.FLOAT, poseOffset + 28L, matrix.m21());
-        records.set(ModelGpuRecords.FLOAT, poseOffset + 32L, matrix.m22());
-        records.set(ModelGpuRecords.FLOAT, poseOffset + 36L, matrix.m30());
-        records.set(ModelGpuRecords.FLOAT, poseOffset + 40L, matrix.m31());
-        records.set(ModelGpuRecords.FLOAT, poseOffset + 44L, matrix.m32());
-        records.set(ModelGpuRecords.INT, offset + ModelPartRecord.COLOR, ARGB.toABGR(color));
-        records.set(ModelGpuRecords.INT, offset + ModelPartRecord.OVERLAY, overlay);
-        records.set(ModelGpuRecords.INT, offset + ModelPartRecord.LIGHT, light);
+        int poseOffset = offset + ModelPartRecord.POSE_WORD;
+        records[poseOffset] = Float.floatToRawIntBits(matrix.m00());
+        records[poseOffset + 1] = Float.floatToRawIntBits(matrix.m01());
+        records[poseOffset + 2] = Float.floatToRawIntBits(matrix.m02());
+        records[poseOffset + 3] = Float.floatToRawIntBits(matrix.m10());
+        records[poseOffset + 4] = Float.floatToRawIntBits(matrix.m11());
+        records[poseOffset + 5] = Float.floatToRawIntBits(matrix.m12());
+        records[poseOffset + 6] = Float.floatToRawIntBits(matrix.m20());
+        records[poseOffset + 7] = Float.floatToRawIntBits(matrix.m21());
+        records[poseOffset + 8] = Float.floatToRawIntBits(matrix.m22());
+        records[poseOffset + 9] = Float.floatToRawIntBits(matrix.m30());
+        records[poseOffset + 10] = Float.floatToRawIntBits(matrix.m31());
+        records[poseOffset + 11] = Float.floatToRawIntBits(matrix.m32());
+        records[offset + ModelPartRecord.COLOR_WORD] = ARGB.toABGR(color);
+        records[offset + ModelPartRecord.OVERLAY_WORD] = overlay;
+        records[offset + ModelPartRecord.LIGHT_WORD] = light;
         return this.partCount++;
     }
     
@@ -186,12 +206,22 @@ final class ModelVertexFrame {
      * pose as {@code ModelPart.Cube.compile} transforms it, packed as {@code BufferBuilder} packs it.
      */
     void writeNormals(int part, PoseStack.Pose pose, int directions, Vector3f scratch) {
-        long offset = (long) part * ModelPartRecord.BYTES + ModelPartRecord.NORMALS;
-        MemorySegment records = this.parts.segment();
-        for (Direction direction : DIRECTIONS) {
-            if ((directions & 1 << direction.ordinal()) != 0) {
+        int offset = part * ModelPartRecord.WORDS + ModelPartRecord.NORMALS_WORD;
+        int[] records = this.parts;
+        // A unit vector along an axis has one non-zero component, so the pose turns the opposite
+        // vector into exactly the negated normal, which is normalized to exactly the negation too.
+        for (Direction direction : POSITIVE_DIRECTIONS) {
+            Direction opposite = direction.getOpposite();
+            boolean along = (directions & 1 << direction.ordinal()) != 0;
+            boolean against = (directions & 1 << opposite.ordinal()) != 0;
+            if (along || against) {
                 Vector3f normal = pose.transformNormal(direction.getUnitVec3f(), scratch);
-                records.set(ModelGpuRecords.INT, offset + direction.ordinal() * 4L, packNormal(normal.x(), normal.y(), normal.z()));
+                if (along) {
+                    records[offset + direction.ordinal()] = packNormal(normal.x(), normal.y(), normal.z());
+                }
+                if (against) {
+                    records[offset + opposite.ordinal()] = packNormal(-normal.x(), -normal.y(), -normal.z());
+                }
             }
         }
     }
@@ -200,17 +230,41 @@ final class ModelVertexFrame {
      * Records a cube the GPU writes into the draw, after the draw's vertices so far.
      */
     void addJob(int part, int firstPolygon, int polygons, ModelVertexDraw draw) {
-        long offset = (long) this.jobCount * ModelJobRecord.BYTES;
-        MemorySegment records = this.jobs.reserve(offset, offset + ModelJobRecord.BYTES);
-        records.set(ModelGpuRecords.INT, offset + ModelJobRecord.PART, part);
-        records.set(ModelGpuRecords.INT, offset + ModelJobRecord.FIRST_POLYGON, firstPolygon);
-        records.set(ModelGpuRecords.INT, offset + ModelJobRecord.DRAW_AND_POLYGONS, draw.index | polygons << ModelJobRecord.DRAW_BITS);
-        records.set(ModelGpuRecords.INT, offset + ModelJobRecord.FIRST_VERTEX, draw.vertexCount);
+        int offset = this.jobCount * ModelJobRecord.WORDS;
+        int[] records = this.jobs = reserve(this.jobs, offset + ModelJobRecord.WORDS);
+        records[offset + ModelJobRecord.PART_WORD] = part;
+        records[offset + ModelJobRecord.FIRST_POLYGON_WORD] = firstPolygon;
+        records[offset + ModelJobRecord.DRAW_AND_POLYGONS_WORD] = draw.index | polygons << ModelJobRecord.DRAW_BITS;
+        records[offset + ModelJobRecord.FIRST_VERTEX_WORD] = draw.vertexCount;
         int vertices = polygons * ModelGpuRecords.POLYGON_VERTICES;
         draw.vertexCount += vertices;
         draw.jobCount++;
         this.vertexCount += vertices;
         this.jobCount++;
+    }
+    
+    /**
+     * Records the cubes of a part laid out in the store, which the GPU writes into the draw after
+     * the draw's vertices so far.
+     */
+    void addJobs(int part, ModelPartCubes cubes, ModelVertexDraw draw) {
+        int count = cubes.count();
+        int offset = this.jobCount * ModelJobRecord.WORDS;
+        int[] records = this.jobs = reserve(this.jobs, offset + count * ModelJobRecord.WORDS);
+        int firstVertex = draw.vertexCount;
+        for (int cube = 0; cube < count; cube++) {
+            int polygons = cubes.polygons[cube];
+            records[offset + ModelJobRecord.PART_WORD] = part;
+            records[offset + ModelJobRecord.FIRST_POLYGON_WORD] = cubes.firstPolygons[cube];
+            records[offset + ModelJobRecord.DRAW_AND_POLYGONS_WORD] = draw.index | polygons << ModelJobRecord.DRAW_BITS;
+            records[offset + ModelJobRecord.FIRST_VERTEX_WORD] = firstVertex;
+            firstVertex += polygons * ModelGpuRecords.POLYGON_VERTICES;
+            offset += ModelJobRecord.WORDS;
+        }
+        draw.jobCount += count;
+        this.vertexCount += firstVertex - draw.vertexCount;
+        draw.vertexCount = firstVertex;
+        this.jobCount += count;
     }
     
     /**
@@ -231,7 +285,7 @@ final class ModelVertexFrame {
                 this.meshJobs += draw.jobCount;
             }
         }
-        MemorySegment jobRecords = this.meshDraws == 0 ? this.jobs.segment() : sortJobs();
+        int[] jobRecords = this.meshDraws == 0 ? this.jobs : sortJobs();
         long base = 0L;
         for (ModelVertexDraw draw : this.draws) {
             draw.baseVertex = draw.mesh ? 0 : Math.toIntExact(base);
@@ -244,8 +298,8 @@ final class ModelVertexFrame {
         GpuBuffer input = inputs.acquire(drawBaseOffset + (long) this.draws.size() * Integer.BYTES);
         try (MappedView view = input.map(false, true)) {
             MemorySegment target = MemorySegment.ofBuffer(view.data());
-            MemorySegment.copy(this.parts.segment(), 0L, target, 0L, partBytes);
-            MemorySegment.copy(jobRecords, 0L, target, jobOffset, jobBytes);
+            MemorySegment.copy(this.parts, 0, target, ModelGpuRecords.INT, 0L, this.partCount * ModelPartRecord.WORDS);
+            MemorySegment.copy(jobRecords, 0, target, ModelGpuRecords.INT, jobOffset, this.jobCount * ModelJobRecord.WORDS);
             for (ModelVertexDraw draw : this.draws) {
                 target.set(ModelGpuRecords.INT, drawBaseOffset + (long) draw.index * Integer.BYTES, draw.baseVertex);
             }
@@ -285,7 +339,7 @@ final class ModelVertexFrame {
      * The cube records sorted by draw, keeping each draw's order: first those of the vertex pass's
      * draws, then those of the mesh stage's. Gives each draw the index of its first cube.
      */
-    private MemorySegment sortJobs() {
+    private int[] sortJobs() {
         int next = 0;
         for (ModelVertexDraw draw : this.draws) {
             if (!draw.mesh) {
@@ -300,13 +354,13 @@ final class ModelVertexFrame {
             }
         }
         int[] placed = new int[this.draws.size()];
-        MemorySegment source = this.jobs.segment();
-        MemorySegment sorted = this.sortedJobs.reserve(0L, (long) this.jobCount * ModelJobRecord.BYTES);
+        int[] source = this.jobs;
+        int[] sorted = this.sortedJobs = reserve(this.sortedJobs, this.jobCount * ModelJobRecord.WORDS);
         for (int job = 0; job < this.jobCount; job++) {
-            long offset = (long) job * ModelJobRecord.BYTES;
-            int drawIndex = source.get(ModelGpuRecords.INT, offset + ModelJobRecord.DRAW_AND_POLYGONS) & ModelJobRecord.MAX_DRAWS - 1;
+            int offset = job * ModelJobRecord.WORDS;
+            int drawIndex = source[offset + ModelJobRecord.DRAW_AND_POLYGONS_WORD] & ModelJobRecord.MAX_DRAWS - 1;
             ModelVertexDraw draw = this.draws.get(drawIndex);
-            MemorySegment.copy(source, offset, sorted, (long) (draw.firstJob + placed[drawIndex]++) * ModelJobRecord.BYTES, ModelJobRecord.BYTES);
+            System.arraycopy(source, offset, sorted, (draw.firstJob + placed[drawIndex]++) * ModelJobRecord.WORDS, ModelJobRecord.WORDS);
         }
         return sorted;
     }
@@ -393,8 +447,5 @@ final class ModelVertexFrame {
     
     void close() {
         reset();
-        this.parts.close();
-        this.jobs.close();
-        this.sortedJobs.close();
     }
 }

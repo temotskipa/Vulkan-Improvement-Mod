@@ -15,6 +15,11 @@ public final class ModelJobRecord {
     public static final long FIRST_POLYGON = ModelGpuRecords.offset(LAYOUT, "firstPolygon");
     public static final long DRAW_AND_POLYGONS = ModelGpuRecords.offset(LAYOUT, "drawAndPolygons");
     public static final long FIRST_VERTEX = ModelGpuRecords.offset(LAYOUT, "firstVertex");
+    public static final int WORDS = Math.toIntExact(BYTES / Integer.BYTES);
+    public static final int PART_WORD = Math.toIntExact(PART / Integer.BYTES);
+    public static final int FIRST_POLYGON_WORD = Math.toIntExact(FIRST_POLYGON / Integer.BYTES);
+    public static final int DRAW_AND_POLYGONS_WORD = Math.toIntExact(DRAW_AND_POLYGONS / Integer.BYTES);
+    public static final int FIRST_VERTEX_WORD = Math.toIntExact(FIRST_VERTEX / Integer.BYTES);
     public static final int DRAW_BITS = 24;
     public static final int MAX_DRAWS = 1 << DRAW_BITS;
     

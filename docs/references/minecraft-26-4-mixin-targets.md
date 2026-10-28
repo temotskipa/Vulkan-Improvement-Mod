@@ -443,7 +443,10 @@ pipelines.
   `method = "render(Lcom/mojang/blaze3d/vertex/PoseStack;Lcom/mojang/blaze3d/vertex/VertexConsumer;III)V"`,
   `ModelPart;compile(`.
 - Purpose: hand a posed part's cubes to the GPU model path when the vertex
-  consumer is the one it handed out, and to Minecraft's `compile` otherwise.
+  consumer is the one it handed out, and to Minecraft's `compile` otherwise;
+  remember how the part's cubes are laid out in the GPU path's cube store
+  (`ModelPartResidency`), so a posed part is recorded without looking at its
+  cubes.
 
 ### ModelPartCubeMixin
 

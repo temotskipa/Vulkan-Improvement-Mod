@@ -206,6 +206,37 @@ renewed it to 93 cubes in 53,568 bytes. Every model was drawn on the vertex
 pass and on the mesh stage throughout, in frames identical to Minecraft's
 path.
 
+2026-10-28, the render thread's share of the GPU path. On 26.4-snapshot-6,
+with present pacing a frame behind (it had waited for every frame to reach the
+screen since Minecraft began presenting through the Vulkan swapchain), the
+entity scene's frame is the render thread's own work again: 0.94 ms of a
+1.18 ms frame on the GPU path. A profile with `-XX:+DebugNonSafepoints` put
+about a quarter of that under the GPU path's hook on `ModelPart.compile`,
+which wrote 15 words per posed part and 4 per cube through `MemorySegment`
+accessors, looked at every cube of every part, and turned six face normals by
+the part's pose. Three changes, each checked against Minecraft's vertices byte
+for byte:
+
+- The records are written into Java `int` arrays and copied to the GPU in
+  one copy each. Medians of four runs each way in two sessions, Minecraft's
+  path alongside: 0.937 to 0.918 ms of render thread a frame on the GPU path,
+  Minecraft's path 2.05 and 2.04 ms.
+- A part's cubes are laid out once per cube store, on the part itself
+  (`ModelPartCubes` through `ModelPartMixin`): each cube's first face and face
+  count, and every direction the part's faces point. A posed part then costs
+  one part record and a loop over the layout's arrays; a part with a cube left
+  to Minecraft still goes cube by cube.
+- Three of the six normals are turned by the pose; each opposite one is the
+  negation, exactly, as a unit vector along an axis has one non-zero
+  component.
+
+The last two, against the cube-by-cube path in one session, five rounds each
+in turn: 0.944 to 0.920 ms of render thread a frame (medians), 846 to 863 FPS,
+less in every pair. Together the three take about 0.045 ms, a twentieth, off
+the render thread in this scene. Frames on Minecraft's path, the vertex pass
+and the mesh stage are identical. What is left of the frame is mostly
+Minecraft's: posing parts, setting up animations and extracting entities.
+
 ## Decisions
 
 - The mod extends Minecraft's renderer instead of running its own beside it

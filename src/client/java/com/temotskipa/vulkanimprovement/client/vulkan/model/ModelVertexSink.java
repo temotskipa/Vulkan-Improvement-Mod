@@ -38,11 +38,38 @@ final class ModelVertexSink implements VertexConsumer {
     }
     
     /**
-     * Takes a posed part's cubes where Minecraft would compile them. A cube the GPU path leaves to
-     * Minecraft is compiled into Minecraft's builder here, between the GPU draws before and after
-     * it, so the geometry keeps Minecraft's order.
+     * Takes a posed part's cubes where Minecraft would compile them: one part record, and the cube
+     * records from the part's layout in the store, made the first time the part is drawn with it.
      */
-    void part(List<Cube> cubes, Pose pose, int lightCoords, int overlayCoords, int color) {
+    void part(ModelPartResidency modelPart, List<Cube> cubes, Pose pose, int lightCoords, int overlayCoords, int color) {
+        ModelCubeStore store = this.owner.store();
+        ModelPartCubes resident = modelPart.vim$residentCubes();
+        if (resident == null || !resident.residentIn(store)) {
+            resident = ModelPartCubes.of(cubes, store);
+            modelPart.vim$setResidentCubes(resident);
+        }
+        if (!resident.onGpu) {
+            cubeByCube(cubes, pose, lightCoords, overlayCoords, color);
+            return;
+        }
+        if (resident.count() == 0) {
+            return;
+        }
+        ModelVertexFrame frame = this.owner.frame();
+        int part = frame.addPart(pose, color, overlayCoords, lightCoords);
+        frame.writeNormals(part, pose, resident.directionMask, this.scratch);
+        StagedVertexBuffer.Draw draw = Objects.requireNonNull(this.group).vim$modelDraw(Objects.requireNonNull(this.renderType));
+        this.cpu = null;
+        frame.addJobs(part, resident, Objects.requireNonNull(((ModelVertexDrawHolder) draw).vim$modelDraw()));
+        ((ModelVertexDrawHolder) draw).vim$addQuadVertices(resident.vertices);
+    }
+    
+    /**
+     * Takes the cubes of a part that has one the GPU path leaves to Minecraft, one by one. Such a
+     * cube is compiled into Minecraft's builder here, between the GPU draws before and after it, so
+     * the geometry keeps Minecraft's order.
+     */
+    private void cubeByCube(List<Cube> cubes, Pose pose, int lightCoords, int overlayCoords, int color) {
         ModelCubeStore store = this.owner.store();
         ModelVertexFrame frame = this.owner.frame();
         int part = -1;

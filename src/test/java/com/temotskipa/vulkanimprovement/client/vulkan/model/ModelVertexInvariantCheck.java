@@ -149,18 +149,21 @@ public final class ModelVertexInvariantCheck {
             int overlay = random.nextInt(16) | random.nextInt(16) << 16;
             int light = random.nextInt(256) | random.nextInt(256) << 16;
             byte[] minecraft = minecraftVertices(cubes, pose, light, overlay, color);
-            byte[] pass = passVertices(constants, cubes, pose, light, overlay, color);
-            require(minecraft.length == pass.length, "pose " + poseIndex + ": the model vertex pass must write as many vertices as Minecraft, " + pass.length / ModelEntityVertexRecord.BYTES + " against " + minecraft.length / ModelEntityVertexRecord.BYTES);
-            for (int vertex = 0; vertex < minecraft.length / ModelEntityVertexRecord.BYTES; vertex++) {
-                for (int b = 0; b < WRITTEN_VERTEX_BYTES; b++) {
-                    int at = vertex * (int) ModelEntityVertexRecord.BYTES + b;
-                    require(minecraft[at] == pass[at], "pose " + poseIndex + ", vertex " + vertex + ", byte " + b + ": the model vertex pass writes " + pass[at] + " where Minecraft writes " + minecraft[at]);
+            for (boolean laidOut : new boolean[]{false, true}) {
+                String records = laidOut ? " (from the part's layout)" : " (cube by cube)";
+                byte[] pass = passVertices(constants, cubes, pose, light, overlay, color, laidOut);
+                require(minecraft.length == pass.length, "pose " + poseIndex + records + ": the model vertex pass must write as many vertices as Minecraft, " + pass.length / ModelEntityVertexRecord.BYTES + " against " + minecraft.length / ModelEntityVertexRecord.BYTES);
+                for (int vertex = 0; vertex < minecraft.length / ModelEntityVertexRecord.BYTES; vertex++) {
+                    for (int b = 0; b < WRITTEN_VERTEX_BYTES; b++) {
+                        int at = vertex * (int) ModelEntityVertexRecord.BYTES + b;
+                        require(minecraft[at] == pass[at], "pose " + poseIndex + records + ", vertex " + vertex + ", byte " + b + ": the model vertex pass writes " + pass[at] + " where Minecraft writes " + minecraft[at]);
+                    }
+                    checked++;
                 }
-                checked++;
             }
         }
         require(checked > 0, "the vertex check must compare vertices");
-        System.out.println("Model vertex invariant check passed: " + checked + " vertices of " + cubes.size() + " cubes in " + poses.size() + " poses match Minecraft's.");
+        System.out.println("Model vertex invariant check passed: " + checked + " vertices of " + cubes.size() + " cubes in " + poses.size() + " poses, recorded cube by cube and from part layouts, match Minecraft's.");
     }
     
     /**
@@ -233,9 +236,9 @@ public final class ModelVertexInvariantCheck {
     
     /**
      * The part's vertices as the model vertex pass writes them: the records the GPU path makes,
-     * read as the shader reads them, with its arithmetic.
+     * cube by cube or from the part's layout, read as the shader reads them, with its arithmetic.
      */
-    private static byte[] passVertices(Map<String, Integer> constants, List<ModelPart.Cube> cubes, PoseStack.Pose pose, int light, int overlay, int color) {
+    private static byte[] passVertices(Map<String, Integer> constants, List<ModelPart.Cube> cubes, PoseStack.Pose pose, int light, int overlay, int color, boolean laidOut) {
         ModelVertexFrame frame = new ModelVertexFrame();
         try (Arena arena = Arena.ofConfined()) {
             int polygonCount = cubes.stream().mapToInt(cube -> cube.polygons.length).sum();
@@ -245,7 +248,10 @@ public final class ModelVertexInvariantCheck {
             int part = frame.addPart(pose, color, overlay, light);
             int directions = 0;
             int firstPolygon = 0;
-            for (ModelPart.Cube cube : cubes) {
+            int[] firstPolygons = new int[cubes.size()];
+            int[] polygonCounts = new int[cubes.size()];
+            for (int cubeIndex = 0; cubeIndex < cubes.size(); cubeIndex++) {
+                ModelPart.Cube cube = cubes.get(cubeIndex);
                 for (int i = 0; i < cube.polygons.length; i++) {
                     ModelPart.Polygon polygon = cube.polygons[i];
                     int direction = ModelCubeStore.direction(polygon.normal());
@@ -253,8 +259,15 @@ public final class ModelVertexInvariantCheck {
                     directions |= 1 << direction;
                     ModelCubeStore.writePolygon(polygons, (firstPolygon + i) * ModelPolygonRecord.BYTES, polygon);
                 }
-                frame.addJob(part, firstPolygon, cube.polygons.length, draw);
+                if (!laidOut) {
+                    frame.addJob(part, firstPolygon, cube.polygons.length, draw);
+                }
+                firstPolygons[cubeIndex] = firstPolygon;
+                polygonCounts[cubeIndex] = cube.polygons.length;
                 firstPolygon += cube.polygons.length;
+            }
+            if (laidOut) {
+                frame.addJobs(part, ModelPartCubes.laidOut(0, firstPolygons, polygonCounts, directions), draw);
             }
             frame.writeNormals(part, pose, directions, new Vector3f());
             MemorySegment vertices = arena.allocate(frame.vertexCount() * ModelEntityVertexRecord.BYTES, 16L);

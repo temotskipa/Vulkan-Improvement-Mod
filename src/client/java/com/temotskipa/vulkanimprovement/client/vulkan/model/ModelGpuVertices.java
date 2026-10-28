@@ -299,11 +299,11 @@ public final class ModelGpuVertices {
      * Takes a part's cubes where Minecraft would compile them, when it renders into the GPU path's
      * builder; false otherwise.
      */
-    public boolean compileOnGpu(VertexConsumer buffer, List<Cube> cubes, PoseStack.Pose pose, int lightCoords, int overlayCoords, int color) {
+    public boolean compileOnGpu(VertexConsumer buffer, ModelPartResidency part, List<Cube> cubes, PoseStack.Pose pose, int lightCoords, int overlayCoords, int color) {
         if (buffer != this.sink) {
             return false;
         }
-        this.sink.part(cubes, pose, lightCoords, overlayCoords, color);
+        this.sink.part(part, cubes, pose, lightCoords, overlayCoords, color);
         return true;
     }
     

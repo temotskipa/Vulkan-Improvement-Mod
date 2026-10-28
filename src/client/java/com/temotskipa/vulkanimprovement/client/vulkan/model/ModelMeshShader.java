@@ -151,12 +151,12 @@ public final class ModelMeshShader {
         int polygonWords = Math.toIntExact(ModelPolygonRecord.BYTES / Integer.BYTES);
         int cornerWords = Math.toIntExact(ModelPolygonRecord.CORNER_BYTES / Integer.BYTES);
         int polygonDirection = Math.toIntExact(ModelPolygonRecord.DIRECTION / Integer.BYTES);
-        int partWords = Math.toIntExact(ModelPartRecord.BYTES / Integer.BYTES);
-        int partNormals = Math.toIntExact(ModelPartRecord.NORMALS / Integer.BYTES);
-        int partColor = Math.toIntExact(ModelPartRecord.COLOR / Integer.BYTES);
-        int partOverlay = Math.toIntExact(ModelPartRecord.OVERLAY / Integer.BYTES);
-        int partLight = Math.toIntExact(ModelPartRecord.LIGHT / Integer.BYTES);
-        int jobWords = Math.toIntExact(ModelJobRecord.BYTES / Integer.BYTES);
+        int partWords = ModelPartRecord.WORDS;
+        int partNormals = ModelPartRecord.NORMALS_WORD;
+        int partColor = ModelPartRecord.COLOR_WORD;
+        int partOverlay = ModelPartRecord.OVERLAY_WORD;
+        int partLight = ModelPartRecord.LIGHT_WORD;
+        int jobWords = ModelJobRecord.WORDS;
         return """
                
                float vim_unorm8(uint value, uint shift) {

@@ -144,6 +144,13 @@ final class ModelCubeStore {
     }
     
     /**
+     * What tells this store from the ones before and after it.
+     */
+    int id() {
+        return this.id;
+    }
+    
+    /**
      * The device address of the faces, valid until the next cube is added.
      */
     long address() {
