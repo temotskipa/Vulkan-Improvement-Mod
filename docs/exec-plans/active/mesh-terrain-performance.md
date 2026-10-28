@@ -266,6 +266,31 @@ With both GPU timers on, the comparison came out differently in some scenes
 (the overlook at render distance 32: 510 GPU-driven against 532 listed), so
 frame rates are compared with the timers off.
 
+2026-10-28, on 26.4-snapshot-6, where Minecraft presents through the Vulkan
+swapchain, with present pacing waiting only when vsync is on (it had waited
+for every frame to reach the screen, which tied frames to the display's
+refresh, see `docs/RELIABILITY.md`). 1920x1080, render distance 32, three
+rounds of each mode in one session, medians; whole-frame GPU time from
+Minecraft's GPU utilization timer:
+
+| Scene    | Vanilla FPS | Mesh FPS | Change | Render thread, vanilla / mesh | GPU per frame, vanilla / mesh |
+|----------|-------------|----------|--------|-------------------------------|-------------------------------|
+| ground   | 599         | 717      | +20 %  | 1.52 / 1.25 ms                | 1.21 / 0.98 ms                |
+| overlook | 505         | 598      | +18 %  | 1.82 / 1.47 ms                | 1.61 / 1.39 ms                |
+| horizon  | 484         | 541      | +12 %  | 1.16 / 0.89 ms                | 1.81 / 1.62 ms                |
+
+At the horizon the frame now follows the GPU in both modes; nothing waits on
+the swapchain there any more.
+
+At render distance 16 on the ground the GPU-driven frame still trails the
+listed path (1,160 to 1,290 FPS against 1,260 to 1,410 in three sessions), and
+the difference is GPU time: 0.06 to 0.16 ms more a frame, where the GPU sets
+the pace. At render distance 32, where the render thread does, it is
+0.009 ms. The GPU-driven pass takes 0.012 ms and its opaque draws 0.003 ms
+more than the listed ones (`vim.terrainGpuTimer`), and an empty compute
+dispatch with the same barrier, recorded at the same point of a listed frame,
+cost nothing, so neither the pass's work nor the switch to compute is it.
+
 ## Decisions
 
 - Solid terrain's mesh pipeline is specialized without the alpha test, as
@@ -306,16 +331,11 @@ frame rates are compared with the timers off.
 
 ## Follow-Up
 
-- At the horizon the render thread waited on the D3D12 swapchain's frame
-  latency object for a tenth of its time, in both modes, when Minecraft
-  presented through D3D12: every frame blitted by Vulkan into one shared
-  image, which the D3D12 queue copied to the swapchain after waiting on a
-  Vulkan semaphore, with a frame latency of two. Since 26.4-snapshot-5
-  Minecraft presents through the Vulkan swapchain unless its experimental
-  Prefer DXGI Present option is on, so this wait needs measuring again there,
-  with present pacing acting on the swapchain.
-- At render distance 16 on the ground the GPU-driven frame spends about
-  0.18 ms more outside the render thread's work than the listed path, though
-  its CPU and GPU times are both lower. A GPU trace of both modes would show
-  what the frame waits on there.
+- At render distance 16 on the ground the GPU-driven frame takes 0.06 to
+  0.16 ms more GPU time than the listed path, outside its pass and its draws
+  (Progress, 2026-10-28). A GPU trace of both modes would show where. Nsight
+  Systems' Vulkan trace (`--trace=vulkan,vulkan-annotations`, with Minecraft
+  started with `--renderDebugLabels` so its passes are labelled) needs its
+  Vulkan layer registered in the system registry, which takes administrator
+  rights.
 - Occlusion culling on the GPU (step 5).
