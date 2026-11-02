@@ -17,13 +17,13 @@ import org.spongepowered.asm.mixin.injection.At;
  * ({@link ModelMeshPipelines}).
  */
 @Mixin(SPIRVModule.class)
-public class SPIRVModuleMixin {
-    @Shadow
-    @Final
-    private String name;
-    
-    @WrapOperation(method = "doReflection", at = @At(value = "INVOKE", target = "Lorg/lwjgl/util/spvc/Spvc;spvc_compiler_set_entry_point(JLjava/lang/CharSequence;I)I"))
-    private int vim$reflectMeshStage(long compiler, CharSequence name, int model, Operation<Integer> original) {
-        return original.call(compiler, name, ModelMeshShader.isMeshModule(this.name) ? Spv.SpvExecutionModelMeshEXT : model);
-    }
+public final class SPIRVModuleMixin {
+	@Shadow
+	@Final
+	private String name;
+	
+	@WrapOperation(method = "doReflection", at = @At(value = "INVOKE", target = "Lorg/lwjgl/util/spvc/Spvc;spvc_compiler_set_entry_point(JLjava/lang/CharSequence;I)I"))
+	private int vim$reflectMeshStage(long compiler, CharSequence name, int model, Operation<Integer> original) {
+		return original.call(compiler, name, ModelMeshShader.isMeshModule(this.name) ? Spv.SpvExecutionModelMeshEXT : model);
+	}
 }

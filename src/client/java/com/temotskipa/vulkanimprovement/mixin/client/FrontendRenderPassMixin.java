@@ -12,12 +12,12 @@ import org.spongepowered.asm.mixin.Shadow;
  */
 @Mixin(FrontendRenderPass.class)
 public final class FrontendRenderPassMixin implements TerrainRenderPassFrontend {
-    @Shadow
-    @Final
-    private RenderPassBackend backend;
-    
-    @Override
-    public Object vim$backend() {
-        return this.backend;
-    }
+	@Shadow
+	@Final
+	private RenderPassBackend backend;
+	
+	@Override
+	public Object vim$backend() {
+		return this.backend;
+	}
 }

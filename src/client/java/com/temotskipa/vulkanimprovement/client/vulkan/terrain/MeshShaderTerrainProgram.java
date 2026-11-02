@@ -4,6 +4,7 @@ import com.mojang.renderpearl.api.pipeline.BlendFunction;
 import com.mojang.renderpearl.api.pipeline.ColorTargetState;
 import com.mojang.renderpearl.api.pipeline.DepthStencilState;
 import com.mojang.renderpearl.api.pipeline.RenderPassLayout;
+import com.mojang.renderpearl.api.pipeline.RenderPassLayout.Subpass;
 import com.mojang.renderpearl.backend.vulkan.VulkanCommandEncoder;
 import com.mojang.renderpearl.backend.vulkan.VulkanConst;
 import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
@@ -32,579 +33,579 @@ import java.util.Map;
 import java.util.concurrent.atomic.LongAdder;
 
 public final class MeshShaderTerrainProgram {
-    private static final MeshShaderTerrainProgram INSTANCE = new MeshShaderTerrainProgram();
-    private final Map<TerrainPipelineKey, TerrainMeshPipeline> pipelineCache = new HashMap<>();
-    private final LongAdder pipelineCompiles = new LongAdder();
-    private final LongAdder meshTaskDispatches = new LongAdder();
-    private final LongAdder improvedFogDispatches = new LongAdder();
-    private final LongAdder meshTaskDirectDispatches = new LongAdder();
-    private final LongAdder meshTaskIndirectDispatches = new LongAdder();
-    private final LongAdder meshTaskGpuCommandPreparations = new LongAdder();
-    private final LongAdder gpuDrivenPagePreparations = new LongAdder();
-    private final LongAdder meshTaskGpuCommandPreparationsInsideRenderPass = new LongAdder();
-    private final LongAdder meshTasksDispatched = new LongAdder();
-    private final LongAdder textureDescriptorBufferBinds = new LongAdder();
-    private final LongAdder textureDescriptorBufferMissing = new LongAdder();
-    private volatile VulkanDevice device;
-    private volatile long taskModule;
-    private volatile long meshModule;
-    private volatile long fragmentModule;
-    private volatile long commandModule;
-    private volatile ComputePipeline commandPipeline;
-    private volatile long sectionPagesModule;
-    private volatile ComputePipeline sectionPagesPipeline;
-    private volatile String lastError = "";
-    private volatile String taskShaderCompileSource = "unconfigured";
-    private volatile String meshShaderCompileSource = "unconfigured";
-    private volatile String fragmentShaderCompileSource = "unconfigured";
-    private volatile String commandShaderCompileSource = "unconfigured";
-    private volatile String sectionPagesShaderCompileSource = "unconfigured";
-    
-    private MeshShaderTerrainProgram() {
-    }
-    
-    public static MeshShaderTerrainProgram get() {
-        return INSTANCE;
-    }
-    
-    private static void applyBlendInformation(VkPipelineColorBlendAttachmentState attachment, BlendFunction blendFunction) {
-        attachment.blendEnable(true).colorBlendOp(VulkanConst.toVk(blendFunction.color().op())).alphaBlendOp(VulkanConst.toVk(blendFunction.alpha().op())).dstAlphaBlendFactor(VulkanConst.toVk(blendFunction.alpha().destFactor())).dstColorBlendFactor(VulkanConst.toVk(blendFunction.color().destFactor())).srcAlphaBlendFactor(VulkanConst.toVk(blendFunction.alpha().sourceFactor())).srcColorBlendFactor(VulkanConst.toVk(blendFunction.color().sourceFactor()));
-    }
-    
-    private static void destroyModule(VulkanDevice device, long module) {
-        if (module != 0L) {
-            VK12.vkDestroyShaderModule(device.vkDevice(), module, null);
-        }
-    }
-    
-    private static void writeCameraPushConstants(ByteBuffer target) {
-        double cameraX = 0.0;
-        double cameraY = 0.0;
-        double cameraZ = 0.0;
-        float row0X = 1.0F;
-        float row0Y = 0.0F;
-        float row0Z = 0.0F;
-        float row0W = 0.0F;
-        float row1X = 0.0F;
-        float row1Y = 1.0F;
-        float row1Z = 0.0F;
-        float row1W = 0.0F;
-        float row2X = 0.0F;
-        float row2Y = 0.0F;
-        float row2Z = 1.0F;
-        float row2W = 0.0F;
-        float row3X = 0.0F;
-        float row3Y = 0.0F;
-        float row3Z = 0.0F;
-        float row3W = 1.0F;
-        
-        Minecraft minecraft = Minecraft.getInstance();
-        Camera camera = minecraft.gameRenderer.mainCamera();
-        if (camera.isInitialized()) {
-            Vec3 cameraPosition = camera.position();
-            cameraX = cameraPosition.x();
-            cameraY = cameraPosition.y();
-            cameraZ = cameraPosition.z();
-            Matrix4f viewRotationProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
-            row0X = viewRotationProjection.m00();
-            row0Y = viewRotationProjection.m10();
-            row0Z = viewRotationProjection.m20();
-            row0W = viewRotationProjection.m30();
-            row1X = viewRotationProjection.m01();
-            row1Y = viewRotationProjection.m11();
-            row1Z = viewRotationProjection.m21();
-            row1W = viewRotationProjection.m31();
-            row2X = viewRotationProjection.m02();
-            row2Y = viewRotationProjection.m12();
-            row2Z = viewRotationProjection.m22();
-            row2W = viewRotationProjection.m32();
-            row3X = viewRotationProjection.m03();
-            row3Y = viewRotationProjection.m13();
-            row3Z = viewRotationProjection.m23();
-            row3W = viewRotationProjection.m33();
-        }
-        
-        // The block the camera is in goes to the shaders as integers and the rest as a small
-        // offset: one float per axis cannot hold a position far from the world origin exactly.
-        int cameraBlockX = (int) Math.floor(cameraX);
-        int cameraBlockY = (int) Math.floor(cameraY);
-        int cameraBlockZ = (int) Math.floor(cameraZ);
-        target.putInt(cameraBlockX).putInt(cameraBlockY).putInt(cameraBlockZ).putInt(0);
-        putVec4(target, (float) (cameraX - cameraBlockX), (float) (cameraY - cameraBlockY), (float) (cameraZ - cameraBlockZ), 0.0F);
-        putVec4(target, row0X, row0Y, row0Z, row0W);
-        putVec4(target, row1X, row1Y, row1Z, row1W);
-        putVec4(target, row2X, row2Y, row2Z, row2W);
-        putVec4(target, row3X, row3Y, row3Z, row3W);
-    }
-    
-    /**
-     * What the task stage drops of a page's meshlets: those out of view, and those seen from behind
-     * when the pipeline it stands in for culls back faces.
-     */
-    private static int pageCullFlags(TerrainPipelineState vanillaPipeline) {
-        if (!TerrainRendererDebugConfig.cullMeshletsEnabled()) {
-            return 0;
-        }
-        return TerrainGpuLayout.CULL_MESHLETS_OUTSIDE_VIEW | (vanillaPipeline.cull() ? TerrainGpuLayout.CULL_BACK_FACING_MESHLETS : 0);
-    }
-    
-    private static int meshletFrustumCullingPushConstant() {
-        return TerrainRendererDebugConfig.meshletFrustumCullingEnabled() ? TerrainGpuLayout.CULL_MESHLET_FRUSTUM_IN_MESH_STAGE : 0;
-    }
-    
-    private static void putVec4(ByteBuffer target, float x, float y, float z, float w) {
-        target.putFloat(x);
-        target.putFloat(y);
-        target.putFloat(z);
-        target.putFloat(w);
-    }
-    
-    private static TerrainTextureDescriptorLayout queryTextureDescriptorLayout(VulkanDevice device, long descriptorSetLayout) {
-        long[] layoutSize = new long[1];
-        long[] blockAtlasImageOffset = new long[1];
-        long[] blockAtlasSamplerOffset = new long[1];
-        long[] lightmapImageOffset = new long[1];
-        long[] lightmapSamplerOffset = new long[1];
-        long[] skyImageOffset = new long[1];
-        long[] cloudsImageOffset = new long[1];
-        long[] cloudsDepthImageOffset = new long[1];
-        EXTDescriptorBuffer.vkGetDescriptorSetLayoutSizeEXT(device.vkDevice(), descriptorSetLayout, layoutSize);
-        EXTDescriptorBuffer.vkGetDescriptorSetLayoutBindingOffsetEXT(device.vkDevice(), descriptorSetLayout, 0, blockAtlasImageOffset);
-        EXTDescriptorBuffer.vkGetDescriptorSetLayoutBindingOffsetEXT(device.vkDevice(), descriptorSetLayout, 1, blockAtlasSamplerOffset);
-        EXTDescriptorBuffer.vkGetDescriptorSetLayoutBindingOffsetEXT(device.vkDevice(), descriptorSetLayout, 2, lightmapImageOffset);
-        EXTDescriptorBuffer.vkGetDescriptorSetLayoutBindingOffsetEXT(device.vkDevice(), descriptorSetLayout, 3, lightmapSamplerOffset);
-        EXTDescriptorBuffer.vkGetDescriptorSetLayoutBindingOffsetEXT(device.vkDevice(), descriptorSetLayout, 4, skyImageOffset);
-        EXTDescriptorBuffer.vkGetDescriptorSetLayoutBindingOffsetEXT(device.vkDevice(), descriptorSetLayout, 5, cloudsImageOffset);
-        EXTDescriptorBuffer.vkGetDescriptorSetLayoutBindingOffsetEXT(device.vkDevice(), descriptorSetLayout, 6, cloudsDepthImageOffset);
-        TerrainDescriptorHeapLayout terrainLayout = DescriptorHeapTerrainResources.get().layout();
-        return new TerrainTextureDescriptorLayout(layoutSize[0], blockAtlasImageOffset[0], blockAtlasSamplerOffset[0], lightmapImageOffset[0], lightmapSamplerOffset[0], skyImageOffset[0], cloudsImageOffset[0], cloudsDepthImageOffset[0], Math.max(terrainLayout.descriptorBufferSampledImageDescriptorBytes(), 1L), Math.max(terrainLayout.descriptorBufferSamplerDescriptorBytes(), 1L));
-    }
-    
-    /**
-     * Whether a layer's fragments may be dropped for their alpha. A draw that is not for one layer
-     * keeps the test.
-     */
-    private static boolean alphaTest(int layerOrdinal) {
-        ChunkSectionLayer[] layers = ChunkSectionLayer.values();
-        return layerOrdinal < 0 || layerOrdinal >= layers.length || TerrainMaterialClassifier.alphaModeForLayer(layers[layerOrdinal]) != GpuMaterialAlphaMode.OPAQUE;
-    }
-    
-    /**
-     * The section the camera is in, which the GPU-driven pass sorts tasks by their distance from.
-     */
-    private static void putCameraSection(ByteBuffer target) {
-        Camera camera = Minecraft.getInstance().gameRenderer.mainCamera();
-        if (!camera.isInitialized()) {
-            target.putInt(0).putInt(0).putInt(0);
-            return;
-        }
-        Vec3 position = camera.position();
-        target.putInt(SectionPos.blockToSectionCoord(position.x()));
-        target.putInt(SectionPos.blockToSectionCoord(position.y()));
-        target.putInt(SectionPos.blockToSectionCoord(position.z()));
-    }
-    
-    private static void describeBinding(VkDescriptorSetLayoutBinding.Buffer bindings, int index, int descriptorType, int stages) {
-        bindings.apply(index, binding -> binding.binding(index).descriptorType(descriptorType).descriptorCount(1).stageFlags(stages));
-    }
-    
-    public synchronized void configure(VulkanDevice device) {
-        shutdown();
-        this.device = device;
-        try (ShaderCompiler compiler = new ShaderCompiler()) {
-            this.taskModule = compiler.compile(device, TerrainShaderSource.TASK_SHADER, TerrainShaderSource.TASK_SHADER_SPIRV, Shaderc.shaderc_task_shader);
-            this.taskShaderCompileSource = compiler.lastCompileSource();
-            this.meshModule = compiler.compile(device, TerrainShaderSource.MESH_SHADER, TerrainShaderSource.MESH_SHADER_SPIRV, Shaderc.shaderc_mesh_shader);
-            this.meshShaderCompileSource = compiler.lastCompileSource();
-            this.fragmentModule = compiler.compile(device, TerrainShaderSource.FRAGMENT_SHADER, TerrainShaderSource.FRAGMENT_SHADER_SPIRV, Shaderc.shaderc_fragment_shader);
-            this.fragmentShaderCompileSource = compiler.lastCompileSource();
-            this.commandModule = compiler.compile(device, TerrainShaderSource.MESH_TASK_COMMAND_SHADER, TerrainShaderSource.MESH_TASK_COMMAND_SHADER_SPIRV, Shaderc.shaderc_compute_shader);
-            this.commandShaderCompileSource = compiler.lastCompileSource();
-            this.sectionPagesModule = compiler.compile(device, TerrainShaderSource.VISIBLE_SECTION_PAGES_SHADER, TerrainShaderSource.VISIBLE_SECTION_PAGES_SHADER_SPIRV, Shaderc.shaderc_compute_shader);
-            this.sectionPagesShaderCompileSource = compiler.lastCompileSource();
-            this.commandPipeline = ComputePipeline.create(device, this.commandModule, TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_PUSH_CONSTANT_BYTES, "VIM Terrain Mesh Task Command");
-            this.pipelineCompiles.increment();
-            this.sectionPagesPipeline = ComputePipeline.create(device, this.sectionPagesModule, TerrainGpuLayout.SECTION_PAGES_PUSH_CONSTANT_BYTES, "VIM Terrain Visible Section Pages");
-            this.pipelineCompiles.increment();
-            this.lastError = "";
-            VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_SHADER_MODULE, this.taskModule, "VIM Terrain Task Shader");
-            VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_SHADER_MODULE, this.meshModule, "VIM Terrain Mesh Shader");
-            VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_SHADER_MODULE, this.fragmentModule, "VIM Terrain Fragment Shader");
-            VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_SHADER_MODULE, this.commandModule, "VIM Terrain Mesh Task Command Shader");
-            VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_SHADER_MODULE, this.sectionPagesModule, "VIM Terrain Visible Section Pages Shader");
-        } catch (RuntimeException ex) {
-            shutdown();
-            this.lastError = ex.getMessage();
-            throw ex;
-        }
-    }
-    
-    public synchronized void shutdown() {
-        VulkanDevice activeDevice = this.device;
-        if (activeDevice != null) {
-            for (TerrainMeshPipeline pipeline : this.pipelineCache.values()) {
-                pipeline.destroy(activeDevice);
-            }
-            this.pipelineCache.clear();
-            ComputePipeline activeComputePipeline = this.commandPipeline;
-            if (activeComputePipeline != null) {
-                activeComputePipeline.destroy(activeDevice);
-            }
-            this.commandPipeline = null;
-            ComputePipeline activeSectionPagesPipeline = this.sectionPagesPipeline;
-            if (activeSectionPagesPipeline != null) {
-                activeSectionPagesPipeline.destroy(activeDevice);
-            }
-            this.sectionPagesPipeline = null;
-            destroyModule(activeDevice, this.sectionPagesModule);
-            destroyModule(activeDevice, this.commandModule);
-            destroyModule(activeDevice, this.fragmentModule);
-            destroyModule(activeDevice, this.meshModule);
-            destroyModule(activeDevice, this.taskModule);
-        }
-        this.fragmentModule = 0L;
-        this.meshModule = 0L;
-        this.taskModule = 0L;
-        this.commandModule = 0L;
-        this.sectionPagesModule = 0L;
-        this.device = null;
-    }
-    
-    public boolean ready() {
-        return this.taskModule != 0L && this.meshModule != 0L && this.fragmentModule != 0L && this.commandModule != 0L && this.commandPipeline != null && this.sectionPagesPipeline != null;
-    }
-    
-    public synchronized boolean drawTerrain(VkCommandBuffer commandBuffer, TerrainPipelineState vanillaPipeline, TerrainMeshTaskDispatch dispatch, long meshletHeaderAddress, long vertexPayloadAddress, long indexPayloadAddress) {
-        VulkanDevice activeDevice = this.device;
-        if (activeDevice == null || !ready() || dispatch == null || !dispatch.ready() || meshletHeaderAddress == 0L || vertexPayloadAddress == 0L) {
-            return false;
-        }
-        TerrainMeshPipeline meshPipeline = this.pipelineCache.computeIfAbsent(new TerrainPipelineKey(vanillaPipeline, alphaTest(dispatch.layerOrdinal())), key -> createPipeline(activeDevice, key.state(), key.alphaTest()));
-        boolean improvedFog = TerrainRenderContext.improvedFog();
-        if (!bindTerrainTextureDescriptorBuffer(commandBuffer, meshPipeline, improvedFog)) {
-            return false;
-        }
-        VK12.vkCmdBindPipeline(commandBuffer, VK10.VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline.handle());
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            ByteBuffer pushConstants = stack.malloc(TerrainGpuLayout.TERRAIN_PUSH_CONSTANT_BYTES);
-            pushConstants.putLong(meshletHeaderAddress);
-            pushConstants.putLong(vertexPayloadAddress);
-            pushConstants.putLong(indexPayloadAddress);
-            pushConstants.putLong(DescriptorHeapTerrainResources.get().terrainDebugCounterAddress());
-            pushConstants.putLong(dispatch.visibleMeshletListAddress());
-            pushConstants.putLong(dispatch.workQueueAddress());
-            pushConstants.putLong(DescriptorHeapTerrainResources.get().materialTableAddress());
-            // With a page table the tasks are pages the visibility pass kept; it has culled them already.
-            boolean drawsPages = dispatch.source() == TerrainMeshTaskSource.GPU_VISIBLE_PAGES || dispatch.source() == TerrainMeshTaskSource.LISTED_PAGES || dispatch.source() == TerrainMeshTaskSource.GPU_DRIVEN_PAGES;
-            pushConstants.putLong(drawsPages ? DescriptorHeapTerrainResources.get().sectionMetadataAddress() : 0L);
-            pushConstants.putInt(dispatch.taskCount());
-            pushConstants.putInt(drawsPages ? pageCullFlags(vanillaPipeline) : meshletFrustumCullingPushConstant());
-            pushConstants.putInt(dispatch.meshletOffset());
-            pushConstants.putInt(dispatch.layerOrdinal());
-            writeCameraPushConstants(pushConstants);
-            pushConstants.flip();
-            VK12.vkCmdPushConstants(commandBuffer, meshPipeline.layout(), EXTMeshShader.VK_SHADER_STAGE_TASK_BIT_EXT | EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT, 0, pushConstants);
-            ByteBuffer fogConstants = stack.malloc(TerrainGpuLayout.TERRAIN_FOG_PUSH_CONSTANT_BYTES);
-            TerrainFogState.write(fogConstants, improvedFog);
-            fogConstants.flip();
-            VK12.vkCmdPushConstants(commandBuffer, meshPipeline.layout(), VK10.VK_SHADER_STAGE_FRAGMENT_BIT, TerrainGpuLayout.TERRAIN_FOG_PUSH_CONSTANT_OFFSET, fogConstants);
-        }
-        FragmentShadingRateController.get().applyToTerrain(commandBuffer);
-        if (dispatch.usesIndirectCommand()) {
-            EXTMeshShader.vkCmdDrawMeshTasksIndirectEXT(commandBuffer, dispatch.indirectCommandBuffer(), dispatch.indirectCommandOffset(), 1, dispatch.indirectCommandStride());
-            this.meshTaskIndirectDispatches.increment();
-        }
-        else {
-            EXTMeshShader.vkCmdDrawMeshTasksEXT(commandBuffer, dispatch.taskCount(), 1, 1);
-            this.meshTaskDirectDispatches.increment();
-        }
-        this.meshTaskDispatches.increment();
-        if (improvedFog) {
-            this.improvedFogDispatches.increment();
-        }
-        this.meshTasksDispatched.add(dispatch.taskCount());
-        return true;
-    }
-    
-    private boolean bindTerrainTextureDescriptorBuffer(VkCommandBuffer commandBuffer, TerrainMeshPipeline meshPipeline, boolean improvedFog) {
-        DescriptorHeapTerrainResources resources = DescriptorHeapTerrainResources.get();
-        long descriptorBufferAddress = resources.terrainDescriptorBufferAddress();
-        if (descriptorBufferAddress == 0L || !resources.writeTerrainTextureDescriptors(this.device, meshPipeline.textureDescriptorLayout(), improvedFog)) {
-            this.textureDescriptorBufferMissing.increment();
-            return false;
-        }
-        
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            VkDescriptorBufferBindingInfoEXT.Buffer bindings = VkDescriptorBufferBindingInfoEXT.calloc(1, stack);
-            bindings.apply(0, binding -> binding.sType$Default().address$(descriptorBufferAddress).usage(EXTDescriptorBuffer.VK_BUFFER_USAGE_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT | EXTDescriptorBuffer.VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT));
-            EXTDescriptorBuffer.vkCmdBindDescriptorBuffersEXT(commandBuffer, bindings);
-            EXTDescriptorBuffer.vkCmdSetDescriptorBufferOffsetsEXT(commandBuffer, VK10.VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline.layout(), 0, stack.ints(0), stack.longs(0L));
-            this.textureDescriptorBufferBinds.increment();
-            return true;
-        }
-    }
-    
-    /**
-     * Has the GPU decide which of each layer's listed pages are drawn this frame and write the
-     * mesh-task commands that draw them, all in one command buffer recorded while no render pass is
-     * open; the draws follow inside one. The passes need no barrier before them: the pages they
-     * read were copied behind one, the lists and the commands' starting values were written by the
-     * CPU, and the rings they live in are not reused while a frame that read them may still run.
-     * One barrier after them makes what they wrote visible to the draws.
-     */
-    public synchronized boolean prepareVisiblePageCommands(List<TerrainPreparedPages> layers) {
-        VulkanDevice activeDevice = this.device;
-        ComputePipeline pipeline = this.commandPipeline;
-        if (activeDevice == null || pipeline == null || layers.isEmpty()) {
-            return false;
-        }
-        for (TerrainPreparedPages layer : layers) {
-            if (layer.dispatch() == null || !layer.dispatch().ready() || !layer.dispatch().usesIndirectCommand() || layer.pages() == null || !layer.pages().ready()) {
-                return false;
-            }
-        }
-        
-        VulkanCommandEncoder encoder = activeDevice.createCommandEncoder();
-        if (TerrainRenderPassAccess.insideRenderPass(encoder)) {
-            // Minecraft refuses to execute a command buffer while a render pass is open, and fails the frame.
-            this.meshTaskGpuCommandPreparationsInsideRenderPass.increment();
-            return false;
-        }
-        VkCommandBuffer commandBuffer = encoder.allocateAndBeginTransientCommandBuffer();
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            VK12.vkCmdBindPipeline(commandBuffer, VK10.VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.handle());
-            for (TerrainPreparedPages layer : layers) {
-                recordVisiblePageCommand(commandBuffer, pipeline, layer.dispatch(), layer.pages(), stack);
-            }
-            // The draws read what the passes wrote: the indirect draw its command, the task stage the list.
-            // The task and mesh stages' bits are the same in both kinds of stage mask.
-            VkMemoryBarrier2.Buffer written = VkMemoryBarrier2.calloc(1, stack).sType$Default().srcStageMask(VK13.VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT).srcAccessMask(VK13.VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT).dstStageMask(VK13.VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | EXTMeshShader.VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT | EXTMeshShader.VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT).dstAccessMask(VK13.VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK13.VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
-            VK13.vkCmdPipelineBarrier2(commandBuffer, VkDependencyInfo.calloc(stack).sType$Default().pMemoryBarriers(written));
-        }
-        VulkanUtils.crashIfFailure(activeDevice, VK12.vkEndCommandBuffer(commandBuffer), "Failed to end VIM terrain visibility command buffer");
-        encoder.execute(commandBuffer);
-        return true;
-    }
-    
-    private void recordVisiblePageCommand(VkCommandBuffer commandBuffer, ComputePipeline pipeline, TerrainMeshTaskDispatch dispatch, TerrainVisiblePageUpload pages, MemoryStack stack) {
-        DescriptorHeapTerrainResources resources = DescriptorHeapTerrainResources.get();
-        long commandBaseAddress = dispatch.indirectCommandAddress() - dispatch.indirectCommandOffset();
-        int commandIndex = (int) (dispatch.indirectCommandOffset() / dispatch.indirectCommandStride());
-        ByteBuffer pushConstants = stack.malloc(TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_PUSH_CONSTANT_BYTES);
-        pushConstants.putLong(resources.sectionMetadataAddress());
-        pushConstants.putLong(pages.address());
-        pushConstants.putLong(commandBaseAddress);
-        pushConstants.putLong(resources.terrainVisibilityCounterAddress());
-        pushConstants.putInt(pages.inputOffset());
-        pushConstants.putInt(pages.outputOffset());
-        pushConstants.putInt(pages.count());
-        pushConstants.putInt(commandIndex);
-        pushConstants.putInt(0).putInt(0).putInt(0).putInt(0);
-        writeCameraPushConstants(pushConstants);
-        pushConstants.flip();
-        VK12.vkCmdPushConstants(commandBuffer, pipeline.layout(), VK10.VK_SHADER_STAGE_COMPUTE_BIT, 0, pushConstants);
-        VK12.vkCmdDispatch(commandBuffer, (pages.count() + TerrainGpuLayout.VISIBILITY_WORKGROUP_SIZE - 1) / TerrainGpuLayout.VISIBILITY_WORKGROUP_SIZE, 1, 1);
-        this.meshTaskGpuCommandPreparations.increment();
-    }
-    
-    /**
-     * Has the GPU write the draws of a GPU-driven frame: the task records of every page of the
-     * sections in view, each layer's nearest first, and each layer's mesh-task command. The
-     * pass's three steps are recorded into the command buffer Minecraft records the frame into,
-     * while no render pass is open, each behind a barrier on the one before, and one barrier after
-     * them makes what they wrote visible to the draws. What they read was copied or written before: the pages behind a barrier, the
-     * frame's data and the commands' starting values by the CPU.
-     *
-     * @param slotCount     how many slots of the page table are in use
-     * @param layerOutputs  the record each layer's task records begin at
-     * @param layerCommands the command each layer's tasks are counted in, or -1 for a layer not drawn
-     * @param fadeMillis    how long a section takes to fade in, or 0 for no fade
-     */
-    synchronized boolean prepareGpuDrivenPages(TerrainGpuDrivenFrame frame, VisibleSectionGrid sections, int slotCount, int[] layerOutputs, int[] layerCommands, int fadeMillis) {
-        VulkanDevice activeDevice = this.device;
-        ComputePipeline pipeline = this.sectionPagesPipeline;
-        if (activeDevice == null || pipeline == null || !frame.ready() || slotCount <= 0) {
-            return false;
-        }
-        VkCommandBuffer commandBuffer = TerrainRenderPassAccess.frameCommandBuffer(activeDevice.createCommandEncoder());
-        if (commandBuffer == null) {
-            this.meshTaskGpuCommandPreparationsInsideRenderPass.increment();
-            return false;
-        }
-        DescriptorHeapTerrainResources resources = DescriptorHeapTerrainResources.get();
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            ByteBuffer pushConstants = stack.malloc(TerrainGpuLayout.SECTION_PAGES_PUSH_CONSTANT_BYTES);
-            pushConstants.putLong(resources.sectionMetadataAddress());
-            pushConstants.putLong(frame.address());
-            pushConstants.putLong(resources.terrainMeshTaskCommandAddress());
-            pushConstants.putInt(frame.frameRecord());
-            int stepOffset = pushConstants.position();
-            pushConstants.putInt(0);
-            pushConstants.putInt(sections.minX()).putInt(sections.minY()).putInt(sections.minZ()).putInt(slotCount);
-            pushConstants.putInt(sections.sizeX()).putInt(sections.sizeY()).putInt(sections.sizeZ()).putInt(SectionMeshletStore.fadeClockMillis());
-            putCameraSection(pushConstants);
-            pushConstants.putInt(fadeMillis);
-            for (int layer = 0; layer < TerrainGpuLayout.SECTION_PAGES_LAYERS; layer++) {
-                pushConstants.putInt(layer < layerOutputs.length ? layerOutputs[layer] : 0);
-            }
-            for (int layer = 0; layer < TerrainGpuLayout.SECTION_PAGES_LAYERS; layer++) {
-                pushConstants.putInt(layer < layerCommands.length ? layerCommands[layer] : -1);
-            }
-            pushConstants.flip();
-            VK12.vkCmdBindPipeline(commandBuffer, VK10.VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.handle());
-            int slotGroups = (slotCount + TerrainGpuLayout.SECTION_PAGES_WORKGROUP_SIZE - 1) / TerrainGpuLayout.SECTION_PAGES_WORKGROUP_SIZE;
-            // Count each distance's tasks, place the distances, write the records.
-            int[] workgroups = {slotGroups, 1, slotGroups};
-            for (int step = 0; step < workgroups.length; step++) {
-                pushConstants.putInt(stepOffset, step);
-                VK12.vkCmdPushConstants(commandBuffer, pipeline.layout(), VK10.VK_SHADER_STAGE_COMPUTE_BIT, 0, pushConstants);
-                VK12.vkCmdDispatch(commandBuffer, workgroups[step], 1, 1);
-                boolean last = step == workgroups.length - 1;
-                // The draws read what the last step wrote: the indirect draw its command, the task stage the records.
-                // The task and mesh stages' bits are the same in both kinds of stage mask.
-                VkMemoryBarrier2.Buffer written = VkMemoryBarrier2.calloc(1, stack).sType$Default().srcStageMask(VK13.VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT).srcAccessMask(VK13.VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT).dstStageMask(last ? VK13.VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | EXTMeshShader.VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT | EXTMeshShader.VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT : VK13.VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT).dstAccessMask(last ? VK13.VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK13.VK_ACCESS_2_SHADER_STORAGE_READ_BIT : VK13.VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK13.VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
-                VK13.vkCmdPipelineBarrier2(commandBuffer, VkDependencyInfo.calloc(stack).sType$Default().pMemoryBarriers(written));
-            }
-        }
-        this.gpuDrivenPagePreparations.increment();
-        return true;
-    }
-    
-    public Map<String, Object> asMap() {
-        Map<String, Object> map = new LinkedHashMap<>();
-        map.put("ready", ready());
-        map.put("taskModule", this.taskModule);
-        map.put("meshModule", this.meshModule);
-        map.put("fragmentModule", this.fragmentModule);
-        map.put("commandModule", this.commandModule);
-        map.put("taskStage", EXTMeshShader.VK_SHADER_STAGE_TASK_BIT_EXT);
-        map.put("meshStage", EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT);
-        map.put("commandStage", VK10.VK_SHADER_STAGE_COMPUTE_BIT);
-        map.put("taskShaderResource", TerrainShaderSource.TASK_SHADER);
-        map.put("meshShaderResource", TerrainShaderSource.MESH_SHADER);
-        map.put("fragmentShaderResource", TerrainShaderSource.FRAGMENT_SHADER);
-        map.put("meshTaskCommandShaderResource", TerrainShaderSource.MESH_TASK_COMMAND_SHADER);
-        map.put("taskShaderCompileSource", this.taskShaderCompileSource);
-        map.put("meshShaderCompileSource", this.meshShaderCompileSource);
-        map.put("fragmentShaderCompileSource", this.fragmentShaderCompileSource);
-        map.put("commandShaderCompileSource", this.commandShaderCompileSource);
-        map.put("visibleSectionPagesShaderCompileSource", this.sectionPagesShaderCompileSource);
-        map.put("enableMeshletFrustumCulling", meshletFrustumCullingPushConstant() != 0);
-        map.put("pipelineCacheSize", this.pipelineCache.size());
-        map.put("commandPipelineReady", this.commandPipeline != null);
-        map.put("visibleSectionPagesPipelineReady", this.sectionPagesPipeline != null);
-        map.put("pipelineCompiles", this.pipelineCompiles.sum());
-        map.put("meshTaskDispatches", this.meshTaskDispatches.sum());
-        map.put("meshTaskDirectDispatches", this.meshTaskDirectDispatches.sum());
-        map.put("meshTaskIndirectDispatches", this.meshTaskIndirectDispatches.sum());
-        map.put("meshTaskGpuCommandPreparations", this.meshTaskGpuCommandPreparations.sum());
-        map.put("gpuDrivenPagePreparations", this.gpuDrivenPagePreparations.sum());
-        map.put("meshTaskGpuCommandPreparationsInsideRenderPass", this.meshTaskGpuCommandPreparationsInsideRenderPass.sum());
-        map.put("meshTasksDispatched", this.meshTasksDispatched.sum());
-        map.put("improvedFogDispatches", this.improvedFogDispatches.sum());
-        map.put("textureDescriptorBufferBinds", this.textureDescriptorBufferBinds.sum());
-        map.put("textureDescriptorBufferMissing", this.textureDescriptorBufferMissing.sum());
-        TerrainTextureDescriptorLayout descriptorLayout = null;
-        for (TerrainMeshPipeline pipeline : this.pipelineCache.values()) {
-            descriptorLayout = pipeline.textureDescriptorLayout();
-            break;
-        }
-        map.put("textureDescriptorLayout", descriptorLayout == null ? Map.of() : descriptorLayout.asMap());
-        map.put("lastError", this.lastError);
-        return map;
-    }
-    
-    /**
-     * Builds the mesh pipeline that stands in for one vanilla terrain pipeline: the same
-     * rasterization, depth and blend state, for the same render pass, with the terrain task, mesh
-     * and fragment stages.
-     *
-     * @param alphaTest whether the fragment stage keeps its alpha test; without it the GPU tests
-     *                  depth before the fragment stage runs
-     */
-    private TerrainMeshPipeline createPipeline(VulkanDevice device, TerrainPipelineState pipelineInfo, boolean alphaTest) {
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            VkDescriptorSetLayoutBinding.Buffer textureBindings = VkDescriptorSetLayoutBinding.calloc(7, stack);
-            describeBinding(textureBindings, 0, VK10.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VK10.VK_SHADER_STAGE_FRAGMENT_BIT);
-            describeBinding(textureBindings, 1, VK10.VK_DESCRIPTOR_TYPE_SAMPLER, VK10.VK_SHADER_STAGE_FRAGMENT_BIT);
-            // The lightmap is read per vertex by the mesh stage.
-            describeBinding(textureBindings, 2, VK10.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT);
-            describeBinding(textureBindings, 3, VK10.VK_DESCRIPTOR_TYPE_SAMPLER, EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT);
-            // The sky, cloud and cloud-depth images of improved fog, read texel by texel.
-            for (int binding = 4; binding < 7; binding++) {
-                describeBinding(textureBindings, binding, VK10.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VK10.VK_SHADER_STAGE_FRAGMENT_BIT);
-            }
-            VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = VkDescriptorSetLayoutCreateInfo.calloc(stack).sType$Default().flags(EXTDescriptorBuffer.VK_DESCRIPTOR_SET_LAYOUT_CREATE_DESCRIPTOR_BUFFER_BIT_EXT).pBindings(textureBindings);
-            LongBuffer descriptorSetLayoutHandle = stack.callocLong(1);
-            VulkanUtils.crashIfFailure(device, VK12.vkCreateDescriptorSetLayout(device.vkDevice(), descriptorSetLayoutCreateInfo, null, descriptorSetLayoutHandle), "Failed to create VIM terrain texture descriptor-buffer layout for " + pipelineInfo.name());
-            long textureDescriptorSetLayout = descriptorSetLayoutHandle.get(0);
-            TerrainTextureDescriptorLayout textureDescriptorLayout = queryTextureDescriptorLayout(device, textureDescriptorSetLayout);
-            
-            VkPushConstantRange.Buffer pushConstantRanges = VkPushConstantRange.calloc(2, stack);
-            pushConstantRanges.apply(0, range -> range.stageFlags(EXTMeshShader.VK_SHADER_STAGE_TASK_BIT_EXT | EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT).offset(0).size(TerrainGpuLayout.TERRAIN_PUSH_CONSTANT_BYTES));
-            pushConstantRanges.apply(1, range -> range.stageFlags(VK10.VK_SHADER_STAGE_FRAGMENT_BIT).offset(TerrainGpuLayout.TERRAIN_FOG_PUSH_CONSTANT_OFFSET).size(TerrainGpuLayout.TERRAIN_FOG_PUSH_CONSTANT_BYTES));
-            VkPipelineLayoutCreateInfo layoutCreateInfo = VkPipelineLayoutCreateInfo.calloc(stack).sType$Default().pSetLayouts(stack.longs(textureDescriptorSetLayout)).pPushConstantRanges(pushConstantRanges);
-            LongBuffer layoutHandle = stack.callocLong(1);
-            VulkanUtils.crashIfFailure(device, VK12.vkCreatePipelineLayout(device.vkDevice(), layoutCreateInfo, null, layoutHandle), "Failed to create VIM terrain mesh pipeline layout for " + pipelineInfo.name());
-            long pipelineLayout = layoutHandle.get(0);
-            
-            VkPipelineShaderStageCreateInfo.Buffer shaderStages = VkPipelineShaderStageCreateInfo.calloc(3, stack);
-            ByteBuffer entryPoint = stack.UTF8("main");
-            shaderStages.apply(0, stage -> stage.sType$Default().stage(EXTMeshShader.VK_SHADER_STAGE_TASK_BIT_EXT).module(this.taskModule).pName(entryPoint));
-            shaderStages.apply(1, stage -> stage.sType$Default().stage(EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT).module(this.meshModule).pName(entryPoint));
-            VkSpecializationMapEntry.Buffer alphaTestEntry = VkSpecializationMapEntry.calloc(1, stack).apply(0, entry -> entry.constantID(0).offset(0).size(Integer.BYTES));
-            ByteBuffer alphaTestValue = stack.malloc(Integer.BYTES);
-            alphaTestValue.putInt(0, alphaTest ? VK10.VK_TRUE : VK10.VK_FALSE);
-            VkSpecializationInfo fragmentSpecialization = VkSpecializationInfo.calloc(stack).pMapEntries(alphaTestEntry).pData(alphaTestValue);
-            shaderStages.apply(2, stage -> stage.sType$Default().stage(VK10.VK_SHADER_STAGE_FRAGMENT_BIT).module(this.fragmentModule).pName(entryPoint).pSpecializationInfo(fragmentSpecialization));
-            
-            VkPipelineRasterizationStateCreateInfo rasterizationState = VkPipelineRasterizationStateCreateInfo.calloc(stack).sType$Default().polygonMode(VulkanConst.toVk(pipelineInfo.polygonMode())).cullMode(pipelineInfo.cull() ? VK10.VK_CULL_MODE_BACK_BIT : VK10.VK_CULL_MODE_NONE).frontFace(VK10.VK_FRONT_FACE_CLOCKWISE).lineWidth(1.0F);
-            
-            DepthStencilState depthStencilStateInfo = pipelineInfo.depthStencilState();
-            VkPipelineDepthStencilStateCreateInfo depthStencilState = VkPipelineDepthStencilStateCreateInfo.calloc(stack).sType$Default();
-            if (depthStencilStateInfo != null) {
-                rasterizationState.depthBiasEnable(depthStencilStateInfo.depthBiasConstant() != 0.0F && depthStencilStateInfo.depthBiasScaleFactor() != 0.0F).depthBiasConstantFactor(depthStencilStateInfo.depthBiasConstant()).depthBiasSlopeFactor(depthStencilStateInfo.depthBiasScaleFactor());
-                depthStencilState.depthTestEnable(true).depthWriteEnable(depthStencilStateInfo.writeDepth()).depthCompareOp(VulkanConst.toVk(depthStencilStateInfo.depthTest()));
-            }
-            
-            // One blend state for each color attachment of the subpass, as Minecraft gives its own
-            // pipeline; an attachment the pipeline has no target for is not written.
-            List<ColorTargetState> colorTargets = pipelineInfo.colorTargetStates();
-            VkPipelineColorBlendAttachmentState.Buffer colorAttachments = VkPipelineColorBlendAttachmentState.calloc(pipelineInfo.subpass().colorAttachments().size(), stack);
-            for (int i = 0; i < colorTargets.size(); i++) {
-                ColorTargetState colorTarget = colorTargets.get(i);
-                VkPipelineColorBlendAttachmentState attachment = colorAttachments.get(i);
-                attachment.colorWriteMask(colorTarget == null ? 0 : VulkanConst.toVk(colorTarget));
-                if (colorTarget != null) {
-                    colorTarget.blendFunction().ifPresent(blendFunction -> applyBlendInformation(attachment, blendFunction));
-                }
-            }
-            VkPipelineColorBlendStateCreateInfo colorBlendState = VkPipelineColorBlendStateCreateInfo.calloc(stack).sType$Default().pAttachments(colorAttachments);
-            
-            VkPipelineViewportStateCreateInfo viewportState = VkPipelineViewportStateCreateInfo.calloc(stack).sType$Default().viewportCount(1).scissorCount(1);
-            VkPipelineMultisampleStateCreateInfo multisampleState = VkPipelineMultisampleStateCreateInfo.calloc(stack).sType$Default().rasterizationSamples(VK10.VK_SAMPLE_COUNT_1_BIT).sampleShadingEnable(false);
-            IntBuffer dynamicStates = stack.ints(VK10.VK_DYNAMIC_STATE_VIEWPORT, VK10.VK_DYNAMIC_STATE_SCISSOR, KHRFragmentShadingRate.VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR);
-            VkPipelineDynamicStateCreateInfo dynamicState = VkPipelineDynamicStateCreateInfo.calloc(stack).sType$Default().pDynamicStates(dynamicStates);
-            
-            // Minecraft records terrain inside a render pass object, so the pipeline is created for
-            // the subpass of the render pass layout Minecraft's own pipeline was created for.
-            RenderPassLayout.Subpass subpass = pipelineInfo.subpass();
-            long renderPass = device.renderpassCache().getRenderPass(subpass.renderPassLayout());
-            
-            VkGraphicsPipelineCreateInfo.Buffer pipelineCreateInfo = VkGraphicsPipelineCreateInfo.calloc(1, stack).sType$Default().flags(EXTDescriptorBuffer.VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT).pStages(shaderStages).pRasterizationState(rasterizationState).pDepthStencilState(depthStencilState).pColorBlendState(colorBlendState).pViewportState(viewportState).pMultisampleState(multisampleState).pDynamicState(dynamicState).layout(pipelineLayout).renderPass(renderPass).subpass(subpass.index());
-            
-            LongBuffer pipelineHandle = stack.callocLong(1);
-            VulkanUtils.crashIfFailure(device, VK12.vkCreateGraphicsPipelines(device.vkDevice(), 0L, pipelineCreateInfo, null, pipelineHandle), "Failed to create VIM terrain mesh pipeline for " + pipelineInfo.name());
-            long pipeline = pipelineHandle.get(0);
-            VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_PIPELINE_LAYOUT, pipelineLayout, "VIM Terrain Mesh Pipeline Layout");
-            VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, textureDescriptorSetLayout, "VIM Terrain Texture Descriptor-Buffer Layout");
-            VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_PIPELINE, pipeline, "VIM Terrain Mesh Pipeline " + pipelineInfo.name());
-            this.pipelineCompiles.increment();
-            this.lastError = "";
-            return new TerrainMeshPipeline(pipeline, pipelineLayout, textureDescriptorSetLayout, textureDescriptorLayout);
-        } catch (RuntimeException ex) {
-            this.lastError = ex.getMessage();
-            throw ex;
-        }
-    }
+	private static final MeshShaderTerrainProgram INSTANCE = new MeshShaderTerrainProgram();
+	private final Map<TerrainPipelineKey, TerrainMeshPipeline> pipelineCache = new HashMap<>();
+	private final LongAdder pipelineCompiles = new LongAdder();
+	private final LongAdder meshTaskDispatches = new LongAdder();
+	private final LongAdder improvedFogDispatches = new LongAdder();
+	private final LongAdder meshTaskDirectDispatches = new LongAdder();
+	private final LongAdder meshTaskIndirectDispatches = new LongAdder();
+	private final LongAdder meshTaskGpuCommandPreparations = new LongAdder();
+	private final LongAdder gpuDrivenPagePreparations = new LongAdder();
+	private final LongAdder meshTaskGpuCommandPreparationsInsideRenderPass = new LongAdder();
+	private final LongAdder meshTasksDispatched = new LongAdder();
+	private final LongAdder textureDescriptorBufferBinds = new LongAdder();
+	private final LongAdder textureDescriptorBufferMissing = new LongAdder();
+	private volatile VulkanDevice device;
+	private volatile long taskModule;
+	private volatile long meshModule;
+	private volatile long fragmentModule;
+	private volatile long commandModule;
+	private volatile ComputePipeline commandPipeline;
+	private volatile long sectionPagesModule;
+	private volatile ComputePipeline sectionPagesPipeline;
+	private volatile String lastError = "";
+	private volatile String taskShaderCompileSource = "unconfigured";
+	private volatile String meshShaderCompileSource = "unconfigured";
+	private volatile String fragmentShaderCompileSource = "unconfigured";
+	private volatile String commandShaderCompileSource = "unconfigured";
+	private volatile String sectionPagesShaderCompileSource = "unconfigured";
+	
+	private MeshShaderTerrainProgram() {
+	}
+	
+	public static MeshShaderTerrainProgram get() {
+		return INSTANCE;
+	}
+	
+	public synchronized void configure(VulkanDevice device) {
+		shutdown();
+		this.device = device;
+		try (ShaderCompiler compiler = new ShaderCompiler()) {
+			this.taskModule = compiler.compile(device, TerrainShaderSource.TASK_SHADER, TerrainShaderSource.TASK_SHADER_SPIRV, Shaderc.shaderc_task_shader);
+			this.taskShaderCompileSource = compiler.lastCompileSource();
+			this.meshModule = compiler.compile(device, TerrainShaderSource.MESH_SHADER, TerrainShaderSource.MESH_SHADER_SPIRV, Shaderc.shaderc_mesh_shader);
+			this.meshShaderCompileSource = compiler.lastCompileSource();
+			this.fragmentModule = compiler.compile(device, TerrainShaderSource.FRAGMENT_SHADER, TerrainShaderSource.FRAGMENT_SHADER_SPIRV, Shaderc.shaderc_fragment_shader);
+			this.fragmentShaderCompileSource = compiler.lastCompileSource();
+			this.commandModule = compiler.compile(device, TerrainShaderSource.MESH_TASK_COMMAND_SHADER, TerrainShaderSource.MESH_TASK_COMMAND_SHADER_SPIRV, Shaderc.shaderc_compute_shader);
+			this.commandShaderCompileSource = compiler.lastCompileSource();
+			this.sectionPagesModule = compiler.compile(device, TerrainShaderSource.VISIBLE_SECTION_PAGES_SHADER, TerrainShaderSource.VISIBLE_SECTION_PAGES_SHADER_SPIRV, Shaderc.shaderc_compute_shader);
+			this.sectionPagesShaderCompileSource = compiler.lastCompileSource();
+			this.commandPipeline = ComputePipeline.create(device, this.commandModule, TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_PUSH_CONSTANT_BYTES, "VIM Terrain Mesh Task Command");
+			this.pipelineCompiles.increment();
+			this.sectionPagesPipeline = ComputePipeline.create(device, this.sectionPagesModule, TerrainGpuLayout.SECTION_PAGES_PUSH_CONSTANT_BYTES, "VIM Terrain Visible Section Pages");
+			this.pipelineCompiles.increment();
+			this.lastError = "";
+			VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_SHADER_MODULE, this.taskModule, "VIM Terrain Task Shader");
+			VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_SHADER_MODULE, this.meshModule, "VIM Terrain Mesh Shader");
+			VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_SHADER_MODULE, this.fragmentModule, "VIM Terrain Fragment Shader");
+			VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_SHADER_MODULE, this.commandModule, "VIM Terrain Mesh Task Command Shader");
+			VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_SHADER_MODULE, this.sectionPagesModule, "VIM Terrain Visible Section Pages Shader");
+		} catch (RuntimeException ex) {
+			shutdown();
+			this.lastError = ex.getMessage();
+			throw ex;
+		}
+	}
+	
+	public synchronized void shutdown() {
+		VulkanDevice activeDevice = this.device;
+		if (activeDevice != null) {
+			for (TerrainMeshPipeline pipeline : this.pipelineCache.values()) {
+				pipeline.destroy(activeDevice);
+			}
+			this.pipelineCache.clear();
+			ComputePipeline activeComputePipeline = this.commandPipeline;
+			if (activeComputePipeline != null) {
+				activeComputePipeline.destroy(activeDevice);
+			}
+			this.commandPipeline = null;
+			ComputePipeline activeSectionPagesPipeline = this.sectionPagesPipeline;
+			if (activeSectionPagesPipeline != null) {
+				activeSectionPagesPipeline.destroy(activeDevice);
+			}
+			this.sectionPagesPipeline = null;
+			destroyModule(activeDevice, this.sectionPagesModule);
+			destroyModule(activeDevice, this.commandModule);
+			destroyModule(activeDevice, this.fragmentModule);
+			destroyModule(activeDevice, this.meshModule);
+			destroyModule(activeDevice, this.taskModule);
+		}
+		this.fragmentModule = 0L;
+		this.meshModule = 0L;
+		this.taskModule = 0L;
+		this.commandModule = 0L;
+		this.sectionPagesModule = 0L;
+		this.device = null;
+	}
+	
+	private static void destroyModule(VulkanDevice device, long module) {
+		if (module != 0L) {
+			VK12.vkDestroyShaderModule(device.vkDevice(), module, null);
+		}
+	}
+	
+	public synchronized boolean drawTerrain(VkCommandBuffer commandBuffer, TerrainPipelineState vanillaPipeline, TerrainMeshTaskDispatch dispatch, long meshletHeaderAddress, long vertexPayloadAddress, long indexPayloadAddress) {
+		VulkanDevice activeDevice = this.device;
+		if (activeDevice == null || !ready() || dispatch == null || !dispatch.ready() || meshletHeaderAddress == 0L || vertexPayloadAddress == 0L) {
+			return false;
+		}
+		TerrainMeshPipeline meshPipeline = this.pipelineCache.computeIfAbsent(new TerrainPipelineKey(vanillaPipeline, alphaTest(dispatch.layerOrdinal())), key -> createPipeline(activeDevice, key.state(), key.alphaTest()));
+		boolean improvedFog = TerrainRenderContext.improvedFog();
+		if (!bindTerrainTextureDescriptorBuffer(commandBuffer, meshPipeline, improvedFog)) {
+			return false;
+		}
+		VK12.vkCmdBindPipeline(commandBuffer, VK10.VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline.handle());
+		try (MemoryStack stack = MemoryStack.stackPush()) {
+			ByteBuffer pushConstants = stack.malloc(TerrainGpuLayout.TERRAIN_PUSH_CONSTANT_BYTES);
+			pushConstants.putLong(meshletHeaderAddress);
+			pushConstants.putLong(vertexPayloadAddress);
+			pushConstants.putLong(indexPayloadAddress);
+			pushConstants.putLong(DescriptorHeapTerrainResources.get().terrainDebugCounterAddress());
+			pushConstants.putLong(dispatch.visibleMeshletListAddress());
+			pushConstants.putLong(dispatch.workQueueAddress());
+			pushConstants.putLong(DescriptorHeapTerrainResources.get().materialTableAddress());
+			// With a page table the tasks are pages the visibility pass kept; it has culled them already.
+			boolean drawsPages = dispatch.source() == TerrainMeshTaskSource.GPU_VISIBLE_PAGES || dispatch.source() == TerrainMeshTaskSource.LISTED_PAGES || dispatch.source() == TerrainMeshTaskSource.GPU_DRIVEN_PAGES;
+			pushConstants.putLong(drawsPages ? DescriptorHeapTerrainResources.get().sectionMetadataAddress() : 0L);
+			pushConstants.putInt(dispatch.taskCount());
+			pushConstants.putInt(drawsPages ? pageCullFlags(vanillaPipeline) : meshletFrustumCullingPushConstant());
+			pushConstants.putInt(dispatch.meshletOffset());
+			pushConstants.putInt(dispatch.layerOrdinal());
+			writeCameraPushConstants(pushConstants);
+			pushConstants.flip();
+			VK12.vkCmdPushConstants(commandBuffer, meshPipeline.layout(), EXTMeshShader.VK_SHADER_STAGE_TASK_BIT_EXT | EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT, 0, pushConstants);
+			ByteBuffer fogConstants = stack.malloc(TerrainGpuLayout.TERRAIN_FOG_PUSH_CONSTANT_BYTES);
+			TerrainFogState.write(fogConstants, improvedFog);
+			fogConstants.flip();
+			VK12.vkCmdPushConstants(commandBuffer, meshPipeline.layout(), VK10.VK_SHADER_STAGE_FRAGMENT_BIT, TerrainGpuLayout.TERRAIN_FOG_PUSH_CONSTANT_OFFSET, fogConstants);
+		}
+		FragmentShadingRateController.get().applyToTerrain(commandBuffer);
+		if (dispatch.usesIndirectCommand()) {
+			EXTMeshShader.vkCmdDrawMeshTasksIndirectEXT(commandBuffer, dispatch.indirectCommandBuffer(), dispatch.indirectCommandOffset(), 1, dispatch.indirectCommandStride());
+			this.meshTaskIndirectDispatches.increment();
+		}
+		else {
+			EXTMeshShader.vkCmdDrawMeshTasksEXT(commandBuffer, dispatch.taskCount(), 1, 1);
+			this.meshTaskDirectDispatches.increment();
+		}
+		this.meshTaskDispatches.increment();
+		if (improvedFog) {
+			this.improvedFogDispatches.increment();
+		}
+		this.meshTasksDispatched.add(dispatch.taskCount());
+		return true;
+	}
+	
+	public boolean ready() {
+		return this.taskModule != 0L && this.meshModule != 0L && this.fragmentModule != 0L && this.commandModule != 0L && this.commandPipeline != null && this.sectionPagesPipeline != null;
+	}
+	
+	/**
+	 * Whether a layer's fragments may be dropped for their alpha. A draw that is not for one layer
+	 * keeps the test.
+	 */
+	private static boolean alphaTest(int layerOrdinal) {
+		ChunkSectionLayer[] layers = ChunkSectionLayer.values();
+		return layerOrdinal < 0 || layerOrdinal >= layers.length || TerrainMaterialClassifier.alphaModeForLayer(layers[layerOrdinal]) != GpuMaterialAlphaMode.OPAQUE;
+	}
+	
+	/**
+	 * Builds the mesh pipeline that stands in for one vanilla terrain pipeline: the same
+	 * rasterization, depth and blend state, for the same render pass, with the terrain task, mesh
+	 * and fragment stages.
+	 *
+	 * @param alphaTest whether the fragment stage keeps its alpha test; without it the GPU tests
+	 *                  depth before the fragment stage runs
+	 */
+	private TerrainMeshPipeline createPipeline(VulkanDevice device, TerrainPipelineState pipelineInfo, boolean alphaTest) {
+		try (MemoryStack stack = MemoryStack.stackPush()) {
+			VkDescriptorSetLayoutBinding.Buffer textureBindings = VkDescriptorSetLayoutBinding.calloc(7, stack);
+			describeBinding(textureBindings, 0, VK10.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VK10.VK_SHADER_STAGE_FRAGMENT_BIT);
+			describeBinding(textureBindings, 1, VK10.VK_DESCRIPTOR_TYPE_SAMPLER, VK10.VK_SHADER_STAGE_FRAGMENT_BIT);
+			// The lightmap is read per vertex by the mesh stage.
+			describeBinding(textureBindings, 2, VK10.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT);
+			describeBinding(textureBindings, 3, VK10.VK_DESCRIPTOR_TYPE_SAMPLER, EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT);
+			// The sky, cloud and cloud-depth images of improved fog, read texel by texel.
+			for (int binding = 4; binding < 7; binding++) {
+				describeBinding(textureBindings, binding, VK10.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VK10.VK_SHADER_STAGE_FRAGMENT_BIT);
+			}
+			VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = VkDescriptorSetLayoutCreateInfo.calloc(stack).sType$Default().flags(EXTDescriptorBuffer.VK_DESCRIPTOR_SET_LAYOUT_CREATE_DESCRIPTOR_BUFFER_BIT_EXT).pBindings(textureBindings);
+			LongBuffer descriptorSetLayoutHandle = stack.callocLong(1);
+			VulkanUtils.crashIfFailure(device, VK12.vkCreateDescriptorSetLayout(device.vkDevice(), descriptorSetLayoutCreateInfo, null, descriptorSetLayoutHandle), "Failed to create VIM terrain texture descriptor-buffer layout for " + pipelineInfo.name());
+			long textureDescriptorSetLayout = descriptorSetLayoutHandle.get(0);
+			TerrainTextureDescriptorLayout textureDescriptorLayout = queryTextureDescriptorLayout(device, textureDescriptorSetLayout);
+			
+			VkPushConstantRange.Buffer pushConstantRanges = VkPushConstantRange.calloc(2, stack);
+			pushConstantRanges.apply(0, range -> range.stageFlags(EXTMeshShader.VK_SHADER_STAGE_TASK_BIT_EXT | EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT).offset(0).size(TerrainGpuLayout.TERRAIN_PUSH_CONSTANT_BYTES));
+			pushConstantRanges.apply(1, range -> range.stageFlags(VK10.VK_SHADER_STAGE_FRAGMENT_BIT).offset(TerrainGpuLayout.TERRAIN_FOG_PUSH_CONSTANT_OFFSET).size(TerrainGpuLayout.TERRAIN_FOG_PUSH_CONSTANT_BYTES));
+			VkPipelineLayoutCreateInfo layoutCreateInfo = VkPipelineLayoutCreateInfo.calloc(stack).sType$Default().pSetLayouts(stack.longs(textureDescriptorSetLayout)).pPushConstantRanges(pushConstantRanges);
+			LongBuffer layoutHandle = stack.callocLong(1);
+			VulkanUtils.crashIfFailure(device, VK12.vkCreatePipelineLayout(device.vkDevice(), layoutCreateInfo, null, layoutHandle), "Failed to create VIM terrain mesh pipeline layout for " + pipelineInfo.name());
+			long pipelineLayout = layoutHandle.get(0);
+			
+			VkPipelineShaderStageCreateInfo.Buffer shaderStages = VkPipelineShaderStageCreateInfo.calloc(3, stack);
+			ByteBuffer entryPoint = stack.UTF8("main");
+			shaderStages.apply(0, stage -> stage.sType$Default().stage(EXTMeshShader.VK_SHADER_STAGE_TASK_BIT_EXT).module(this.taskModule).pName(entryPoint));
+			shaderStages.apply(1, stage -> stage.sType$Default().stage(EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT).module(this.meshModule).pName(entryPoint));
+			VkSpecializationMapEntry.Buffer alphaTestEntry = VkSpecializationMapEntry.calloc(1, stack).apply(0, entry -> entry.constantID(0).offset(0).size(Integer.BYTES));
+			ByteBuffer alphaTestValue = stack.malloc(Integer.BYTES);
+			alphaTestValue.putInt(0, alphaTest ? VK10.VK_TRUE : VK10.VK_FALSE);
+			VkSpecializationInfo fragmentSpecialization = VkSpecializationInfo.calloc(stack).pMapEntries(alphaTestEntry).pData(alphaTestValue);
+			shaderStages.apply(2, stage -> stage.sType$Default().stage(VK10.VK_SHADER_STAGE_FRAGMENT_BIT).module(this.fragmentModule).pName(entryPoint).pSpecializationInfo(fragmentSpecialization));
+			
+			VkPipelineRasterizationStateCreateInfo rasterizationState = VkPipelineRasterizationStateCreateInfo.calloc(stack).sType$Default().polygonMode(VulkanConst.toVk(pipelineInfo.polygonMode())).cullMode(pipelineInfo.cull() ? VK10.VK_CULL_MODE_BACK_BIT : VK10.VK_CULL_MODE_NONE).frontFace(VK10.VK_FRONT_FACE_CLOCKWISE).lineWidth(1.0F);
+			
+			DepthStencilState depthStencilStateInfo = pipelineInfo.depthStencilState();
+			VkPipelineDepthStencilStateCreateInfo depthStencilState = VkPipelineDepthStencilStateCreateInfo.calloc(stack).sType$Default();
+			if (depthStencilStateInfo != null) {
+				rasterizationState.depthBiasEnable(depthStencilStateInfo.depthBiasConstant() != 0.0F && depthStencilStateInfo.depthBiasScaleFactor() != 0.0F).depthBiasConstantFactor(depthStencilStateInfo.depthBiasConstant()).depthBiasSlopeFactor(depthStencilStateInfo.depthBiasScaleFactor());
+				depthStencilState.depthTestEnable(true).depthWriteEnable(depthStencilStateInfo.writeDepth()).depthCompareOp(VulkanConst.toVk(depthStencilStateInfo.depthTest()));
+			}
+			
+			// One blend state for each color attachment of the subpass, as Minecraft gives its own
+			// pipeline; an attachment the pipeline has no target for is not written.
+			List<ColorTargetState> colorTargets = pipelineInfo.colorTargetStates();
+			VkPipelineColorBlendAttachmentState.Buffer colorAttachments = VkPipelineColorBlendAttachmentState.calloc(pipelineInfo.subpass().colorAttachments().size(), stack);
+			for (int i = 0; i < colorTargets.size(); i++) {
+				ColorTargetState colorTarget = colorTargets.get(i);
+				VkPipelineColorBlendAttachmentState attachment = colorAttachments.get(i);
+				attachment.colorWriteMask(colorTarget == null ? 0 : VulkanConst.toVk(colorTarget));
+				if (colorTarget != null) {
+					colorTarget.blendFunction().ifPresent(blendFunction -> applyBlendInformation(attachment, blendFunction));
+				}
+			}
+			VkPipelineColorBlendStateCreateInfo colorBlendState = VkPipelineColorBlendStateCreateInfo.calloc(stack).sType$Default().pAttachments(colorAttachments);
+			
+			VkPipelineViewportStateCreateInfo viewportState = VkPipelineViewportStateCreateInfo.calloc(stack).sType$Default().viewportCount(1).scissorCount(1);
+			VkPipelineMultisampleStateCreateInfo multisampleState = VkPipelineMultisampleStateCreateInfo.calloc(stack).sType$Default().rasterizationSamples(VK10.VK_SAMPLE_COUNT_1_BIT).sampleShadingEnable(false);
+			IntBuffer dynamicStates = stack.ints(VK10.VK_DYNAMIC_STATE_VIEWPORT, VK10.VK_DYNAMIC_STATE_SCISSOR, KHRFragmentShadingRate.VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR);
+			VkPipelineDynamicStateCreateInfo dynamicState = VkPipelineDynamicStateCreateInfo.calloc(stack).sType$Default().pDynamicStates(dynamicStates);
+			
+			// Minecraft records terrain inside a render pass object, so the pipeline is created for
+			// the subpass of the render pass layout Minecraft's own pipeline was created for.
+			Subpass subpass = pipelineInfo.subpass();
+			long renderPass = device.renderpassCache().getRenderPass(subpass.renderPassLayout());
+			
+			VkGraphicsPipelineCreateInfo.Buffer pipelineCreateInfo = VkGraphicsPipelineCreateInfo.calloc(1, stack).sType$Default().flags(EXTDescriptorBuffer.VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT).pStages(shaderStages).pRasterizationState(rasterizationState).pDepthStencilState(depthStencilState).pColorBlendState(colorBlendState).pViewportState(viewportState).pMultisampleState(multisampleState).pDynamicState(dynamicState).layout(pipelineLayout).renderPass(renderPass).subpass(subpass.index());
+			
+			LongBuffer pipelineHandle = stack.callocLong(1);
+			VulkanUtils.crashIfFailure(device, VK12.vkCreateGraphicsPipelines(device.vkDevice(), 0L, pipelineCreateInfo, null, pipelineHandle), "Failed to create VIM terrain mesh pipeline for " + pipelineInfo.name());
+			long pipeline = pipelineHandle.get(0);
+			VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_PIPELINE_LAYOUT, pipelineLayout, "VIM Terrain Mesh Pipeline Layout");
+			VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, textureDescriptorSetLayout, "VIM Terrain Texture Descriptor-Buffer Layout");
+			VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_PIPELINE, pipeline, "VIM Terrain Mesh Pipeline " + pipelineInfo.name());
+			this.pipelineCompiles.increment();
+			this.lastError = "";
+			return new TerrainMeshPipeline(pipeline, pipelineLayout, textureDescriptorSetLayout, textureDescriptorLayout);
+		} catch (RuntimeException ex) {
+			this.lastError = ex.getMessage();
+			throw ex;
+		}
+	}
+	
+	private boolean bindTerrainTextureDescriptorBuffer(VkCommandBuffer commandBuffer, TerrainMeshPipeline meshPipeline, boolean improvedFog) {
+		DescriptorHeapTerrainResources resources = DescriptorHeapTerrainResources.get();
+		long descriptorBufferAddress = resources.terrainDescriptorBufferAddress();
+		if (descriptorBufferAddress == 0L || !resources.writeTerrainTextureDescriptors(this.device, meshPipeline.textureDescriptorLayout(), improvedFog)) {
+			this.textureDescriptorBufferMissing.increment();
+			return false;
+		}
+		
+		try (MemoryStack stack = MemoryStack.stackPush()) {
+			VkDescriptorBufferBindingInfoEXT.Buffer bindings = VkDescriptorBufferBindingInfoEXT.calloc(1, stack);
+			bindings.apply(0, binding -> binding.sType$Default().address$(descriptorBufferAddress).usage(EXTDescriptorBuffer.VK_BUFFER_USAGE_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT | EXTDescriptorBuffer.VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT));
+			EXTDescriptorBuffer.vkCmdBindDescriptorBuffersEXT(commandBuffer, bindings);
+			EXTDescriptorBuffer.vkCmdSetDescriptorBufferOffsetsEXT(commandBuffer, VK10.VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline.layout(), 0, stack.ints(0), stack.longs(0L));
+			this.textureDescriptorBufferBinds.increment();
+			return true;
+		}
+	}
+	
+	/**
+	 * What the task stage drops of a page's meshlets: those out of view, and those seen from behind
+	 * when the pipeline it stands in for culls back faces.
+	 */
+	private static int pageCullFlags(TerrainPipelineState vanillaPipeline) {
+		if (!TerrainRendererDebugConfig.cullMeshletsEnabled()) {
+			return 0;
+		}
+		return TerrainGpuLayout.CULL_MESHLETS_OUTSIDE_VIEW | (vanillaPipeline.cull() ? TerrainGpuLayout.CULL_BACK_FACING_MESHLETS : 0);
+	}
+	
+	private static int meshletFrustumCullingPushConstant() {
+		return TerrainRendererDebugConfig.meshletFrustumCullingEnabled() ? TerrainGpuLayout.CULL_MESHLET_FRUSTUM_IN_MESH_STAGE : 0;
+	}
+	
+	private static void writeCameraPushConstants(ByteBuffer target) {
+		double cameraX = 0.0;
+		double cameraY = 0.0;
+		double cameraZ = 0.0;
+		float row0X = 1.0F;
+		float row0Y = 0.0F;
+		float row0Z = 0.0F;
+		float row0W = 0.0F;
+		float row1X = 0.0F;
+		float row1Y = 1.0F;
+		float row1Z = 0.0F;
+		float row1W = 0.0F;
+		float row2X = 0.0F;
+		float row2Y = 0.0F;
+		float row2Z = 1.0F;
+		float row2W = 0.0F;
+		float row3X = 0.0F;
+		float row3Y = 0.0F;
+		float row3Z = 0.0F;
+		float row3W = 1.0F;
+		
+		Minecraft minecraft = Minecraft.getInstance();
+		Camera camera = minecraft.gameRenderer.mainCamera();
+		if (camera.isInitialized()) {
+			Vec3 cameraPosition = camera.position();
+			cameraX = cameraPosition.x();
+			cameraY = cameraPosition.y();
+			cameraZ = cameraPosition.z();
+			Matrix4f viewRotationProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+			row0X = viewRotationProjection.m00();
+			row0Y = viewRotationProjection.m10();
+			row0Z = viewRotationProjection.m20();
+			row0W = viewRotationProjection.m30();
+			row1X = viewRotationProjection.m01();
+			row1Y = viewRotationProjection.m11();
+			row1Z = viewRotationProjection.m21();
+			row1W = viewRotationProjection.m31();
+			row2X = viewRotationProjection.m02();
+			row2Y = viewRotationProjection.m12();
+			row2Z = viewRotationProjection.m22();
+			row2W = viewRotationProjection.m32();
+			row3X = viewRotationProjection.m03();
+			row3Y = viewRotationProjection.m13();
+			row3Z = viewRotationProjection.m23();
+			row3W = viewRotationProjection.m33();
+		}
+		
+		// The block the camera is in goes to the shaders as integers and the rest as a small
+		// offset: one float per axis cannot hold a position far from the world origin exactly.
+		int cameraBlockX = (int) Math.floor(cameraX);
+		int cameraBlockY = (int) Math.floor(cameraY);
+		int cameraBlockZ = (int) Math.floor(cameraZ);
+		target.putInt(cameraBlockX).putInt(cameraBlockY).putInt(cameraBlockZ).putInt(0);
+		putVec4(target, (float) (cameraX - cameraBlockX), (float) (cameraY - cameraBlockY), (float) (cameraZ - cameraBlockZ), 0.0F);
+		putVec4(target, row0X, row0Y, row0Z, row0W);
+		putVec4(target, row1X, row1Y, row1Z, row1W);
+		putVec4(target, row2X, row2Y, row2Z, row2W);
+		putVec4(target, row3X, row3Y, row3Z, row3W);
+	}
+	
+	private static void describeBinding(VkDescriptorSetLayoutBinding.Buffer bindings, int index, int descriptorType, int stages) {
+		bindings.apply(index, binding -> binding.binding(index).descriptorType(descriptorType).descriptorCount(1).stageFlags(stages));
+	}
+	
+	private static TerrainTextureDescriptorLayout queryTextureDescriptorLayout(VulkanDevice device, long descriptorSetLayout) {
+		long[] layoutSize = new long[1];
+		long[] blockAtlasImageOffset = new long[1];
+		long[] blockAtlasSamplerOffset = new long[1];
+		long[] lightmapImageOffset = new long[1];
+		long[] lightmapSamplerOffset = new long[1];
+		long[] skyImageOffset = new long[1];
+		long[] cloudsImageOffset = new long[1];
+		long[] cloudsDepthImageOffset = new long[1];
+		EXTDescriptorBuffer.vkGetDescriptorSetLayoutSizeEXT(device.vkDevice(), descriptorSetLayout, layoutSize);
+		EXTDescriptorBuffer.vkGetDescriptorSetLayoutBindingOffsetEXT(device.vkDevice(), descriptorSetLayout, 0, blockAtlasImageOffset);
+		EXTDescriptorBuffer.vkGetDescriptorSetLayoutBindingOffsetEXT(device.vkDevice(), descriptorSetLayout, 1, blockAtlasSamplerOffset);
+		EXTDescriptorBuffer.vkGetDescriptorSetLayoutBindingOffsetEXT(device.vkDevice(), descriptorSetLayout, 2, lightmapImageOffset);
+		EXTDescriptorBuffer.vkGetDescriptorSetLayoutBindingOffsetEXT(device.vkDevice(), descriptorSetLayout, 3, lightmapSamplerOffset);
+		EXTDescriptorBuffer.vkGetDescriptorSetLayoutBindingOffsetEXT(device.vkDevice(), descriptorSetLayout, 4, skyImageOffset);
+		EXTDescriptorBuffer.vkGetDescriptorSetLayoutBindingOffsetEXT(device.vkDevice(), descriptorSetLayout, 5, cloudsImageOffset);
+		EXTDescriptorBuffer.vkGetDescriptorSetLayoutBindingOffsetEXT(device.vkDevice(), descriptorSetLayout, 6, cloudsDepthImageOffset);
+		TerrainDescriptorHeapLayout terrainLayout = DescriptorHeapTerrainResources.get().layout();
+		return new TerrainTextureDescriptorLayout(layoutSize[0], blockAtlasImageOffset[0], blockAtlasSamplerOffset[0], lightmapImageOffset[0], lightmapSamplerOffset[0], skyImageOffset[0], cloudsImageOffset[0], cloudsDepthImageOffset[0], Math.max(terrainLayout.descriptorBufferSampledImageDescriptorBytes(), 1L), Math.max(terrainLayout.descriptorBufferSamplerDescriptorBytes(), 1L));
+	}
+	
+	private static void applyBlendInformation(VkPipelineColorBlendAttachmentState attachment, BlendFunction blendFunction) {
+		attachment.blendEnable(true).colorBlendOp(VulkanConst.toVk(blendFunction.color().op())).alphaBlendOp(VulkanConst.toVk(blendFunction.alpha().op())).dstAlphaBlendFactor(VulkanConst.toVk(blendFunction.alpha().destFactor())).dstColorBlendFactor(VulkanConst.toVk(blendFunction.color().destFactor())).srcAlphaBlendFactor(VulkanConst.toVk(blendFunction.alpha().sourceFactor())).srcColorBlendFactor(VulkanConst.toVk(blendFunction.color().sourceFactor()));
+	}
+	
+	private static void putVec4(ByteBuffer target, float x, float y, float z, float w) {
+		target.putFloat(x);
+		target.putFloat(y);
+		target.putFloat(z);
+		target.putFloat(w);
+	}
+	
+	/**
+	 * Has the GPU decide which of each layer's listed pages are drawn this frame and write the
+	 * mesh-task commands that draw them, all in one command buffer recorded while no render pass is
+	 * open; the draws follow inside one. The passes need no barrier before them: the pages they
+	 * read were copied behind one, the lists and the commands' starting values were written by the
+	 * CPU, and the rings they live in are not reused while a frame that read them may still run.
+	 * One barrier after them makes what they wrote visible to the draws.
+	 */
+	public synchronized boolean prepareVisiblePageCommands(List<TerrainPreparedPages> layers) {
+		VulkanDevice activeDevice = this.device;
+		ComputePipeline pipeline = this.commandPipeline;
+		if (activeDevice == null || pipeline == null || layers.isEmpty()) {
+			return false;
+		}
+		for (TerrainPreparedPages layer : layers) {
+			if (layer.dispatch() == null || !layer.dispatch().ready() || !layer.dispatch().usesIndirectCommand() || layer.pages() == null || !layer.pages().ready()) {
+				return false;
+			}
+		}
+		
+		VulkanCommandEncoder encoder = activeDevice.createCommandEncoder();
+		if (TerrainRenderPassAccess.insideRenderPass(encoder)) {
+			// Minecraft refuses to execute a command buffer while a render pass is open, and fails the frame.
+			this.meshTaskGpuCommandPreparationsInsideRenderPass.increment();
+			return false;
+		}
+		VkCommandBuffer commandBuffer = encoder.allocateAndBeginTransientCommandBuffer();
+		try (MemoryStack stack = MemoryStack.stackPush()) {
+			VK12.vkCmdBindPipeline(commandBuffer, VK10.VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.handle());
+			for (TerrainPreparedPages layer : layers) {
+				recordVisiblePageCommand(commandBuffer, pipeline, layer.dispatch(), layer.pages(), stack);
+			}
+			// The draws read what the passes wrote: the indirect draw its command, the task stage the list.
+			// The task and mesh stages' bits are the same in both kinds of stage mask.
+			VkMemoryBarrier2.Buffer written = VkMemoryBarrier2.calloc(1, stack).sType$Default().srcStageMask(VK13.VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT).srcAccessMask(VK13.VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT).dstStageMask(VK13.VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | EXTMeshShader.VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT | EXTMeshShader.VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT).dstAccessMask(VK13.VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK13.VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+			VK13.vkCmdPipelineBarrier2(commandBuffer, VkDependencyInfo.calloc(stack).sType$Default().pMemoryBarriers(written));
+		}
+		VulkanUtils.crashIfFailure(activeDevice, VK12.vkEndCommandBuffer(commandBuffer), "Failed to end VIM terrain visibility command buffer");
+		encoder.execute(commandBuffer);
+		return true;
+	}
+	
+	private void recordVisiblePageCommand(VkCommandBuffer commandBuffer, ComputePipeline pipeline, TerrainMeshTaskDispatch dispatch, TerrainVisiblePageUpload pages, MemoryStack stack) {
+		DescriptorHeapTerrainResources resources = DescriptorHeapTerrainResources.get();
+		long commandBaseAddress = dispatch.indirectCommandAddress() - dispatch.indirectCommandOffset();
+		int commandIndex = (int) (dispatch.indirectCommandOffset() / dispatch.indirectCommandStride());
+		ByteBuffer pushConstants = stack.malloc(TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_PUSH_CONSTANT_BYTES);
+		pushConstants.putLong(resources.sectionMetadataAddress());
+		pushConstants.putLong(pages.address());
+		pushConstants.putLong(commandBaseAddress);
+		pushConstants.putLong(resources.terrainVisibilityCounterAddress());
+		pushConstants.putInt(pages.inputOffset());
+		pushConstants.putInt(pages.outputOffset());
+		pushConstants.putInt(pages.count());
+		pushConstants.putInt(commandIndex);
+		pushConstants.putInt(0).putInt(0).putInt(0).putInt(0);
+		writeCameraPushConstants(pushConstants);
+		pushConstants.flip();
+		VK12.vkCmdPushConstants(commandBuffer, pipeline.layout(), VK10.VK_SHADER_STAGE_COMPUTE_BIT, 0, pushConstants);
+		VK12.vkCmdDispatch(commandBuffer, (pages.count() + TerrainGpuLayout.VISIBILITY_WORKGROUP_SIZE - 1) / TerrainGpuLayout.VISIBILITY_WORKGROUP_SIZE, 1, 1);
+		this.meshTaskGpuCommandPreparations.increment();
+	}
+	
+	/**
+	 * Has the GPU write the draws of a GPU-driven frame: the task records of every page of the
+	 * sections in view, each layer's nearest first, and each layer's mesh-task command. The
+	 * pass's three steps are recorded into the command buffer Minecraft records the frame into,
+	 * while no render pass is open, each behind a barrier on the one before, and one barrier after
+	 * them makes what they wrote visible to the draws. What they read was copied or written before: the pages behind a barrier, the
+	 * frame's data and the commands' starting values by the CPU.
+	 *
+	 * @param slotCount     how many slots of the page table are in use
+	 * @param layerOutputs  the record each layer's task records begin at
+	 * @param layerCommands the command each layer's tasks are counted in, or -1 for a layer not drawn
+	 * @param fadeMillis    how long a section takes to fade in, or 0 for no fade
+	 */
+	synchronized boolean prepareGpuDrivenPages(TerrainGpuDrivenFrame frame, VisibleSectionGrid sections, int slotCount, int[] layerOutputs, int[] layerCommands, int fadeMillis) {
+		VulkanDevice activeDevice = this.device;
+		ComputePipeline pipeline = this.sectionPagesPipeline;
+		if (activeDevice == null || pipeline == null || !frame.ready() || slotCount <= 0) {
+			return false;
+		}
+		VkCommandBuffer commandBuffer = TerrainRenderPassAccess.frameCommandBuffer(activeDevice.createCommandEncoder());
+		if (commandBuffer == null) {
+			this.meshTaskGpuCommandPreparationsInsideRenderPass.increment();
+			return false;
+		}
+		DescriptorHeapTerrainResources resources = DescriptorHeapTerrainResources.get();
+		try (MemoryStack stack = MemoryStack.stackPush()) {
+			ByteBuffer pushConstants = stack.malloc(TerrainGpuLayout.SECTION_PAGES_PUSH_CONSTANT_BYTES);
+			pushConstants.putLong(resources.sectionMetadataAddress());
+			pushConstants.putLong(frame.address());
+			pushConstants.putLong(resources.terrainMeshTaskCommandAddress());
+			pushConstants.putInt(frame.frameRecord());
+			int stepOffset = pushConstants.position();
+			pushConstants.putInt(0);
+			pushConstants.putInt(sections.minX()).putInt(sections.minY()).putInt(sections.minZ()).putInt(slotCount);
+			pushConstants.putInt(sections.sizeX()).putInt(sections.sizeY()).putInt(sections.sizeZ()).putInt(SectionMeshletStore.fadeClockMillis());
+			putCameraSection(pushConstants);
+			pushConstants.putInt(fadeMillis);
+			for (int layer = 0; layer < TerrainGpuLayout.SECTION_PAGES_LAYERS; layer++) {
+				pushConstants.putInt(layer < layerOutputs.length ? layerOutputs[layer] : 0);
+			}
+			for (int layer = 0; layer < TerrainGpuLayout.SECTION_PAGES_LAYERS; layer++) {
+				pushConstants.putInt(layer < layerCommands.length ? layerCommands[layer] : -1);
+			}
+			pushConstants.flip();
+			VK12.vkCmdBindPipeline(commandBuffer, VK10.VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.handle());
+			int slotGroups = (slotCount + TerrainGpuLayout.SECTION_PAGES_WORKGROUP_SIZE - 1) / TerrainGpuLayout.SECTION_PAGES_WORKGROUP_SIZE;
+			// Count each distance's tasks, place the distances, write the records.
+			int[] workgroups = {slotGroups, 1, slotGroups};
+			for (int step = 0; step < workgroups.length; step++) {
+				pushConstants.putInt(stepOffset, step);
+				VK12.vkCmdPushConstants(commandBuffer, pipeline.layout(), VK10.VK_SHADER_STAGE_COMPUTE_BIT, 0, pushConstants);
+				VK12.vkCmdDispatch(commandBuffer, workgroups[step], 1, 1);
+				boolean last = step == workgroups.length - 1;
+				// The draws read what the last step wrote: the indirect draw its command, the task stage the records.
+				// The task and mesh stages' bits are the same in both kinds of stage mask.
+				VkMemoryBarrier2.Buffer written = VkMemoryBarrier2.calloc(1, stack).sType$Default().srcStageMask(VK13.VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT).srcAccessMask(VK13.VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT).dstStageMask(last ? VK13.VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | EXTMeshShader.VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT | EXTMeshShader.VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT : VK13.VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT).dstAccessMask(last ? VK13.VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK13.VK_ACCESS_2_SHADER_STORAGE_READ_BIT : VK13.VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK13.VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+				VK13.vkCmdPipelineBarrier2(commandBuffer, VkDependencyInfo.calloc(stack).sType$Default().pMemoryBarriers(written));
+			}
+		}
+		this.gpuDrivenPagePreparations.increment();
+		return true;
+	}
+	
+	/**
+	 * The section the camera is in, which the GPU-driven pass sorts tasks by their distance from.
+	 */
+	private static void putCameraSection(ByteBuffer target) {
+		Camera camera = Minecraft.getInstance().gameRenderer.mainCamera();
+		if (!camera.isInitialized()) {
+			target.putInt(0).putInt(0).putInt(0);
+			return;
+		}
+		Vec3 position = camera.position();
+		target.putInt(SectionPos.blockToSectionCoord(position.x()));
+		target.putInt(SectionPos.blockToSectionCoord(position.y()));
+		target.putInt(SectionPos.blockToSectionCoord(position.z()));
+	}
+	
+	public Map<String, Object> asMap() {
+		Map<String, Object> map = new LinkedHashMap<>();
+		map.put("ready", ready());
+		map.put("taskModule", this.taskModule);
+		map.put("meshModule", this.meshModule);
+		map.put("fragmentModule", this.fragmentModule);
+		map.put("commandModule", this.commandModule);
+		map.put("taskStage", EXTMeshShader.VK_SHADER_STAGE_TASK_BIT_EXT);
+		map.put("meshStage", EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT);
+		map.put("commandStage", VK10.VK_SHADER_STAGE_COMPUTE_BIT);
+		map.put("taskShaderResource", TerrainShaderSource.TASK_SHADER);
+		map.put("meshShaderResource", TerrainShaderSource.MESH_SHADER);
+		map.put("fragmentShaderResource", TerrainShaderSource.FRAGMENT_SHADER);
+		map.put("meshTaskCommandShaderResource", TerrainShaderSource.MESH_TASK_COMMAND_SHADER);
+		map.put("taskShaderCompileSource", this.taskShaderCompileSource);
+		map.put("meshShaderCompileSource", this.meshShaderCompileSource);
+		map.put("fragmentShaderCompileSource", this.fragmentShaderCompileSource);
+		map.put("commandShaderCompileSource", this.commandShaderCompileSource);
+		map.put("visibleSectionPagesShaderCompileSource", this.sectionPagesShaderCompileSource);
+		map.put("enableMeshletFrustumCulling", meshletFrustumCullingPushConstant() != 0);
+		map.put("pipelineCacheSize", this.pipelineCache.size());
+		map.put("commandPipelineReady", this.commandPipeline != null);
+		map.put("visibleSectionPagesPipelineReady", this.sectionPagesPipeline != null);
+		map.put("pipelineCompiles", this.pipelineCompiles.sum());
+		map.put("meshTaskDispatches", this.meshTaskDispatches.sum());
+		map.put("meshTaskDirectDispatches", this.meshTaskDirectDispatches.sum());
+		map.put("meshTaskIndirectDispatches", this.meshTaskIndirectDispatches.sum());
+		map.put("meshTaskGpuCommandPreparations", this.meshTaskGpuCommandPreparations.sum());
+		map.put("gpuDrivenPagePreparations", this.gpuDrivenPagePreparations.sum());
+		map.put("meshTaskGpuCommandPreparationsInsideRenderPass", this.meshTaskGpuCommandPreparationsInsideRenderPass.sum());
+		map.put("meshTasksDispatched", this.meshTasksDispatched.sum());
+		map.put("improvedFogDispatches", this.improvedFogDispatches.sum());
+		map.put("textureDescriptorBufferBinds", this.textureDescriptorBufferBinds.sum());
+		map.put("textureDescriptorBufferMissing", this.textureDescriptorBufferMissing.sum());
+		TerrainTextureDescriptorLayout descriptorLayout = null;
+		for (TerrainMeshPipeline pipeline : this.pipelineCache.values()) {
+			descriptorLayout = pipeline.textureDescriptorLayout();
+			break;
+		}
+		map.put("textureDescriptorLayout", descriptorLayout == null ? Map.of() : descriptorLayout.asMap());
+		map.put("lastError", this.lastError);
+		return map;
+	}
 }

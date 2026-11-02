@@ -20,19 +20,19 @@ import java.util.Set;
  */
 @Mixin(VulkanFeatureSets.class)
 public final class VulkanFeatureSetsMixin {
-    @Unique
-    private static final Logger VIM_LOGGER = LogUtils.getLogger();
-    
-    @Unique
-    private static boolean vim$announced;
-    
-    @Inject(method = "requiredFeatureSets", at = @At("RETURN"))
-    private static void vim$requireModernVulkan(CallbackInfoReturnable<Set<FeatureSet>> cir) {
-        List<FeatureSet> featureSets = VulkanFeatureRequirements.requiredFeatureSets();
-        cir.getReturnValue().addAll(featureSets);
-        if (!vim$announced) {
-            vim$announced = true;
-            VIM_LOGGER.info("[Vulkan Improvement] Requiring Vulkan feature sets: {}", featureSets);
-        }
-    }
+	@Unique
+	private static final Logger VIM_LOGGER = LogUtils.getLogger();
+	
+	@Unique
+	private static boolean vim$announced;
+	
+	@Inject(method = "requiredFeatureSets", at = @At("RETURN"))
+	private static void vim$requireModernVulkan(CallbackInfoReturnable<Set<FeatureSet>> cir) {
+		List<FeatureSet> featureSets = VulkanFeatureRequirements.requiredFeatureSets();
+		cir.getReturnValue().addAll(featureSets);
+		if (!vim$announced) {
+			vim$announced = true;
+			VIM_LOGGER.info("[Vulkan Improvement] Requiring Vulkan feature sets: {}", featureSets);
+		}
+	}
 }

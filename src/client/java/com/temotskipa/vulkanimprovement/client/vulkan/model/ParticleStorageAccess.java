@@ -5,9 +5,9 @@ package com.temotskipa.vulkanimprovement.client.vulkan.model;
  * {@code QuadParticleRenderState.Storage} by a mixin.
  */
 public interface ParticleStorageAccess {
-    float[] vim$floatValues();
-
-    int[] vim$intValues();
-
-    int vim$currentParticleIndex();
+	float[] vim$floatValues();
+	
+	int[] vim$intValues();
+	
+	int vim$currentParticleIndex();
 }

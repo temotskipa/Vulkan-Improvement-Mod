@@ -7,7 +7,7 @@ import java.lang.foreign.MemorySegment;
  * its record in the page table.
  */
 record MeshletPageUpload(ResidentTerrainPage page, MemorySegment vertices, MemorySegment indices, MemorySegment meshletHeaders, MemorySegment pageRecord) {
-    long bytes() {
-        return this.vertices.byteSize() + this.indices.byteSize() + this.meshletHeaders.byteSize() + this.pageRecord.byteSize();
-    }
+	long bytes() {
+		return this.vertices.byteSize() + this.indices.byteSize() + this.meshletHeaders.byteSize() + this.pageRecord.byteSize();
+	}
 }

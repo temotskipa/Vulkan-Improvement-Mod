@@ -9,6 +9,7 @@ import net.minecraft.client.model.geom.ModelPart.Polygon;
 import net.minecraft.client.model.geom.ModelPart.Vertex;
 import net.minecraft.client.model.geom.builders.UVPair;
 import net.minecraft.client.resources.model.geometry.BakedQuad;
+import net.minecraft.client.resources.model.geometry.BakedQuad.MaterialInfo;
 import net.minecraft.core.Direction;
 import org.joml.Vector3fc;
 import org.jspecify.annotations.Nullable;
@@ -16,11 +17,7 @@ import org.jspecify.annotations.Nullable;
 import java.lang.foreign.MemorySegment;
 import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -34,274 +31,274 @@ import java.util.concurrent.atomic.AtomicInteger;
  * ({@link #mostlyCollected}). Used from the render thread only.
  */
 final class ModelCubeStore {
-    /**
-     * A cube the GPU path leaves to Minecraft: a subclass, which may write its faces its own way,
-     * or one with a face that is not a quad facing one of the six directions.
-     */
-    static final int CPU_ONLY = -1;
-    private static final int INITIAL_POLYGONS = 16_384;
-    private static final AtomicInteger NEXT_ID = new AtomicInteger(1);
-    private static final Direction[] DIRECTIONS = Direction.values();
-    
-    private final int id = NEXT_ID.getAndIncrement();
-    private final GrowingSegment copy = new GrowingSegment(INITIAL_POLYGONS * ModelPolygonRecord.BYTES);
-    /**
-     * The cubes whose faces are in the store, each held weakly, so that one Minecraft drops shows
-     * up in {@link #collected} once it is collected.
-     */
-    private final Set<ResidentCube> residentCubes = new HashSet<>();
-    private final ReferenceQueue<Object> collected = new ReferenceQueue<>();
-    private int polygonCount;
-    private int collectedPolygons;
-    private int cpuOnlyCubes;
-    private int residentItemLists;
-    private @Nullable GpuBuffer buffer;
-    private @Nullable MappedView mapping;
-    private @Nullable MemorySegment mapped;
-    private long capacity;
-    
-    /**
-     * What a mixin adds to every cube.
-     */
-    private static ModelCubeResidency residency(Object cube) {
-        return (ModelCubeResidency) cube;
-    }
-    
-    /**
-     * What a mixin adds to every quad.
-     */
-    private static ModelQuadResidency quadResidency(Object quad) {
-        return (ModelQuadResidency) quad;
-    }
-    
-    /**
-     * One bit for the direction of each face, or -1 when a face is not a quad facing one of the six
-     * directions.
-     */
-    private static int directionMask(Polygon[] polygons) {
-        if (polygons.length > ModelGpuRecords.MAX_CUBE_POLYGONS) {
-            return -1;
-        }
-        int mask = 0;
-        for (Polygon polygon : polygons) {
-            int direction = direction(polygon.normal());
-            if (direction < 0 || polygon.vertices().length != ModelGpuRecords.POLYGON_VERTICES) {
-                return -1;
-            }
-            mask |= 1 << direction;
-        }
-        return mask;
-    }
-    
-    /**
-     * The index of the direction whose unit vector the normal is. A vanilla face's normal is that
-     * vector; anything else is a face the GPU path does not know the normal of.
-     */
-    static int direction(Vector3fc normal) {
-        for (Direction direction : DIRECTIONS) {
-            Vector3fc unit = direction.getUnitVec3f();
-            if (normal.x() == unit.x() && normal.y() == unit.y() && normal.z() == unit.z()) {
-                return direction.ordinal();
-            }
-        }
-        return -1;
-    }
-    
-    static void writePolygon(MemorySegment records, long offset, Polygon polygon) {
-        Vertex[] vertices = polygon.vertices();
-        for (int corner = 0; corner < ModelGpuRecords.POLYGON_VERTICES; corner++) {
-            Vertex vertex = vertices[corner];
-            long base = offset + ModelPolygonRecord.CORNERS + corner * ModelPolygonRecord.CORNER_BYTES;
-            records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_X, vertex.worldX());
-            records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_Y, vertex.worldY());
-            records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_Z, vertex.worldZ());
-            records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_U, vertex.u());
-            records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_V, vertex.v());
-        }
-        records.set(ModelGpuRecords.INT, offset + ModelPolygonRecord.DIRECTION, direction(polygon.normal()));
-    }
-    
-    /**
-     * The cube's first face in the store, uploaded first if it is not there yet, or
-     * {@link #CPU_ONLY}.
-     */
-    int firstPolygon(Cube cube) {
-        if (cube.getClass() != Cube.class) {
-            return CPU_ONLY;
-        }
-        ModelCubeResidency residency = residency(cube);
-        if (residency.vim$residentStore() == this.id) {
-            return residency.vim$firstPolygon();
-        }
-        int directionMask = directionMask(cube.polygons);
-        if (directionMask < 0) {
-            residency.vim$makeResident(this.id, CPU_ONLY, 0);
-            this.cpuOnlyCubes++;
-            return CPU_ONLY;
-        }
-        int first = this.polygonCount;
-        int count = cube.polygons.length;
-        long start = first * ModelPolygonRecord.BYTES;
-        long end = (long) (first + count) * ModelPolygonRecord.BYTES;
-        ensureCapacity(first + count);
-        MemorySegment records = this.copy.reserve(start, end);
-        for (int i = 0; i < count; i++) {
-            writePolygon(records, start + i * ModelPolygonRecord.BYTES, cube.polygons[i]);
-        }
-        MemorySegment.copy(records, start, Objects.requireNonNull(this.mapped), start, end - start);
-        this.polygonCount += count;
-        this.residentCubes.add(new ResidentCube(cube, count, this.collected));
-        residency.vim$makeResident(this.id, first, directionMask);
-        return first;
-    }
-    
-    /**
-     * The layout of an item's quad list, uploaded first if it is not there yet, or null when
-     * another list starts with the same quad, which stays on Minecraft's path.
-     */
-    @Nullable ItemQuadLayout itemLayout(List<BakedQuad> quads) {
-        ModelQuadResidency residency = quadResidency(quads.getFirst());
-        ItemQuadLayout layout = residency.vim$itemLayout();
-        if (layout != null && layout.store() == this.id) {
-            return layout.quads() == quads ? layout : null;
-        }
-        layout = layOut(quads);
-        residency.vim$setItemLayout(layout);
-        return layout;
-    }
-
-    private ItemQuadLayout layOut(List<BakedQuad> quads) {
-        int first = this.polygonCount;
-        int count = quads.size();
-        long start = first * ModelPolygonRecord.BYTES;
-        long end = (long) (first + count) * ModelPolygonRecord.BYTES;
-        ensureCapacity(first + count);
-        MemorySegment records = this.copy.reserve(start, end);
-        List<ItemQuadRun> runs = new ArrayList<>();
-        int directionMask = 0;
-        int runStart = 0;
-        for (int i = 0; i < count; i++) {
-            BakedQuad quad = quads.get(i);
-            writeQuad(records, start + i * ModelPolygonRecord.BYTES, quad);
-            directionMask |= 1 << quad.direction().ordinal();
-            if (i + 1 == count || !sameRun(quad.materialInfo(), quads.get(i + 1).materialInfo())) {
-                BakedQuad.MaterialInfo material = quad.materialInfo();
-                runs.add(new ItemQuadRun(material.itemRenderType(), material.itemGlintRenderType(), material.tintIndex(), material.lightEmission(), first + runStart, i + 1 - runStart));
-                runStart = i + 1;
-            }
-        }
-        MemorySegment.copy(records, start, Objects.requireNonNull(this.mapped), start, end - start);
-        this.polygonCount += count;
-        this.residentCubes.add(new ResidentCube(quads.getFirst(), count, this.collected));
-        this.residentItemLists++;
-        return new ItemQuadLayout(this.id, quads, runs.toArray(ItemQuadRun[]::new), directionMask);
-    }
-
-    private static boolean sameRun(BakedQuad.MaterialInfo a, BakedQuad.MaterialInfo b) {
-        return a.itemRenderType() == b.itemRenderType() && a.itemGlintRenderType() == b.itemGlintRenderType() && a.tintIndex() == b.tintIndex() && a.lightEmission() == b.lightEmission();
-    }
-
-    static void writeQuad(MemorySegment records, long offset, BakedQuad quad) {
-        for (int corner = 0; corner < ModelGpuRecords.POLYGON_VERTICES; corner++) {
-            Vector3fc position = quad.position(corner);
-            long uv = quad.packedUV(corner);
-            long base = offset + ModelPolygonRecord.CORNERS + corner * ModelPolygonRecord.CORNER_BYTES;
-            records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_X, position.x());
-            records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_Y, position.y());
-            records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_Z, position.z());
-            records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_U, UVPair.unpackU(uv));
-            records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_V, UVPair.unpackV(uv));
-        }
-        records.set(ModelGpuRecords.INT, offset + ModelPolygonRecord.DIRECTION, quad.direction().ordinal());
-    }
-
-    /**
-     * What tells this store from the ones before and after it.
-     */
-    int id() {
-        return this.id;
-    }
-    
-    /**
-     * The device address of the faces, valid until the next cube is added.
-     */
-    long address() {
-        ensureCapacity(this.polygonCount);
-        return ShaderStorage.address(Objects.requireNonNull(this.buffer));
-    }
-    
-    /**
-     * Whether most of the faces belong to cubes Minecraft no longer has, so that a new store would
-     * hold only the faces still drawn.
-     */
-    boolean mostlyCollected() {
-        for (Reference<?> reference = this.collected.poll(); reference != null; reference = this.collected.poll()) {
-            if (reference instanceof ResidentCube cube && this.residentCubes.remove(cube)) {
-                this.collectedPolygons += cube.polygons();
-            }
-        }
-        return this.collectedPolygons * 2 > this.polygonCount;
-    }
-    
-    int residentCubes() {
-        return this.residentCubes.size();
-    }
-    
-    int collectedPolygons() {
-        return this.collectedPolygons;
-    }
-    
-    int cpuOnlyCubes() {
-        return this.cpuOnlyCubes;
-    }
-
-    int residentItemLists() {
-        return this.residentItemLists;
-    }
-    
-    long residentBytes() {
-        return this.polygonCount * ModelPolygonRecord.BYTES;
-    }
-    
-    /**
-     * Makes room for the given number of faces in the buffer. A new buffer is filled from the copy;
-     * the old one is given back to Minecraft, which destroys it once the frames that read it are
-     * done.
-     */
-    private void ensureCapacity(int polygons) {
-        if (this.buffer != null && polygons <= this.capacity) {
-            return;
-        }
-        long grown = Math.max(Math.max(polygons, INITIAL_POLYGONS), this.capacity * 2L);
-        long bytes = grown * ModelPolygonRecord.BYTES;
-        GpuBuffer next = RenderSystem.getDevice().createBuffer(() -> "VIM Model Polygons", GpuBuffer.USAGE_MAP_WRITE | ShaderStorage.USAGE_SHADER_STORAGE, bytes);
-        MappedView nextMapping = next.map(false, true);
-        MemorySegment nextMapped = MemorySegment.ofBuffer(nextMapping.data());
-        long used = this.polygonCount * ModelPolygonRecord.BYTES;
-        if (used > 0L) {
-            MemorySegment.copy(this.copy.segment(), 0L, nextMapped, 0L, used);
-        }
-        releaseBuffer();
-        this.buffer = next;
-        this.mapping = nextMapping;
-        this.mapped = nextMapped;
-        this.capacity = grown;
-    }
-    
-    private void releaseBuffer() {
-        if (this.mapping != null) {
-            this.mapping.close();
-            this.mapping = null;
-        }
-        this.mapped = null;
-        if (this.buffer != null) {
-            this.buffer.close();
-            this.buffer = null;
-        }
-    }
-    
-    void close() {
-        releaseBuffer();
-        this.copy.close();
-    }
+	/**
+	 * A cube the GPU path leaves to Minecraft: a subclass, which may write its faces its own way,
+	 * or one with a face that is not a quad facing one of the six directions.
+	 */
+	static final int CPU_ONLY = -1;
+	private static final int INITIAL_POLYGONS = 16_384;
+	private static final AtomicInteger NEXT_ID = new AtomicInteger(1);
+	private static final Direction[] DIRECTIONS = Direction.values();
+	
+	private final int id = NEXT_ID.getAndIncrement();
+	private final GrowingSegment copy = new GrowingSegment(INITIAL_POLYGONS * ModelPolygonRecord.BYTES);
+	/**
+	 * The cubes whose faces are in the store, each held weakly, so that one Minecraft drops shows
+	 * up in {@link #collected} once it is collected.
+	 */
+	private final Set<ResidentCube> residentCubes = new HashSet<>();
+	private final ReferenceQueue<Object> collected = new ReferenceQueue<>();
+	private int polygonCount;
+	private int collectedPolygons;
+	private int cpuOnlyCubes;
+	private int residentItemLists;
+	private @Nullable GpuBuffer buffer;
+	private @Nullable MappedView mapping;
+	private @Nullable MemorySegment mapped;
+	private long capacity;
+	
+	/**
+	 * The cube's first face in the store, uploaded first if it is not there yet, or
+	 * {@link #CPU_ONLY}.
+	 */
+	int firstPolygon(Cube cube) {
+		if (cube.getClass() != Cube.class) {
+			return CPU_ONLY;
+		}
+		ModelCubeResidency residency = residency(cube);
+		if (residency.vim$residentStore() == this.id) {
+			return residency.vim$firstPolygon();
+		}
+		int directionMask = directionMask(cube.polygons);
+		if (directionMask < 0) {
+			residency.vim$makeResident(this.id, CPU_ONLY, 0);
+			this.cpuOnlyCubes++;
+			return CPU_ONLY;
+		}
+		int first = this.polygonCount;
+		int count = cube.polygons.length;
+		long start = first * ModelPolygonRecord.BYTES;
+		long end = (long) (first + count) * ModelPolygonRecord.BYTES;
+		ensureCapacity(first + count);
+		MemorySegment records = this.copy.reserve(start, end);
+		for (int i = 0; i < count; i++) {
+			writePolygon(records, start + i * ModelPolygonRecord.BYTES, cube.polygons[i]);
+		}
+		MemorySegment.copy(records, start, Objects.requireNonNull(this.mapped), start, end - start);
+		this.polygonCount += count;
+		this.residentCubes.add(new ResidentCube(cube, count, this.collected));
+		residency.vim$makeResident(this.id, first, directionMask);
+		return first;
+	}
+	
+	/**
+	 * What a mixin adds to every cube.
+	 */
+	private static ModelCubeResidency residency(Object cube) {
+		return (ModelCubeResidency) cube;
+	}
+	
+	/**
+	 * One bit for the direction of each face, or -1 when a face is not a quad facing one of the six
+	 * directions.
+	 */
+	private static int directionMask(Polygon[] polygons) {
+		if (polygons.length > ModelGpuRecords.MAX_CUBE_POLYGONS) {
+			return -1;
+		}
+		int mask = 0;
+		for (Polygon polygon : polygons) {
+			int direction = direction(polygon.normal());
+			if (direction < 0 || polygon.vertices().length != ModelGpuRecords.POLYGON_VERTICES) {
+				return -1;
+			}
+			mask |= 1 << direction;
+		}
+		return mask;
+	}
+	
+	/**
+	 * Makes room for the given number of faces in the buffer. A new buffer is filled from the copy;
+	 * the old one is given back to Minecraft, which destroys it once the frames that read it are
+	 * done.
+	 */
+	private void ensureCapacity(int polygons) {
+		if (this.buffer != null && polygons <= this.capacity) {
+			return;
+		}
+		long grown = Math.max(Math.max(polygons, INITIAL_POLYGONS), this.capacity * 2L);
+		long bytes = grown * ModelPolygonRecord.BYTES;
+		GpuBuffer next = RenderSystem.getDevice().createBuffer(() -> "VIM Model Polygons", GpuBuffer.USAGE_MAP_WRITE | ShaderStorage.USAGE_SHADER_STORAGE, bytes);
+		MappedView nextMapping = next.map(false, true);
+		MemorySegment nextMapped = MemorySegment.ofBuffer(nextMapping.data());
+		long used = this.polygonCount * ModelPolygonRecord.BYTES;
+		if (used > 0L) {
+			MemorySegment.copy(this.copy.segment(), 0L, nextMapped, 0L, used);
+		}
+		releaseBuffer();
+		this.buffer = next;
+		this.mapping = nextMapping;
+		this.mapped = nextMapped;
+		this.capacity = grown;
+	}
+	
+	static void writePolygon(MemorySegment records, long offset, Polygon polygon) {
+		Vertex[] vertices = polygon.vertices();
+		for (int corner = 0; corner < ModelGpuRecords.POLYGON_VERTICES; corner++) {
+			Vertex vertex = vertices[corner];
+			long base = offset + ModelPolygonRecord.CORNERS + corner * ModelPolygonRecord.CORNER_BYTES;
+			records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_X, vertex.worldX());
+			records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_Y, vertex.worldY());
+			records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_Z, vertex.worldZ());
+			records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_U, vertex.u());
+			records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_V, vertex.v());
+		}
+		records.set(ModelGpuRecords.INT, offset + ModelPolygonRecord.DIRECTION, direction(polygon.normal()));
+	}
+	
+	/**
+	 * The index of the direction whose unit vector the normal is. A vanilla face's normal is that
+	 * vector; anything else is a face the GPU path does not know the normal of.
+	 */
+	static int direction(Vector3fc normal) {
+		for (Direction direction : DIRECTIONS) {
+			Vector3fc unit = direction.getUnitVec3f();
+			if (normal.x() == unit.x() && normal.y() == unit.y() && normal.z() == unit.z()) {
+				return direction.ordinal();
+			}
+		}
+		return -1;
+	}
+	
+	private void releaseBuffer() {
+		if (this.mapping != null) {
+			this.mapping.close();
+			this.mapping = null;
+		}
+		this.mapped = null;
+		if (this.buffer != null) {
+			this.buffer.close();
+			this.buffer = null;
+		}
+	}
+	
+	/**
+	 * The layout of an item's quad list, uploaded first if it is not there yet, or null when
+	 * another list starts with the same quad, which stays on Minecraft's path.
+	 */
+	@Nullable ItemQuadLayout itemLayout(List<BakedQuad> quads) {
+		ModelQuadResidency residency = quadResidency(quads.getFirst());
+		ItemQuadLayout layout = residency.vim$itemLayout();
+		if (layout != null && layout.store() == this.id) {
+			return layout.quads() == quads ? layout : null;
+		}
+		layout = layOut(quads);
+		residency.vim$setItemLayout(layout);
+		return layout;
+	}
+	
+	/**
+	 * What a mixin adds to every quad.
+	 */
+	private static ModelQuadResidency quadResidency(Object quad) {
+		return (ModelQuadResidency) quad;
+	}
+	
+	private ItemQuadLayout layOut(List<BakedQuad> quads) {
+		int first = this.polygonCount;
+		int count = quads.size();
+		long start = first * ModelPolygonRecord.BYTES;
+		long end = (long) (first + count) * ModelPolygonRecord.BYTES;
+		ensureCapacity(first + count);
+		MemorySegment records = this.copy.reserve(start, end);
+		List<ItemQuadRun> runs = new ArrayList<>();
+		int directionMask = 0;
+		int runStart = 0;
+		for (int i = 0; i < count; i++) {
+			BakedQuad quad = quads.get(i);
+			writeQuad(records, start + i * ModelPolygonRecord.BYTES, quad);
+			directionMask |= 1 << quad.direction().ordinal();
+			if (i + 1 == count || !sameRun(quad.materialInfo(), quads.get(i + 1).materialInfo())) {
+				MaterialInfo material = quad.materialInfo();
+				runs.add(new ItemQuadRun(material.itemRenderType(), material.itemGlintRenderType(), material.tintIndex(), material.lightEmission(), first + runStart, i + 1 - runStart));
+				runStart = i + 1;
+			}
+		}
+		MemorySegment.copy(records, start, Objects.requireNonNull(this.mapped), start, end - start);
+		this.polygonCount += count;
+		this.residentCubes.add(new ResidentCube(quads.getFirst(), count, this.collected));
+		this.residentItemLists++;
+		return new ItemQuadLayout(this.id, quads, runs.toArray(ItemQuadRun[]::new), directionMask);
+	}
+	
+	static void writeQuad(MemorySegment records, long offset, BakedQuad quad) {
+		for (int corner = 0; corner < ModelGpuRecords.POLYGON_VERTICES; corner++) {
+			Vector3fc position = quad.position(corner);
+			long uv = quad.packedUV(corner);
+			long base = offset + ModelPolygonRecord.CORNERS + corner * ModelPolygonRecord.CORNER_BYTES;
+			records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_X, position.x());
+			records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_Y, position.y());
+			records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_Z, position.z());
+			records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_U, UVPair.unpackU(uv));
+			records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_V, UVPair.unpackV(uv));
+		}
+		records.set(ModelGpuRecords.INT, offset + ModelPolygonRecord.DIRECTION, quad.direction().ordinal());
+	}
+	
+	private static boolean sameRun(MaterialInfo a, MaterialInfo b) {
+		return a.itemRenderType() == b.itemRenderType() && a.itemGlintRenderType() == b.itemGlintRenderType() && a.tintIndex() == b.tintIndex() && a.lightEmission() == b.lightEmission();
+	}
+	
+	/**
+	 * What tells this store from the ones before and after it.
+	 */
+	int id() {
+		return this.id;
+	}
+	
+	/**
+	 * The device address of the faces, valid until the next cube is added.
+	 */
+	long address() {
+		ensureCapacity(this.polygonCount);
+		return ShaderStorage.address(Objects.requireNonNull(this.buffer));
+	}
+	
+	/**
+	 * Whether most of the faces belong to cubes Minecraft no longer has, so that a new store would
+	 * hold only the faces still drawn.
+	 */
+	boolean mostlyCollected() {
+		for (Reference<?> reference = this.collected.poll(); reference != null; reference = this.collected.poll()) {
+			if (reference instanceof ResidentCube cube && this.residentCubes.remove(cube)) {
+				this.collectedPolygons += cube.polygons();
+			}
+		}
+		return this.collectedPolygons * 2 > this.polygonCount;
+	}
+	
+	int residentCubes() {
+		return this.residentCubes.size();
+	}
+	
+	int collectedPolygons() {
+		return this.collectedPolygons;
+	}
+	
+	int cpuOnlyCubes() {
+		return this.cpuOnlyCubes;
+	}
+	
+	int residentItemLists() {
+		return this.residentItemLists;
+	}
+	
+	long residentBytes() {
+		return this.polygonCount * ModelPolygonRecord.BYTES;
+	}
+	
+	void close() {
+		releaseBuffer();
+		this.copy.close();
+	}
 }

@@ -10,32 +10,32 @@ import org.spongepowered.asm.mixin.Unique;
  */
 @Mixin(Cube.class)
 public final class ModelPartCubeMixin implements ModelCubeResidency {
-    @Unique
-    private int vim$residentStore;
-    @Unique
-    private int vim$firstPolygon;
-    @Unique
-    private int vim$directionMask;
-    
-    @Override
-    public int vim$residentStore() {
-        return this.vim$residentStore;
-    }
-    
-    @Override
-    public int vim$firstPolygon() {
-        return this.vim$firstPolygon;
-    }
-    
-    @Override
-    public int vim$directionMask() {
-        return this.vim$directionMask;
-    }
-    
-    @Override
-    public void vim$makeResident(int store, int firstPolygon, int directionMask) {
-        this.vim$residentStore = store;
-        this.vim$firstPolygon = firstPolygon;
-        this.vim$directionMask = directionMask;
-    }
+	@Unique
+	private int vim$residentStore;
+	@Unique
+	private int vim$firstPolygon;
+	@Unique
+	private int vim$directionMask;
+	
+	@Override
+	public int vim$residentStore() {
+		return this.vim$residentStore;
+	}
+	
+	@Override
+	public int vim$firstPolygon() {
+		return this.vim$firstPolygon;
+	}
+	
+	@Override
+	public int vim$directionMask() {
+		return this.vim$directionMask;
+	}
+	
+	@Override
+	public void vim$makeResident(int store, int firstPolygon, int directionMask) {
+		this.vim$residentStore = store;
+		this.vim$firstPolygon = firstPolygon;
+		this.vim$directionMask = directionMask;
+	}
 }

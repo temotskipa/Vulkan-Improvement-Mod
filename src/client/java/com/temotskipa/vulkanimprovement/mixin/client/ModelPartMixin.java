@@ -24,27 +24,27 @@ import java.util.List;
  * of the part's cubes into vertices is taken.
  */
 @Mixin(ModelPart.class)
-public abstract class ModelPartMixin implements ModelPartResidency {
-    @Shadow
-    @Final
-    private List<Cube> cubes;
-    @Unique
-    private @Nullable ModelPartCubes vim$residentCubes;
-    
-    @Override
-    public @Nullable ModelPartCubes vim$residentCubes() {
-        return this.vim$residentCubes;
-    }
-    
-    @Override
-    public void vim$setResidentCubes(ModelPartCubes residentCubes) {
-        this.vim$residentCubes = residentCubes;
-    }
-    
-    @WrapOperation(method = "render(Lcom/mojang/blaze3d/vertex/PoseStack;Lcom/mojang/blaze3d/vertex/VertexConsumer;III)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/model/geom/ModelPart;compile(Lcom/mojang/blaze3d/vertex/PoseStack$Pose;Lcom/mojang/blaze3d/vertex/VertexConsumer;III)V"))
-    private void vim$compileOnGpu(ModelPart part, Pose pose, VertexConsumer builder, int lightCoords, int overlayCoords, int color, Operation<Void> original) {
-        if (!ModelGpuVertices.get().compileOnGpu(builder, this, this.cubes, pose, lightCoords, overlayCoords, color)) {
-            original.call(part, pose, builder, lightCoords, overlayCoords, color);
-        }
-    }
+public class ModelPartMixin implements ModelPartResidency {
+	@Shadow
+	@Final
+	private List<Cube> cubes;
+	@Unique
+	private @Nullable ModelPartCubes vim$residentCubes;
+	
+	@Override
+	public @Nullable ModelPartCubes vim$residentCubes() {
+		return this.vim$residentCubes;
+	}
+	
+	@Override
+	public void vim$setResidentCubes(ModelPartCubes residentCubes) {
+		this.vim$residentCubes = residentCubes;
+	}
+	
+	@WrapOperation(method = "render(Lcom/mojang/blaze3d/vertex/PoseStack;Lcom/mojang/blaze3d/vertex/VertexConsumer;III)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/model/geom/ModelPart;compile(Lcom/mojang/blaze3d/vertex/PoseStack$Pose;Lcom/mojang/blaze3d/vertex/VertexConsumer;III)V"))
+	private void vim$compileOnGpu(ModelPart part, Pose pose, VertexConsumer builder, int lightCoords, int overlayCoords, int color, Operation<Void> original) {
+		if (!ModelGpuVertices.get().compileOnGpu(builder, this, this.cubes, pose, lightCoords, overlayCoords, color)) {
+			original.call(part, pose, builder, lightCoords, overlayCoords, color);
+		}
+	}
 }

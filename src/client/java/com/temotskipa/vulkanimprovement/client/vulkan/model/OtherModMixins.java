@@ -20,30 +20,30 @@ import java.util.Set;
  * {@code Mixins.getMixinsForClass} comes back empty for a target class.
  */
 final class OtherModMixins {
-    private static final String OWN_MIXINS = "com.temotskipa.vulkanimprovement.";
-
-    private OtherModMixins() {
-    }
-
-    /**
-     * The methods other mods' mixins merged into the given classes, each with its mixin. A class
-     * that cannot be found is reported too, as nothing can be said about it.
-     */
-    static List<String> changing(Set<String> classNames) {
-        List<String> changes = new ArrayList<>();
-        for (String className : classNames) {
-            try {
-                for (Method method : Class.forName(className, false, OtherModMixins.class.getClassLoader()).getDeclaredMethods()) {
-                    MixinMerged merged = method.getAnnotation(MixinMerged.class);
-                    if (merged != null && !merged.mixin().startsWith(OWN_MIXINS) && !method.isAnnotationPresent(Accessor.class) && !method.isAnnotationPresent(Invoker.class)) {
-                        changes.add(className + "." + method.getName() + " from " + merged.mixin());
-                    }
-                }
-            } catch (ClassNotFoundException ex) {
-                changes.add(className + " was not found");
-            }
-        }
-        changes.sort(null);
-        return changes;
-    }
+	private static final String OWN_MIXINS = "com.temotskipa.vulkanimprovement.";
+	
+	private OtherModMixins() {
+	}
+	
+	/**
+	 * The methods other mods' mixins merged into the given classes, each with its mixin. A class
+	 * that cannot be found is reported too, as nothing can be said about it.
+	 */
+	static List<String> changing(Set<String> classNames) {
+		List<String> changes = new ArrayList<>();
+		for (String className : classNames) {
+			try {
+				for (Method method : Class.forName(className, false, OtherModMixins.class.getClassLoader()).getDeclaredMethods()) {
+					MixinMerged merged = method.getAnnotation(MixinMerged.class);
+					if (merged != null && !merged.mixin().startsWith(OWN_MIXINS) && !method.isAnnotationPresent(Accessor.class) && !method.isAnnotationPresent(Invoker.class)) {
+						changes.add(className + "." + method.getName() + " from " + merged.mixin());
+					}
+				}
+			} catch (ClassNotFoundException ex) {
+				changes.add(className + " was not found");
+			}
+		}
+		changes.sort(null);
+		return changes;
+	}
 }

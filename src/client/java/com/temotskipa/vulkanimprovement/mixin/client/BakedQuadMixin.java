@@ -12,16 +12,16 @@ import org.spongepowered.asm.mixin.Unique;
  */
 @Mixin(BakedQuad.class)
 public final class BakedQuadMixin implements ModelQuadResidency {
-    @Unique
-    private @Nullable ItemQuadLayout vim$itemLayout;
-
-    @Override
-    public @Nullable ItemQuadLayout vim$itemLayout() {
-        return this.vim$itemLayout;
-    }
-
-    @Override
-    public void vim$setItemLayout(ItemQuadLayout layout) {
-        this.vim$itemLayout = layout;
-    }
+	@Unique
+	private @Nullable ItemQuadLayout vim$itemLayout;
+	
+	@Override
+	public @Nullable ItemQuadLayout vim$itemLayout() {
+		return this.vim$itemLayout;
+	}
+	
+	@Override
+	public void vim$setItemLayout(ItemQuadLayout layout) {
+		this.vim$itemLayout = layout;
+	}
 }

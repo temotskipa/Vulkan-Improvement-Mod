@@ -5,8 +5,8 @@ package com.temotskipa.vulkanimprovement.client.vulkan.model;
  * texture coordinate, overlay, light and normal, 36 bytes, as {@code BufferBuilder} writes it.
  */
 public final class ModelEntityVertexRecord {
-    public static final long BYTES = 36;
-    
-    private ModelEntityVertexRecord() {
-    }
+	public static final long BYTES = 36;
+	
+	private ModelEntityVertexRecord() {
+	}
 }

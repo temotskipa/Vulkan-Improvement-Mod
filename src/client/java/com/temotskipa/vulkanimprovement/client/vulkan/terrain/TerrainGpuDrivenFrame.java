@@ -6,7 +6,7 @@ package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
  * begin at, one layer after another.
  */
 public record TerrainGpuDrivenFrame(long address, int frameRecord, int firstTaskRecord, boolean ready) {
-    static TerrainGpuDrivenFrame unavailable() {
-        return new TerrainGpuDrivenFrame(0L, 0, 0, false);
-    }
+	static TerrainGpuDrivenFrame unavailable() {
+		return new TerrainGpuDrivenFrame(0L, 0, 0, false);
+	}
 }

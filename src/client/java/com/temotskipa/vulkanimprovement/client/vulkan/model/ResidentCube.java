@@ -8,14 +8,14 @@ import java.lang.ref.WeakReference;
  * weakly, and how many polygons it holds.
  */
 final class ResidentCube extends WeakReference<Object> {
-    private final int polygons;
-    
-    ResidentCube(Object owner, int polygons, ReferenceQueue<Object> queue) {
-        super(owner, queue);
-        this.polygons = polygons;
-    }
-    
-    int polygons() {
-        return this.polygons;
-    }
+	private final int polygons;
+	
+	ResidentCube(Object owner, int polygons, ReferenceQueue<Object> queue) {
+		super(owner, queue);
+		this.polygons = polygons;
+	}
+	
+	int polygons() {
+		return this.polygons;
+	}
 }

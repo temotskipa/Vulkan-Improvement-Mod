@@ -15,10 +15,10 @@ import java.util.List;
 
 @Mixin(GlBackend.class)
 public final class GlBackendMixin {
-    @Inject(method = "createDevice", at = @At("HEAD"))
-    private void vim$rejectOpenGlFallback(String applicationName, int applicationVersion, GpuDebugOptions debugOptions, CallbackInfoReturnable<GpuDevice> cir) throws BackendCreationException {
-        if (TerrainRendererDebugConfig.requireVulkanBackend()) {
-            throw new BackendCreationException("Vulkan Improvement developer config vim.requireVulkanBackend=true forbids OpenGL fallback after Vulkan backend creation failed or was not selected.", Reason.OTHER, List.of("vim.requireVulkanBackend"));
-        }
-    }
+	@Inject(method = "createDevice", at = @At("HEAD"))
+	private void vim$rejectOpenGlFallback(String applicationName, int applicationVersion, GpuDebugOptions debugOptions, CallbackInfoReturnable<GpuDevice> cir) throws BackendCreationException {
+		if (TerrainRendererDebugConfig.requireVulkanBackend()) {
+			throw new BackendCreationException("Vulkan Improvement developer config vim.requireVulkanBackend=true forbids OpenGL fallback after Vulkan backend creation failed or was not selected.", Reason.OTHER, List.of("vim.requireVulkanBackend"));
+		}
+	}
 }

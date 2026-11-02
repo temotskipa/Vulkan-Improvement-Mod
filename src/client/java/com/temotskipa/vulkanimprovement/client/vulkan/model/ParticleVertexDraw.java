@@ -5,6 +5,6 @@ package com.temotskipa.vulkanimprovement.client.vulkan.model;
  * has, and once the frame is written, where they start in the frame's vertex buffer.
  */
 public final class ParticleVertexDraw {
-    int vertexCount;
-    int baseVertex;
+	int vertexCount;
+	int baseVertex;
 }

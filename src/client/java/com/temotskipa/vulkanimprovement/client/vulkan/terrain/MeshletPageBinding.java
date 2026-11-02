@@ -7,5 +7,5 @@ import org.jspecify.annotations.Nullable;
  * and cleared when it is given back, so a frame reads it without looking the section layer up.
  */
 final class MeshletPageBinding {
-    volatile @Nullable ResidentTerrainPage page;
+	volatile @Nullable ResidentTerrainPage page;
 }

@@ -8,10 +8,10 @@ import java.lang.foreign.StructLayout;
  * faded in.
  */
 public final class TerrainVisibleRecord {
-    public static final StructLayout LAYOUT = MemoryLayout.structLayout(TerrainGpuRecords.INT.withName("meshletIndex"), TerrainGpuRecords.FLOAT.withName("visibility")).withName("VisibleMeshletRecord");
-    public static final long MESHLET_INDEX = TerrainGpuRecords.offset(LAYOUT, "meshletIndex");
-    public static final long VISIBILITY = TerrainGpuRecords.offset(LAYOUT, "visibility");
-    
-    private TerrainVisibleRecord() {
-    }
+	public static final StructLayout LAYOUT = MemoryLayout.structLayout(TerrainGpuRecords.INT.withName("meshletIndex"), TerrainGpuRecords.FLOAT.withName("visibility")).withName("VisibleMeshletRecord");
+	public static final long MESHLET_INDEX = TerrainGpuRecords.offset(LAYOUT, "meshletIndex");
+	public static final long VISIBILITY = TerrainGpuRecords.offset(LAYOUT, "visibility");
+	
+	private TerrainVisibleRecord() {
+	}
 }

@@ -10,12 +10,12 @@ import java.util.Map;
  * {@link ShaderCompileChecks}).
  */
 public final class ModelShaderCompileCheck {
-    private static final Map<String, Integer> SHADERS = Map.of(ModelGpuVertices.SHADER, Shaderc.shaderc_compute_shader);
-    
-    private ModelShaderCompileCheck() {
-    }
-    
-    static void main() throws InterruptedException {
-        ShaderCompileChecks.requireCompiles("model shaders", SHADERS);
-    }
+	private static final Map<String, Integer> SHADERS = Map.of(ModelGpuVertices.SHADER, Shaderc.shaderc_compute_shader);
+	
+	private ModelShaderCompileCheck() {
+	}
+	
+	static void main() throws InterruptedException {
+		ShaderCompileChecks.requireCompiles("model shaders", SHADERS);
+	}
 }

@@ -9,16 +9,16 @@ import net.minecraft.client.renderer.rendertype.PreparedRenderType;
  * and, for the vertex pass, where its vertices start in the frame's vertex buffer.
  */
 public final class ModelVertexDraw {
-    final int index;
-    final PreparedRenderType renderType;
-    int vertexCount;
-    int jobCount;
-    boolean mesh;
-    int firstJob;
-    int baseVertex;
-    
-    ModelVertexDraw(int index, PreparedRenderType renderType) {
-        this.index = index;
-        this.renderType = renderType;
-    }
+	final int index;
+	final PreparedRenderType renderType;
+	int vertexCount;
+	int jobCount;
+	boolean mesh;
+	int firstJob;
+	int baseVertex;
+	
+	ModelVertexDraw(int index, PreparedRenderType renderType) {
+		this.index = index;
+		this.renderType = renderType;
+	}
 }

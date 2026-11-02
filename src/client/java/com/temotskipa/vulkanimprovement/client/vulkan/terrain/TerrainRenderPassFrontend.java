@@ -5,5 +5,5 @@ package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
  * is handed to the backend pass that records it.
  */
 public interface TerrainRenderPassFrontend {
-    Object vim$backend();
+	Object vim$backend();
 }

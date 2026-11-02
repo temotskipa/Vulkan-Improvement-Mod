@@ -20,25 +20,25 @@ import org.spongepowered.asm.mixin.Unique;
  */
 @Mixin(Direct.class)
 public abstract class VulkanGpuBufferDirectMixin extends VulkanGpuBuffer implements ShaderStorageAddressable {
-    @Shadow
-    @Final
-    protected VulkanDevice device;
-    
-    @Unique
-    private long vim$deviceAddress;
-    
-    private VulkanGpuBufferDirectMixin() {
-        super(0L, 0, 0L);
-    }
-    
-    @Override
-    public long vim$deviceAddress() {
-        if (this.vim$deviceAddress == 0L) {
-            try (MemoryStack stack = MemoryStack.stackPush()) {
-                VkBufferDeviceAddressInfo addressInfo = VkBufferDeviceAddressInfo.calloc(stack).sType$Default().buffer(vkBuffer());
-                this.vim$deviceAddress = VK12.vkGetBufferDeviceAddress(this.device.vkDevice(), addressInfo);
-            }
-        }
-        return this.vim$deviceAddress;
-    }
+	@Shadow
+	@Final
+	protected VulkanDevice device;
+	
+	@Unique
+	private long vim$deviceAddress;
+	
+	private VulkanGpuBufferDirectMixin() {
+		super(0L, 0, 0L);
+	}
+	
+	@Override
+	public long vim$deviceAddress() {
+		if (this.vim$deviceAddress == 0L) {
+			try (MemoryStack stack = MemoryStack.stackPush()) {
+				VkBufferDeviceAddressInfo addressInfo = VkBufferDeviceAddressInfo.calloc(stack).sType$Default().buffer(vkBuffer());
+				this.vim$deviceAddress = VK12.vkGetBufferDeviceAddress(this.device.vkDevice(), addressInfo);
+			}
+		}
+		return this.vim$deviceAddress;
+	}
 }

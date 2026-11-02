@@ -16,34 +16,34 @@ import org.spongepowered.asm.mixin.Shadow;
  */
 @Mixin(VulkanRenderPass.class)
 public class VulkanRenderPassMixin implements TerrainRenderPassAccess {
-    @Shadow
-    @Nullable
-    protected VulkanRenderPipeline pipeline;
-    
-    @Shadow
-    private boolean anyDescriptorDirty;
-    
-    @Shadow
-    private VkCommandBuffer commandBuffer() {
-        throw new AssertionError();
-    }
-    
-    @Override
-    public VkCommandBuffer vim$commandBuffer() {
-        return this.commandBuffer();
-    }
-    
-    @Override
-    public @Nullable VulkanRenderPipeline vim$boundPipeline() {
-        return this.pipeline;
-    }
-    
-    @Override
-    public void vim$restoreVanillaPipeline() {
-        if (this.pipeline == null) {
-            return;
-        }
-        VK12.vkCmdBindPipeline(this.commandBuffer(), VK10.VK_PIPELINE_BIND_POINT_GRAPHICS, this.pipeline.vkPipeline());
-        this.anyDescriptorDirty = true;
-    }
+	@Shadow
+	@Nullable
+	protected VulkanRenderPipeline pipeline;
+	
+	@Shadow
+	private boolean anyDescriptorDirty;
+	
+	@Override
+	public VkCommandBuffer vim$commandBuffer() {
+		return this.commandBuffer();
+	}
+	
+	@Shadow
+	private VkCommandBuffer commandBuffer() {
+		throw new AssertionError();
+	}
+	
+	@Override
+	public @Nullable VulkanRenderPipeline vim$boundPipeline() {
+		return this.pipeline;
+	}
+	
+	@Override
+	public void vim$restoreVanillaPipeline() {
+		if (this.pipeline == null) {
+			return;
+		}
+		VK12.vkCmdBindPipeline(this.commandBuffer(), VK10.VK_PIPELINE_BIND_POINT_GRAPHICS, this.pipeline.vkPipeline());
+		this.anyDescriptorDirty = true;
+	}
 }

@@ -4,6 +4,7 @@ import com.llamalad7.mixinextras.sugar.Local;
 import com.mojang.renderpearl.backend.vulkan.VulkanCommandEncoder;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VkClearValue;
+import org.lwjgl.vulkan.VkClearValue.Buffer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
@@ -15,8 +16,8 @@ import org.spongepowered.asm.mixin.injection.Redirect;
  */
 @Mixin(VulkanCommandEncoder.class)
 public class VulkanCommandEncoderClearValuesMixin {
-    @Redirect(method = "createRenderPass", at = @At(value = "INVOKE", target = "Lorg/lwjgl/vulkan/VkClearValue;calloc(I)Lorg/lwjgl/vulkan/VkClearValue$Buffer;"))
-    private VkClearValue.Buffer vim$clearValuesOnStack(int capacity, @Local(name = "stack") MemoryStack stack) {
-        return VkClearValue.calloc(capacity, stack);
-    }
+	@Redirect(method = "createRenderPass", at = @At(value = "INVOKE", target = "Lorg/lwjgl/vulkan/VkClearValue;calloc(I)Lorg/lwjgl/vulkan/VkClearValue$Buffer;"))
+	private Buffer vim$clearValuesOnStack(int capacity, @Local(name = "stack") MemoryStack stack) {
+		return VkClearValue.calloc(capacity, stack);
+	}
 }

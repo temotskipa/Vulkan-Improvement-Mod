@@ -23,35 +23,35 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  */
 @Mixin(ChunkSectionsToRender.class)
 public final class ChunkSectionsToRenderMixin {
-    @Inject(method = "renderGroup", at = @At("HEAD"))
-    private void vim$observeTerrainGroup(ChunkSectionLayerGroup group, RenderPass renderPass, GpuSampler sampler, GpuTextureView atlas, ChunkSectionsToRender.@Nullable ImprovedFogTextures improvedFogTextures, boolean wireframe, CallbackInfo ci) {
-        if (!VulkanImprovementRuntime.isVulkanBackendActive()) {
-            return;
-        }
-        TerrainPerformanceMonitor.get().markGroup(group, false);
-        if (!TerrainRendererDebugConfig.terrainCaptureEnabled()) {
-            return;
-        }
-        TerrainRenderContext.enter();
-        DescriptorHeapTerrainResources resources = DescriptorHeapTerrainResources.get();
-        resources.recordTextureBinding("Sampler0", atlas, sampler);
-        resources.recordTextureBinding("Sampler2", Minecraft.getInstance().gameRenderer.lightmap(), RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
-        if (improvedFogTextures != null) {
-            resources.recordImageBinding(DescriptorHeapTerrainResources.SKY_IMAGE, improvedFogTextures.skyView());
-            resources.recordImageBinding(DescriptorHeapTerrainResources.CLOUDS_IMAGE, improvedFogTextures.cloudsView());
-            resources.recordImageBinding(DescriptorHeapTerrainResources.CLOUDS_DEPTH_IMAGE, improvedFogTextures.cloudsDepthView());
-        }
-        MeshTerrainRenderer.get().observeTerrainGroup(wireframe, improvedFogTextures != null);
-    }
-    
-    @Inject(method = "renderGroup", at = @At("RETURN"))
-    private void vim$leaveTerrainGroup(ChunkSectionLayerGroup group, RenderPass renderPass, GpuSampler sampler, GpuTextureView atlas, ChunkSectionsToRender.@Nullable ImprovedFogTextures improvedFogTextures, boolean wireframe, CallbackInfo ci) {
-        if (VulkanImprovementRuntime.isVulkanBackendActive()) {
-            TerrainPerformanceMonitor.get().markGroup(group, true);
-        }
-        if (!TerrainRenderContext.isTerrainPass()) {
-            return;
-        }
-        TerrainRenderContext.exit();
-    }
+	@Inject(method = "renderGroup", at = @At("HEAD"))
+	private void vim$observeTerrainGroup(ChunkSectionLayerGroup group, RenderPass renderPass, GpuSampler sampler, GpuTextureView atlas, ChunkSectionsToRender.@Nullable ImprovedFogTextures improvedFogTextures, boolean wireframe, CallbackInfo ci) {
+		if (!VulkanImprovementRuntime.isVulkanBackendActive()) {
+			return;
+		}
+		TerrainPerformanceMonitor.get().markGroup(group, false);
+		if (!TerrainRendererDebugConfig.terrainCaptureEnabled()) {
+			return;
+		}
+		TerrainRenderContext.enter();
+		DescriptorHeapTerrainResources resources = DescriptorHeapTerrainResources.get();
+		resources.recordTextureBinding("Sampler0", atlas, sampler);
+		resources.recordTextureBinding("Sampler2", Minecraft.getInstance().gameRenderer.lightmap(), RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
+		if (improvedFogTextures != null) {
+			resources.recordImageBinding(DescriptorHeapTerrainResources.SKY_IMAGE, improvedFogTextures.skyView());
+			resources.recordImageBinding(DescriptorHeapTerrainResources.CLOUDS_IMAGE, improvedFogTextures.cloudsView());
+			resources.recordImageBinding(DescriptorHeapTerrainResources.CLOUDS_DEPTH_IMAGE, improvedFogTextures.cloudsDepthView());
+		}
+		MeshTerrainRenderer.get().observeTerrainGroup(wireframe, improvedFogTextures != null);
+	}
+	
+	@Inject(method = "renderGroup", at = @At("RETURN"))
+	private void vim$leaveTerrainGroup(ChunkSectionLayerGroup group, RenderPass renderPass, GpuSampler sampler, GpuTextureView atlas, ChunkSectionsToRender.@Nullable ImprovedFogTextures improvedFogTextures, boolean wireframe, CallbackInfo ci) {
+		if (VulkanImprovementRuntime.isVulkanBackendActive()) {
+			TerrainPerformanceMonitor.get().markGroup(group, true);
+		}
+		if (!TerrainRenderContext.isTerrainPass()) {
+			return;
+		}
+		TerrainRenderContext.exit();
+	}
 }

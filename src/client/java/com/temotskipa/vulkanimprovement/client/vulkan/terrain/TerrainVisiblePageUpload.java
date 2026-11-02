@@ -6,7 +6,7 @@ package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
  * @param count        how many pages were listed; no more can be kept
  */
 public record TerrainVisiblePageUpload(int inputOffset, int outputOffset, int count, long address, boolean ready) {
-    static TerrainVisiblePageUpload unavailable() {
-        return new TerrainVisiblePageUpload(0, 0, 0, 0L, false);
-    }
+	static TerrainVisiblePageUpload unavailable() {
+		return new TerrainVisiblePageUpload(0, 0, 0, 0L, false);
+	}
 }

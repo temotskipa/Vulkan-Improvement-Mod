@@ -17,21 +17,21 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  */
 @Mixin(VulkanGpuTextureView.class)
 public final class VulkanGpuTextureViewMixin {
-    @Shadow
-    @Final
-    private VulkanDevice device;
-    
-    @Shadow
-    @Final
-    private long vkImageView;
-    
-    @Shadow
-    private boolean closed;
-    
-    @Inject(method = "close", at = @At("HEAD"))
-    private void vim$releaseFramebuffers(CallbackInfo ci) {
-        if (!this.closed) {
-            ((FramebufferCacheOwner) this.device.createCommandEncoder()).vim$framebuffers().release(this.vkImageView);
-        }
-    }
+	@Shadow
+	@Final
+	private VulkanDevice device;
+	
+	@Shadow
+	@Final
+	private long vkImageView;
+	
+	@Shadow
+	private boolean closed;
+	
+	@Inject(method = "close", at = @At("HEAD"))
+	private void vim$releaseFramebuffers(CallbackInfo ci) {
+		if (!this.closed) {
+			((FramebufferCacheOwner) this.device.createCommandEncoder()).vim$framebuffers().release(this.vkImageView);
+		}
+	}
 }

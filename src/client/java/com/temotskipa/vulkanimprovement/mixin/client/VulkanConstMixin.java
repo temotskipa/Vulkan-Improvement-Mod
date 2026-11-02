@@ -15,11 +15,11 @@ import org.spongepowered.asm.mixin.injection.At;
  */
 @Mixin(VulkanConst.class)
 public final class VulkanConstMixin {
-    @ModifyReturnValue(method = "bufferUsageToVk", at = @At("RETURN"))
-    private static int vim$addShaderStorage(int vkUsage, @Local(argsOnly = true, name = "usage") int usage) {
-        if ((usage & ShaderStorage.USAGE_SHADER_STORAGE) == 0) {
-            return vkUsage;
-        }
-        return vkUsage | VK10.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-    }
+	@ModifyReturnValue(method = "bufferUsageToVk", at = @At("RETURN"))
+	private static int vim$addShaderStorage(int vkUsage, @Local(argsOnly = true, name = "usage") int usage) {
+		if ((usage & ShaderStorage.USAGE_SHADER_STORAGE) == 0) {
+			return vkUsage;
+		}
+		return vkUsage | VK10.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+	}
 }

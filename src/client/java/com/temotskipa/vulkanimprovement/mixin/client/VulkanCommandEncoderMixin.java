@@ -24,55 +24,55 @@ import java.util.function.Supplier;
  * {@link ComputeCommands}.
  */
 @Mixin(VulkanCommandEncoder.class)
-public class VulkanCommandEncoderMixin implements TerrainCommandEncoderAccess, ComputeCommandsBackend {
-    @Shadow
-    @Final
-    private VulkanDevice device;
-    
-    @Shadow
-    private @Nullable VulkanRenderPass currentRenderPass;
-    
-    /**
-     * The instance's debug utilities. The instance is Minecraft's, which closes it when the game
-     * ends.
-     */
-    @Unique
-    private static VulkanDebug vim$debug(VulkanInstance instance) {
-        return instance.debug();
-    }
-    
-    @Shadow
-    private VkCommandBuffer commandBuffer() {
-        throw new AssertionError();
-    }
-    
-    @Override
-    public boolean vim$insideRenderPass() {
-        return this.currentRenderPass != null;
-    }
-    
-    @Override
-    public VkCommandBuffer vim$frameCommandBuffer() {
-        return commandBuffer();
-    }
-    
-    /**
-     * Records the dispatch in a debug group of its label, as Minecraft labels its render passes,
-     * and follows it with the barrier Minecraft puts after each of its transfers.
-     */
-    @Override
-    public void vim$dispatchCompute(Supplier<String> label, ComputePipeline pipeline, ByteBuffer pushConstants, int groupsX, int groupsY, int groupsZ) {
-        VkCommandBuffer commandBuffer = commandBuffer();
-        VulkanDebug debug = vim$debug(this.device.instance());
-        debug.beginDebugGroup(commandBuffer, label);
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            VK10.vkCmdBindPipeline(commandBuffer, VK10.VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.handle());
-            if (pushConstants.hasRemaining()) {
-                VK10.vkCmdPushConstants(commandBuffer, pipeline.layout(), VK10.VK_SHADER_STAGE_COMPUTE_BIT, 0, pushConstants);
-            }
-            VK10.vkCmdDispatch(commandBuffer, groupsX, groupsY, groupsZ);
-            VulkanCommandEncoder.memoryBarrier(commandBuffer, stack);
-        }
-        debug.endDebugGroup(commandBuffer);
-    }
+public final class VulkanCommandEncoderMixin implements TerrainCommandEncoderAccess, ComputeCommandsBackend {
+	@Shadow
+	@Final
+	private VulkanDevice device;
+	
+	@Shadow
+	private @Nullable VulkanRenderPass currentRenderPass;
+	
+	@Override
+	public boolean vim$insideRenderPass() {
+		return this.currentRenderPass != null;
+	}
+	
+	@Override
+	public VkCommandBuffer vim$frameCommandBuffer() {
+		return commandBuffer();
+	}
+	
+	@Shadow
+	private VkCommandBuffer commandBuffer() {
+		throw new AssertionError();
+	}
+	
+	/**
+	 * Records the dispatch in a debug group of its label, as Minecraft labels its render passes,
+	 * and follows it with the barrier Minecraft puts after each of its transfers.
+	 */
+	@Override
+	public void vim$dispatchCompute(Supplier<String> label, ComputePipeline pipeline, ByteBuffer pushConstants, int groupsX, int groupsY, int groupsZ) {
+		VkCommandBuffer commandBuffer = commandBuffer();
+		VulkanDebug debug = vim$debug(this.device.instance());
+		debug.beginDebugGroup(commandBuffer, label);
+		try (MemoryStack stack = MemoryStack.stackPush()) {
+			VK10.vkCmdBindPipeline(commandBuffer, VK10.VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.handle());
+			if (pushConstants.hasRemaining()) {
+				VK10.vkCmdPushConstants(commandBuffer, pipeline.layout(), VK10.VK_SHADER_STAGE_COMPUTE_BIT, 0, pushConstants);
+			}
+			VK10.vkCmdDispatch(commandBuffer, groupsX, groupsY, groupsZ);
+			VulkanCommandEncoder.memoryBarrier(commandBuffer, stack);
+		}
+		debug.endDebugGroup(commandBuffer);
+	}
+	
+	/**
+	 * The instance's debug utilities. The instance is Minecraft's, which closes it when the game
+	 * ends.
+	 */
+	@Unique
+	private static VulkanDebug vim$debug(VulkanInstance instance) {
+		return instance.debug();
+	}
 }

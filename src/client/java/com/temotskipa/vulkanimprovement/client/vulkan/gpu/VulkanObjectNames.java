@@ -9,18 +9,18 @@ import com.mojang.renderpearl.backend.vulkan.VulkanInstance;
  * utilities of the instance Minecraft created the device from.
  */
 public final class VulkanObjectNames {
-    private VulkanObjectNames() {
-    }
-    
-    public static void name(VulkanDevice device, int objectType, long handle, String name) {
-        debug(device.instance()).setObjectName(device.vkDevice(), objectType, handle, name);
-    }
-    
-    /**
-     * The instance's debug utilities. The instance is Minecraft's, which closes it when the game
-     * ends.
-     */
-    private static VulkanDebug debug(VulkanInstance instance) {
-        return instance.debug();
-    }
+	private VulkanObjectNames() {
+	}
+	
+	public static void name(VulkanDevice device, int objectType, long handle, String name) {
+		debug(device.instance()).setObjectName(device.vkDevice(), objectType, handle, name);
+	}
+	
+	/**
+	 * The instance's debug utilities. The instance is Minecraft's, which closes it when the game
+	 * ends.
+	 */
+	private static VulkanDebug debug(VulkanInstance instance) {
+		return instance.debug();
+	}
 }
