@@ -277,6 +277,22 @@ All three are inside the run-to-run spread: it spends no time and saves about
 Frames are identical, a mean difference of 0.00 of 255 where two frames with it
 off differ by 0.07.
 
+2026-11-02, the mesh stage where the GPU sets the pace. The entity scene with
+strict mesh terrain at render distance 32, five runs of each in turn, medians:
+
+| Window    | Path        | FPS | Frame    | Render thread | GPU time |
+|-----------|-------------|-----|----------|---------------|----------|
+| 1920x1080 | Vertex pass | 622 | 1.607 ms | 1.426 ms      | 1.266 ms |
+| 1920x1080 | Mesh stage  | 622 | 1.608 ms | 1.435 ms      | 1.197 ms |
+| 3840x2160 | Vertex pass | 319 | 3.132 ms | 1.534 ms      | 2.823 ms |
+| 3840x2160 | Mesh stage  | 318 | 3.146 ms | 1.571 ms      | 2.769 ms |
+
+The mesh stage takes less of the GPU in every pair, 0.069 ms at 1920x1080 and
+0.054 ms at 3840x2160, and the frame rate does not move at either: the render
+thread sets the pace at the first and the GPU at the second, where the saving
+is 2 % of its time. It stays off by default until it buys something, such as
+the task stage under Follow-Up.
+
 ## Decisions
 
 - The mod extends Minecraft's renderer instead of running its own beside it
