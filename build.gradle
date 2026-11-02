@@ -1,5 +1,8 @@
 import groovy.json.JsonSlurper
 
+import java.nio.file.FileSystems
+import java.nio.file.Files
+import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 
 plugins {
@@ -99,12 +102,12 @@ tasks.register("checkRepoDocs") {
     inputs.files(fileTree(dir: "docs", include: "**/*.md"))
 
     doLast {
-        def missingDocs = requiredRepoDocs.findAll { !layout.projectDirectory.file(it).asFile.isFile() }
+        def missingDocs = requiredRepoDocs.findAll { !Files.isRegularFile(layout.projectDirectory.file(it).asFile.toPath()) }
         if (!missingDocs.isEmpty()) {
             throw new GradleException("Missing required repository docs: ${missingDocs.join(', ')}")
         }
 
-        def agentLines = layout.projectDirectory.file("AGENTS.md").asFile.readLines("UTF-8")
+        def agentLines = Files.readAllLines(layout.projectDirectory.file("AGENTS.md").asFile.toPath())
         if (agentLines.size() > 140) {
             throw new GradleException("AGENTS.md should stay concise; found ${agentLines.size()} lines, maximum is 140.")
         }
@@ -116,7 +119,7 @@ tasks.register("checkRepoDocs") {
         def linkPattern = ~/\[[^]]+]\(([^)]+)\)/
 
         markdownFiles.each { markdownFile ->
-            def lines = markdownFile.readLines("UTF-8")
+            def lines = Files.readAllLines(markdownFile.toPath())
             def firstContentLine = lines.find { !it.trim().isEmpty() }
             if (firstContentLine == null || !firstContentLine.startsWith("# ")) {
                 headingFailures.add(project.relativePath(markdownFile))
@@ -131,8 +134,8 @@ tasks.register("checkRepoDocs") {
                     if (!externalLink) {
                         def pathOnly = target.split("#", 2)[0]
                         if (!pathOnly.isEmpty()) {
-                            def resolvedTarget = markdownFile.parentFile.toPath().resolve(pathOnly).normalize().toFile()
-                            if (!resolvedTarget.exists()) {
+                            def resolvedTarget = markdownFile.toPath().resolveSibling(pathOnly).normalize()
+                            if (!Files.exists(resolvedTarget)) {
                                 brokenLinks.add("${project.relativePath(markdownFile)} -> ${target}")
                             }
                         }
@@ -190,10 +193,10 @@ tasks.register("checkClientMixinConfig") {
     doLast {
         def configFile = clientMixinConfig.asFile
         def sourceDir = clientMixinSourceDir.asFile
-        if (!configFile.isFile()) {
+        if (!Files.isRegularFile(configFile.toPath())) {
             throw new GradleException("Missing client mixin config: ${project.relativePath(configFile)}")
         }
-        if (!sourceDir.isDirectory()) {
+        if (!Files.isDirectory(sourceDir.toPath())) {
             throw new GradleException("Missing client mixin source directory: ${project.relativePath(sourceDir)}")
         }
 
@@ -208,18 +211,18 @@ tasks.register("checkClientMixinConfig") {
         def sourceFiles = fileTree(dir: sourceDir, include: "*.java").files
         def sourceBySimpleName = sourceFiles.collectEntries { sourceFile -> [(sourceFile.name.replaceFirst(/\.java$/, "")): sourceFile]
         }
-        def expectedMixins = sourceBySimpleName.findAll { simpleName, sourceFile -> simpleName.endsWith("Mixin") || sourceFile.getText("UTF-8").contains("@Mixin")
+        def expectedMixins = sourceBySimpleName.findAll { simpleName, sourceFile -> simpleName.endsWith("Mixin") || Files.readString(sourceFile.toPath()).contains("@Mixin")
         }.keySet().sort()
 
         def missingSources = listedMixins.findAll { !sourceBySimpleName.containsKey(it) }.sort()
         def unlistedSources = expectedMixins.findAll { !listedMixins.contains(it) }.sort()
         def listedWithoutMixinAnnotation = listedMixins.findAll { simpleName ->
             def sourceFile = sourceBySimpleName[simpleName]
-            sourceFile != null && !sourceFile.getText("UTF-8").contains("@Mixin")
+            sourceFile != null && !Files.readString(sourceFile.toPath()).contains("@Mixin")
         }.sort()
         def packageFailures = listedMixins.findAll { simpleName ->
             def sourceFile = sourceBySimpleName[simpleName]
-            sourceFile != null && !sourceFile.getText("UTF-8").contains("package ${mixinPackage};")
+            sourceFile != null && !Files.readString(sourceFile.toPath()).contains("package ${mixinPackage};")
         }.sort()
 
         def failures = []
@@ -255,7 +258,7 @@ tasks.register("checkVulkanPackageBoundaries") {
         def packageFailures = []
         def sourceDir = vulkanSourceDir.asFile
         fileTree(dir: vulkanSourceDir, include: "**/*.java").files.each { sourceFile ->
-            def sourceText = sourceFile.getText("UTF-8")
+            def sourceText = Files.readString(sourceFile.toPath())
             def packageMatcher = sourceText =~ /(?m)^\s*package\s+([^;]+);/
             if (!packageMatcher.find()) {
                 packageFailures.add("${project.relativePath(sourceFile)}: missing package declaration")
@@ -265,7 +268,7 @@ tasks.register("checkVulkanPackageBoundaries") {
                     packageFailures.add("${project.relativePath(sourceFile)}: package ${packageName} is outside allowed renderer packages")
                 }
                 def expectedRelativeDir = packageName.substring(vulkanPackageRoot.length()).replaceFirst(/^\./, "").replace(".", "/")
-                def actualRelativeDir = sourceDir.toPath().relativize(sourceFile.parentFile.toPath()).toString().replace(File.separator, "/")
+                def actualRelativeDir = sourceDir.toPath().relativize(sourceFile.toPath().parent).toString().replace(FileSystems.default.separator, "/")
                 if (actualRelativeDir != expectedRelativeDir) {
                     packageFailures.add("${project.relativePath(sourceFile)}: package ${packageName} does not match directory ${actualRelativeDir}")
                 }
@@ -297,9 +300,12 @@ tasks.register("compileShaderSpirv") {
     inputs.files(shaderFiles)
     inputs.property("releaseBuild", releaseBuild)
     inputs.property("requireShaderValidator", requireShaderValidator)
+    inputs.property("shaderValidatorFound", providers.provider { findGlslangValidator() != null })
     outputs.dir(generatedResourceRoot)
 
     doLast {
+        // The game prefers SPIR-V to the GLSL, so none may outlive the run that last wrote it.
+        delete(generatedResourceRoot)
         def validator = findGlslangValidator()
         if (validator == null) {
             def message = "glslangValidator not found; skipping SPIR-V generation. Runtime shaderc compilation remains available for development builds. Use -Pvim.requireShaderValidator=true or -Pvim.releaseBuild=true to require it."
@@ -310,13 +316,13 @@ tasks.register("compileShaderSpirv") {
             return
         }
 
-        def resourceRoot = generatedResourceRoot.get().asFile
+        def resourceRoot = generatedResourceRoot.get().asFile.toPath()
         shaderFiles.files.sort { it.path }.each { File shaderFile ->
             def stage = shaderStage(shaderFile)
             // shaders/<family>/<name>.<stage>.glsl compiles to shaders/<family>/spirv/<name>.<stage>.spv, where the game looks for it.
-            def spirvDir = new File(resourceRoot, "assets/vulkanimprovement/shaders/${shaderFile.parentFile.name}/spirv")
-            spirvDir.mkdirs()
-            def outputFile = new File(spirvDir, shaderFile.name.replaceFirst(/\.glsl$/, ".spv"))
+            def spirvDir = resourceRoot.resolve("assets/vulkanimprovement/shaders/${shaderFile.parentFile.name}/spirv".toString())
+            Files.createDirectories(spirvDir)
+            def outputFile = spirvDir.resolve(shaderFile.name.replaceFirst(/\.glsl$/, ".spv"))
             def process = new ProcessBuilder(validator as String,
                     "-V",
                     "--target-env",
@@ -325,7 +331,7 @@ tasks.register("compileShaderSpirv") {
                     stage,
                     shaderFile.absolutePath,
                     "-o",
-                    outputFile.absolutePath).redirectErrorStream(true).start()
+                    outputFile.toAbsolutePath().toString()).redirectErrorStream(true).start()
             def output = process.inputStream.getText("UTF-8")
             process.waitFor()
             if (process.exitValue() != 0) {
@@ -347,8 +353,8 @@ static def findGlslangValidator() {
     List<String> candidates = []
     def vulkanSdk = System.getenv("VULKAN_SDK")
     if (vulkanSdk != null && !vulkanSdk.isBlank()) {
-        candidates.add(new File(vulkanSdk, "Bin/glslangValidator.exe").absolutePath)
-        candidates.add(new File(vulkanSdk, "bin/glslangValidator").absolutePath)
+        candidates.add(Path.of(vulkanSdk, "Bin", "glslangValidator.exe").toString())
+        candidates.add(Path.of(vulkanSdk, "bin", "glslangValidator").toString())
     }
     candidates.add("glslangValidator")
     candidates.add("glslangValidator.exe")
@@ -379,6 +385,7 @@ tasks.register("checkShaders") {
     def shaderFiles = fileTree(dir: shaderSourceRoot, include: "*/*.glsl")
     inputs.files(shaderFiles)
     inputs.property("requireShaderValidator", requireShaderValidator)
+    inputs.property("shaderValidatorFound", providers.provider { findGlslangValidator() != null })
     inputs.property("releaseBuild", releaseBuild)
     outputs.dir(layout.buildDirectory.dir("validated-shaders"))
 
@@ -395,11 +402,11 @@ tasks.register("checkShaders") {
             return
         }
 
-        def outputRoot = layout.buildDirectory.dir("validated-shaders").get().asFile
+        def outputRoot = layout.buildDirectory.dir("validated-shaders").get().asFile.toPath()
         shaderFiles.files.sort { it.path }.each { File shaderFile ->
-            def outputDir = new File(outputRoot, shaderFile.parentFile.name)
-            outputDir.mkdirs()
-            def outputFile = new File(outputDir, shaderFile.name.replaceFirst(/\.glsl$/, ".spv"))
+            def outputDir = outputRoot.resolve(shaderFile.parentFile.name)
+            Files.createDirectories(outputDir)
+            def outputFile = outputDir.resolve(shaderFile.name.replaceFirst(/\.glsl$/, ".spv"))
             def process = new ProcessBuilder(validator as String,
                     "-V",
                     "--target-env",
@@ -408,7 +415,7 @@ tasks.register("checkShaders") {
                     shaderStage(shaderFile),
                     shaderFile.absolutePath,
                     "-o",
-                    outputFile.absolutePath).redirectErrorStream(true).start()
+                    outputFile.toAbsolutePath().toString()).redirectErrorStream(true).start()
             def output = process.inputStream.getText("UTF-8")
             process.waitFor()
             if (process.exitValue() != 0) {
@@ -427,7 +434,7 @@ tasks.register("checkTerrainLayoutManifest") {
     inputs.files(shaderFiles)
 
     doLast {
-        def layoutSource = terrainGpuLayoutSource.asFile.getText("UTF-8")
+        def layoutSource = Files.readString(terrainGpuLayoutSource.asFile.toPath())
         Map<String, Integer> constants = [:]
         def matcher = layoutSource =~ /(?:static\s+final\s+)?int\s+([A-Z0-9_]+)\s*=\s*(Integer\.BYTES|\d+);/
         matcher.each { List<String> match -> constants[match[1]] = match[2] == "Integer.BYTES" ? Integer.BYTES : match[2].toInteger()
@@ -465,12 +472,12 @@ tasks.register("checkTerrainLayoutManifest") {
             throw new GradleException("Terrain layout constants missing from TerrainGpuLayout: ${missingConstants.join(', ')}")
         }
 
-        def shaderDir = terrainShaderSourceDir.asFile
-        def taskShader = new File(shaderDir, "mesh_terrain.task.glsl").getText("UTF-8")
-        def meshShader = new File(shaderDir, "mesh_terrain.mesh.glsl").getText("UTF-8")
-        def fragmentShader = new File(shaderDir, "mesh_terrain.frag.glsl").getText("UTF-8")
-        def commandShader = new File(shaderDir, "mesh_task_command.comp.glsl").getText("UTF-8")
-        def sectionPagesShader = new File(shaderDir, "visible_section_pages.comp.glsl").getText("UTF-8")
+        def shaderDir = terrainShaderSourceDir.asFile.toPath()
+        def taskShader = Files.readString(shaderDir.resolve("mesh_terrain.task.glsl"))
+        def meshShader = Files.readString(shaderDir.resolve("mesh_terrain.mesh.glsl"))
+        def fragmentShader = Files.readString(shaderDir.resolve("mesh_terrain.frag.glsl"))
+        def commandShader = Files.readString(shaderDir.resolve("mesh_task_command.comp.glsl"))
+        def sectionPagesShader = Files.readString(shaderDir.resolve("visible_section_pages.comp.glsl"))
         def normalize = { value -> value.replaceAll(/\s+/, " ").trim() }
         def requireText = { label, text, expected ->
             if (!text.contains(expected)) {
