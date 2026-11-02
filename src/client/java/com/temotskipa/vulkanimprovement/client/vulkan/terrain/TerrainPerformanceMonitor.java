@@ -57,6 +57,13 @@ public final class TerrainPerformanceMonitor {
 		return INSTANCE;
 	}
 	
+	/**
+	 * Whether the device can time GPU work for the monitor.
+	 */
+	public synchronized boolean gpuTimerAvailable() {
+		return this.queryPool != null;
+	}
+
 	synchronized void configure(VulkanDevice device) {
 		shutdown();
 		this.device = device;

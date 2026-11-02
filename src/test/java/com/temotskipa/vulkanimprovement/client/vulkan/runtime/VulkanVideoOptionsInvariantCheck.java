@@ -3,6 +3,9 @@ package com.temotskipa.vulkanimprovement.client.vulkan.runtime;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class VulkanVideoOptionsInvariantCheck {
 	private static final Path RUNTIME = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/runtime/VulkanImprovementRuntime.java");
@@ -17,6 +20,8 @@ public final class VulkanVideoOptionsInvariantCheck {
 	private static final Path DRAW_SEPARATE_MIXIN = Path.of("src/client/java/com/temotskipa/vulkanimprovement/mixin/client/ChunkSectionsToRenderDrawSeparateMixin.java");
 	private static final Path LEVEL_RENDERER_MIXIN = Path.of("src/client/java/com/temotskipa/vulkanimprovement/mixin/client/LevelRendererMixin.java");
 	private static final Path LANG = Path.of("src/client/resources/assets/vulkanimprovement/lang/en_us.json");
+	private static final Pattern OPTION_FIELD = Pattern.compile("private static @Nullable OptionInstance<\\w+> (\\w+);");
+	private static final Set<String> INDEPENDENT_OPTIONS = Set.of("dumpCapabilities", "requireVulkanBackend", "validationDescriptorBufferOnly");
 	
 	private VulkanVideoOptionsInvariantCheck() {
 	}
@@ -25,6 +30,8 @@ public final class VulkanVideoOptionsInvariantCheck {
 	static void main() throws IOException {
 		checkRuntimeKeepsOptionsVisibleForActiveVulkan(read(RUNTIME));
 		checkVideoSettingsUsesRuntimeVisibilityGate(read(VIDEO_OPTIONS), read(VIDEO_SETTINGS_MIXIN));
+		checkEveryDependentOptionIsGreyedOut(read(VIDEO_OPTIONS));
+		checkOptionRules();
 		checkTerrainCaptureBootstrapIsExplicitOptIn(read(TERRAIN_CONFIG), read(VIDEO_OPTIONS), read(LANG));
 		checkStrictTerrainCancellationIsExplicitOptIn(read(TERRAIN_CONFIG), read(VIDEO_SETTINGS_COMPATIBILITY), read(LANG));
 		checkTranslucentTerrainFlagIsMetadataOnly(read(TERRAIN_CONFIG), read(VIDEO_SETTINGS_COMPATIBILITY), read(LANG));
@@ -32,6 +39,51 @@ public final class VulkanVideoOptionsInvariantCheck {
 		checkTerrainMirrorHotPathsRequireCaptureOptIn(read(MESH_TERRAIN_RENDERER), read(CHUNK_SECTIONS_TO_RENDER_MIXIN), read(RENDER_SECTION_MIXIN), read(LEVEL_RENDERER_MIXIN));
 	}
 	
+	/**
+	 * Every option but those that hold whatever else is set must follow its rule on the screen.
+	 */
+	private static void checkEveryDependentOptionIsGreyedOut(String source) {
+		String update = methodBody(source, "public static void updateWidgetState");
+		Matcher option = OPTION_FIELD.matcher(source);
+		int options = 0;
+		while (option.find()) {
+			options++;
+			String name = option.group(1);
+			require(INDEPENDENT_OPTIONS.contains(name) || update.contains("setWidgetActive(optionsList, " + name + ", rules."), name + " must be greyed out by a rule while it can do nothing");
+		}
+		require(options > INDEPENDENT_OPTIONS.size(), "the check must find the video options");
+	}
+
+	private static void checkOptionRules() {
+		VulkanVideoOptionRules none = rules();
+		require(!none.meshTerrain() && !none.captureBootstrap() && !none.capturedTerrain() && !none.drawnMeshTerrain() && !none.presentPacing() && !none.gpuTimer() && !none.worldgenProvider(), "a device without what the options need must leave them greyed out");
+		VulkanVideoOptionRules supported = rules("meshTerrainSupported");
+		require(supported.meshTerrain() && supported.captureBootstrap(), "a device with mesh shaders must offer Mesh Terrain and Capture Bootstrap");
+		require(!supported.capturedTerrain() && !supported.drawnMeshTerrain(), "what reads captured terrain must wait for a capture");
+		VulkanVideoOptionRules bootstrap = rules("meshTerrainSupported", "captureBootstrapOn");
+		require(bootstrap.capturedTerrain() && !bootstrap.drawnMeshTerrain(), "Capture Bootstrap captures terrain but draws none");
+		VulkanVideoOptionRules meshTerrain = rules("meshTerrainSupported", "meshTerrainOn");
+		require(!meshTerrain.captureBootstrap(), "Mesh Terrain captures terrain anyway, so Capture Bootstrap must grey out");
+		require(meshTerrain.capturedTerrain() && meshTerrain.drawnMeshTerrain() && meshTerrain.terrainInView(), "Mesh Terrain must enable what it reads");
+		require(meshTerrain.meshletCulling() && !meshTerrain.taskMeshletCulling() && !meshTerrain.taskPageCulling(), "without GPU task commands terrain is drawn from a list, not from pages");
+		require(!meshTerrain.gpuDrivenTerrain(), "GPU-Driven Terrain must wait for Cancel Vanilla Terrain");
+		VulkanVideoOptionRules taskCommands = rules("meshTerrainSupported", "meshTerrainOn", "gpuTaskCommandsOn");
+		require(!taskCommands.meshletCulling() && taskCommands.taskMeshletCulling() && taskCommands.taskPageCulling(), "GPU task commands draw pages, which the task stage culls");
+		VulkanVideoOptionRules full = rules("meshTerrainSupported", "meshTerrainOn", "gpuTaskCommandsOn", "cancelVanillaTerrainOn", "gpuDrivenTerrainOn", "fullCapturedTerrainOn");
+		require(full.drawnMeshTerrain() && full.meshletCulling(), "Full Captured Terrain draws meshlets the mesh stage culls");
+		require(!full.terrainInView() && !full.gpuDrivenTerrain() && !full.taskMeshletCulling() && !full.taskPageCulling(), "Full Captured Terrain must grey out whatever finds terrain in view");
+		VulkanVideoOptionRules gpuDriven = rules("meshTerrainSupported", "meshTerrainOn", "cancelVanillaTerrainOn", "gpuDrivenTerrainOn");
+		require(gpuDriven.gpuDrivenTerrain() && gpuDriven.taskMeshletCulling() && !gpuDriven.taskPageCulling(), "GPU-driven terrain draws pages without the listed path");
+		require(!rules("shadingRateSupported", "shadingRateOn").shadingRate() && rules("meshTerrainSupported", "meshTerrainOn", "shadingRateSupported").shadingRate(), "Terrain VRS must need mesh terrain and the device");
+		require(!rules("meshTerrainSupported", "meshTerrainOn", "shadingRateSupported").shadingRateSize() && rules("meshTerrainSupported", "meshTerrainOn", "shadingRateSupported", "shadingRateOn").shadingRateSize(), "Terrain VRS Size must need Terrain VRS");
+		require(!rules("presentPacingSupported").presentPacing() && !rules("vsyncOn").presentPacing() && rules("presentPacingSupported", "vsyncOn").presentPacing(), "Present Pacing must need the device and VSync");
+	}
+
+	private static VulkanVideoOptionRules rules(String... on) {
+		Set<String> set = Set.of(on);
+		return new VulkanVideoOptionRules(set.contains("meshTerrainSupported"), set.contains("meshTerrainOn"), set.contains("captureBootstrapOn"), set.contains("cancelVanillaTerrainOn"), set.contains("fullCapturedTerrainOn"), set.contains("gpuTaskCommandsOn"), set.contains("gpuDrivenTerrainOn"), set.contains("shadingRateSupported"), set.contains("shadingRateOn"), set.contains("presentPacingSupported"), set.contains("vsyncOn"), set.contains("gpuTimerSupported"), set.contains("worldgenProviderPresent"));
+	}
+
 	private static void checkRuntimeKeepsOptionsVisibleForActiveVulkan(String source) {
 		String body = methodBody(source, "public static boolean shouldShowVideoOptions");
 		int activeVulkanCheck = body.indexOf("if (isVulkanBackendActive())");

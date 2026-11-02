@@ -22,6 +22,13 @@ public final class AcceleratedWorldgenProviderCompatibility {
 		return forDiagnostics(providerPresent(providerIds), TerrainRendererDebugConfig.acceleratedWorldgenProviderIntegrationEnabled(), providerIds.length);
 	}
 	
+	/**
+	 * Whether a provider the config names is installed.
+	 */
+	static boolean providerPresent() {
+		return providerPresent(configuredProviderIds());
+	}
+
 	private static String[] configuredProviderIds() {
 		String configuredIds = System.getProperty(PROVIDER_IDS_PROPERTY, "");
 		if (configuredIds.isBlank()) {

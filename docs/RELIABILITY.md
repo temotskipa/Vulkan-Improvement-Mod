@@ -93,7 +93,9 @@ validation on real Vulkan hardware.
   word counts against its records, and that its arithmetic over the records
   gives the vertices Minecraft's `Cube.compile` writes, byte for byte.
 - `.\gradlew.bat checkVulkanVideoOptionsInvariants` runs pure Java source
-  checks that the Video Settings integration keeps VIM options visible for an
+  checks that `VulkanVideoOptionRules` greys out each option nothing can read as
+  things stand, that every dependent option follows its rule on the screen, and
+  that the Video Settings integration keeps VIM options visible for an
   active Vulkan session even if the pending restart preference is OpenGL, and
   that OpenGL-active sessions keep terrain capture/reset services gated off.
 - `.\gradlew.bat checkAcceleratedWorldgenProviderIntegrationInvariants` runs

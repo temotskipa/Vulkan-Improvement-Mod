@@ -1,6 +1,8 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.runtime;
 
-import com.temotskipa.vulkanimprovement.client.vulkan.terrain.FragmentShadingRateController;
+import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanCapabilitySnapshot;
+import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanImprovementCapabilities;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainPerformanceMonitor;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.OptionInstance;
@@ -151,26 +153,36 @@ public final class VulkanImprovementVideoOptions {
 			return;
 		}
 		ensureOptions();
-		boolean meshTerrain = TerrainRendererDebugConfig.replaceVanillaTerrain();
-		boolean terrainCapture = TerrainRendererDebugConfig.terrainCaptureEnabled();
-		boolean fragmentShadingRateSupported = FragmentShadingRateController.get().fragmentShadingRateAvailable();
-		setWidgetActive(optionsList, meshTerrainRenderer, true);
-		setWidgetActive(optionsList, terrainCaptureBootstrap, true);
-		setWidgetActive(optionsList, meshTranslucentTerrain, meshTerrain);
-		setWidgetActive(optionsList, meshletFrustumCulling, meshTerrain);
-		setWidgetActive(optionsList, strictMeshTerrainReplacement, meshTerrain);
-		setWidgetActive(optionsList, drawAllCapturedTerrainLayers, meshTerrain);
-		setWidgetActive(optionsList, vanillaChunkVisibilityFade, meshTerrain);
-		setWidgetActive(optionsList, terrainFragmentShadingRate, meshTerrain && fragmentShadingRateSupported);
-		setWidgetActive(optionsList, terrainFragmentShadingRateSize, meshTerrain && fragmentShadingRateSupported && TerrainRendererDebugConfig.fragmentShadingRateEnabled());
-		setWidgetActive(optionsList, waitIdleBeforeTerrainUpload, terrainCapture);
-		setWidgetActive(optionsList, allowCpuVisibleMeshletFallback, meshTerrain);
-		setWidgetActive(optionsList, gpuGeneratedMeshTaskCommands, meshTerrain);
-		setWidgetActive(optionsList, gpuDrivenTerrain, meshTerrain);
-		setWidgetActive(optionsList, cullMeshlets, meshTerrain);
-		setWidgetActive(optionsList, taskStagePageCulling, meshTerrain);
-		setWidgetActive(optionsList, terrainGpuTimer, true);
-		setWidgetActive(optionsList, acceleratedWorldgenProviderIntegration, true);
+		VulkanVideoOptionRules rules = currentRules();
+		setWidgetActive(optionsList, meshTerrainRenderer, rules.meshTerrain());
+		setWidgetActive(optionsList, terrainCaptureBootstrap, rules.captureBootstrap());
+		setWidgetActive(optionsList, meshTranslucentTerrain, rules.capturedTerrain());
+		setWidgetActive(optionsList, meshletFrustumCulling, rules.meshletCulling());
+		setWidgetActive(optionsList, strictMeshTerrainReplacement, rules.drawnMeshTerrain());
+		setWidgetActive(optionsList, drawAllCapturedTerrainLayers, rules.drawnMeshTerrain());
+		setWidgetActive(optionsList, vanillaChunkVisibilityFade, rules.drawnMeshTerrain());
+		setWidgetActive(optionsList, terrainFragmentShadingRate, rules.shadingRate());
+		setWidgetActive(optionsList, terrainFragmentShadingRateSize, rules.shadingRateSize());
+		setWidgetActive(optionsList, presentPacing, rules.presentPacing());
+		setWidgetActive(optionsList, waitIdleBeforeTerrainUpload, rules.capturedTerrain());
+		setWidgetActive(optionsList, allowCpuVisibleMeshletFallback, rules.terrainInView());
+		setWidgetActive(optionsList, gpuGeneratedMeshTaskCommands, rules.terrainInView());
+		setWidgetActive(optionsList, gpuDrivenTerrain, rules.gpuDrivenTerrain());
+		setWidgetActive(optionsList, cullMeshlets, rules.taskMeshletCulling());
+		setWidgetActive(optionsList, taskStagePageCulling, rules.taskPageCulling());
+		setWidgetActive(optionsList, terrainGpuTimer, rules.gpuTimer());
+		setWidgetActive(optionsList, acceleratedWorldgenProviderIntegration, rules.worldgenProvider());
+		setWidgetActive(optionsList, initialSectionCapacity, rules.capturedTerrain());
+		setWidgetActive(optionsList, initialMeshletCapacity, rules.capturedTerrain());
+		setWidgetActive(optionsList, initialVertexPayloadMib, rules.capturedTerrain());
+		setWidgetActive(optionsList, initialIndexPayloadMib, rules.capturedTerrain());
+		setWidgetActive(optionsList, terrainMirrorStabilizationMillis, rules.capturedTerrain());
+	}
+
+	private static VulkanVideoOptionRules currentRules() {
+		VulkanCapabilitySnapshot capabilities = VulkanImprovementCapabilities.snapshot();
+		boolean meshTerrainSupported = capabilities.meshShaderExtension() && capabilities.descriptorBufferExtension();
+		return new VulkanVideoOptionRules(meshTerrainSupported, TerrainRendererDebugConfig.replaceVanillaTerrain(), TerrainRendererDebugConfig.terrainCaptureBootstrapEnabled(), TerrainRendererDebugConfig.strictMeshTerrainReplacement(), TerrainRendererDebugConfig.drawAllCapturedTerrainLayers(), TerrainRendererDebugConfig.enableGpuGeneratedMeshTaskCommands(), TerrainRendererDebugConfig.gpuDrivenTerrainEnabled(), capabilities.fragmentShadingRateExtension(), TerrainRendererDebugConfig.fragmentShadingRateEnabled(), capabilities.presentIdExtension() && capabilities.presentWaitExtension(), Minecraft.getInstance().options.enableVsync().get(), TerrainPerformanceMonitor.get().gpuTimerAvailable(), AcceleratedWorldgenProviderCompatibility.providerPresent());
 	}
 	
 	private static void setWidgetActive(OptionsList optionsList, OptionInstance<?> option, boolean active) {
