@@ -3,8 +3,6 @@ package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 
-import java.util.Map;
-
 public final class TerrainMeshTaskDispatchInvariantCheck {
 	private TerrainMeshTaskDispatchInvariantCheck() {
 	}
@@ -28,7 +26,7 @@ public final class TerrainMeshTaskDispatchInvariantCheck {
 		require(!dispatch.ready(), "unavailable dispatch must not be ready");
 		require("unavailable".equals(dispatch.source().id()), "unavailable dispatch must report source id");
 		require("test".equals(dispatch.reason()), "unavailable dispatch must preserve reason");
-		requireMap(dispatch.asMap(), "unavailable", 0, -1, 0, 0, false, false, false);
+		requireDispatch(dispatch, "unavailable", 0, -1, 0, 0, false, false, false);
 	}
 	
 	private static void checkFullLayerDispatch() {
@@ -37,7 +35,7 @@ public final class TerrainMeshTaskDispatchInvariantCheck {
 		require(dispatch.ready(), "full layer dispatch with tasks must be ready");
 		require(!dispatch.usesVisibleMeshletList(), "full layer dispatch must not use visible meshlet list");
 		require(!dispatch.truncated(), "full layer dispatch below limit must not be truncated");
-		requireMap(dispatch.asMap(), "direct-layer", 32, 2, 128, 128, false, false, false);
+		requireDispatch(dispatch, "direct-layer", 32, 2, 128, 128, false, false, false);
 	}
 	
 	private static void checkFullLayerDispatchClampsToDirectTaskLimit() {
@@ -47,7 +45,7 @@ public final class TerrainMeshTaskDispatchInvariantCheck {
 		require(dispatch.ready(), "clamped full layer dispatch must remain ready");
 		require(dispatch.taskCount() == TerrainMeshTaskDispatch.MAX_DIRECT_TASKS, "full layer dispatch must clamp task count");
 		require(dispatch.truncated(), "full layer dispatch above direct limit must report truncation");
-		requireMap(dispatch.asMap(), "direct-layer", 0, -1, requested, TerrainMeshTaskDispatch.MAX_DIRECT_TASKS, false, false, true);
+		requireDispatch(dispatch, "direct-layer", 0, -1, requested, TerrainMeshTaskDispatch.MAX_DIRECT_TASKS, false, false, true);
 	}
 	
 	private static void checkCpuVisibleListDispatch() {
@@ -58,7 +56,7 @@ public final class TerrainMeshTaskDispatchInvariantCheck {
 		require(dispatch.usesVisibleMeshletList(), "CPU visible-list dispatch must use visible meshlet list");
 		require(!dispatch.usesWorkQueue(), "CPU visible-list dispatch must not use work queue");
 		require(!dispatch.truncated(), "visible-list dispatch below limit must not be truncated");
-		requireMap(dispatch.asMap(), "cpu-visible-list", 7, 1, 64, 64, true, false, false);
+		requireDispatch(dispatch, "cpu-visible-list", 7, 1, 64, 64, true, false, false);
 	}
 	
 	private static void checkCpuWorkQueueDispatch() {
@@ -69,7 +67,7 @@ public final class TerrainMeshTaskDispatchInvariantCheck {
 		require(!dispatch.usesVisibleMeshletList(), "CPU work-queue dispatch must not use visible meshlet list");
 		require(dispatch.usesWorkQueue(), "CPU work-queue dispatch must use work queue");
 		require(dispatch.truncated(), "CPU work-queue dispatch must report truncation against requested meshlets");
-		requireMap(dispatch.asMap(), "cpu-work-queue", 9, 2, 96, 32, false, true, true);
+		requireDispatch(dispatch, "cpu-work-queue", 9, 2, 96, 32, false, true, true);
 	}
 	
 	private static void checkIndirectCommandDispatch() {
@@ -82,9 +80,9 @@ public final class TerrainMeshTaskDispatchInvariantCheck {
 		require(dispatch.indirectCommandOffset() == 24L, "dispatch must carry indirect command offset");
 		require(dispatch.indirectCommandStride() == TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_STRIDE, "dispatch must carry indirect command stride");
 		require(dispatch.usesGpuGeneratedIndirectCommand(), "dispatch must preserve GPU-generated indirect command state");
-		requireMap(dispatch.asMap(), "direct-layer", 4, 1, 32, 32, false, false, false);
-		require(dispatch.asMap().get("usesIndirectCommand").equals(true), "dispatch diagnostics must include indirect command use");
-		require(dispatch.asMap().get("usesGpuGeneratedIndirectCommand").equals(true), "dispatch diagnostics must include GPU-generated indirect command use");
+		requireDispatch(dispatch, "direct-layer", 4, 1, 32, 32, false, false, false);
+		require(dispatch.usesIndirectCommand(), "the dispatch must use its indirect command");
+		require(dispatch.usesGpuGeneratedIndirectCommand(), "the dispatch must use its GPU-generated indirect command");
 	}
 	
 	private static void checkLayerReplacementPolicy() {
@@ -119,18 +117,15 @@ public final class TerrainMeshTaskDispatchInvariantCheck {
 		requireThrows(() -> new TerrainMeshTaskDispatch(0, 0, 1, 1, 0L, 0L, 0L, 1L, TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_STRIDE, 0L, false, TerrainMeshTaskSource.DIRECT_LAYER, ""), "indirect metadata without buffer must be rejected");
 	}
 	
-	private static void requireMap(Map<String, Object> map, String source, int offset, int layerOrdinal, int requestedMeshlets, int taskCount, boolean usesVisibleList, boolean usesWorkQueue, boolean truncated) {
-		require(source.equals(map.get("source")), "dispatch diagnostics must include source");
-		require(map.get("meshletOffset").equals(offset), "dispatch diagnostics must include meshlet offset");
-		require(map.get("layerOrdinal").equals(layerOrdinal), "dispatch diagnostics must include layer ordinal");
-		require(map.get("requestedMeshlets").equals(requestedMeshlets), "dispatch diagnostics must include requested meshlets");
-		require(map.get("taskCount").equals(taskCount), "dispatch diagnostics must include task count");
-		require(map.get("usesVisibleMeshletList").equals(usesVisibleList), "dispatch diagnostics must include visible-list use");
-		require(map.get("usesWorkQueue").equals(usesWorkQueue), "dispatch diagnostics must include work-queue use");
-		require(map.containsKey("usesIndirectCommand"), "dispatch diagnostics must include indirect-command use");
-		require(map.containsKey("usesGpuGeneratedIndirectCommand"), "dispatch diagnostics must include GPU-generated indirect-command use");
-		require(map.get("truncated").equals(truncated), "dispatch diagnostics must include truncation state");
-		require(map.get("directMeshTaskLimit").equals(TerrainMeshTaskDispatch.MAX_DIRECT_TASKS), "dispatch diagnostics must include direct task limit");
+	private static void requireDispatch(TerrainMeshTaskDispatch dispatch, String source, int offset, int layerOrdinal, int requestedMeshlets, int taskCount, boolean usesVisibleList, boolean usesWorkQueue, boolean truncated) {
+		require(source.equals(dispatch.source().id()), "the dispatch must keep its source");
+		require(dispatch.meshletOffset() == offset, "the dispatch must keep its meshlet offset");
+		require(dispatch.layerOrdinal() == layerOrdinal, "the dispatch must keep its layer ordinal");
+		require(dispatch.requestedMeshlets() == requestedMeshlets, "the dispatch must keep its requested meshlets");
+		require(dispatch.taskCount() == taskCount, "the dispatch must keep its task count");
+		require(dispatch.usesVisibleMeshletList() == usesVisibleList, "the dispatch must say whether it uses the visible list");
+		require(dispatch.usesWorkQueue() == usesWorkQueue, "the dispatch must say whether it uses the work queue");
+		require(dispatch.truncated() == truncated, "the dispatch must say whether it was truncated");
 	}
 	
 	private static void requireThrows(Runnable action, String message) {

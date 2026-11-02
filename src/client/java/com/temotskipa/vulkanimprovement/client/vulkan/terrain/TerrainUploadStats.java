@@ -3,8 +3,6 @@ package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 
 import java.util.Arrays;
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 public record TerrainUploadStats(int sectionsUploaded, int layersUploaded, int meshletsUploaded, int sectionsDropped, long vertexBytesUploaded, long indexBytesUploaded, int[] meshletOffsetsByLayer, int[] meshletCountsByLayer, int[] customIndexMeshletCountsByLayer, long uploadCount, long lastUploadCpuNanos, long totalUploadCpuNanos) {
 	public TerrainUploadStats {
@@ -53,39 +51,8 @@ public record TerrainUploadStats(int sectionsUploaded, int layersUploaded, int m
 		return this.customIndexMeshletCountsByLayer[layerOrdinal];
 	}
 	
-	Map<String, Object> asMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("sectionsUploaded", this.sectionsUploaded);
-		map.put("layersUploaded", this.layersUploaded);
-		map.put("meshletsUploaded", this.meshletsUploaded);
-		map.put("sectionsDropped", this.sectionsDropped);
-		map.put("vertexBytesUploaded", this.vertexBytesUploaded);
-		map.put("indexBytesUploaded", this.indexBytesUploaded);
-		map.put("meshletRangesByLayer", meshletRangesByLayer());
-		map.put("customIndexMeshletsByLayer", customIndexMeshletsByLayer());
-		map.put("uploadCount", this.uploadCount);
-		map.put("lastUploadCpuMicros", nanosToMicros(this.lastUploadCpuNanos));
-		map.put("totalUploadCpuMicros", nanosToMicros(this.totalUploadCpuNanos));
-		map.put("averageUploadCpuMicros", this.uploadCount == 0L ? 0L : nanosToMicros(this.totalUploadCpuNanos / this.uploadCount));
-		return map;
-	}
-	
-	private Map<String, Object> meshletRangesByLayer() {
-		Map<String, Object> ranges = new LinkedHashMap<>();
-		for (ChunkSectionLayer layer : ChunkSectionLayer.values()) {
-			int ordinal = layer.ordinal();
-			ranges.put(layer.label(), Map.of("offset", ordinal < this.meshletOffsetsByLayer.length ? this.meshletOffsetsByLayer[ordinal] : 0, "count", ordinal < this.meshletCountsByLayer.length ? this.meshletCountsByLayer[ordinal] : 0));
-		}
-		return ranges;
-	}
-	
-	private Map<String, Object> customIndexMeshletsByLayer() {
-		Map<String, Object> ranges = new LinkedHashMap<>();
-		for (ChunkSectionLayer layer : ChunkSectionLayer.values()) {
-			int ordinal = layer.ordinal();
-			ranges.put(layer.label(), ordinal < this.customIndexMeshletCountsByLayer.length ? this.customIndexMeshletCountsByLayer[ordinal] : 0);
-		}
-		return ranges;
+	String describe() {
+		return "sections=" + this.sectionsUploaded + ", layers=" + this.layersUploaded + ", meshlets=" + this.meshletsUploaded + ", sectionsDropped=" + this.sectionsDropped + ", vertexBytes=" + this.vertexBytesUploaded + ", indexBytes=" + this.indexBytesUploaded + ", meshletOffsetsByLayer=" + Arrays.toString(this.meshletOffsetsByLayer) + ", meshletCountsByLayer=" + Arrays.toString(this.meshletCountsByLayer) + ", customIndexMeshletsByLayer=" + Arrays.toString(this.customIndexMeshletCountsByLayer) + ", uploads=" + this.uploadCount + ", lastUploadCpuMicros=" + nanosToMicros(this.lastUploadCpuNanos) + ", totalUploadCpuMicros=" + nanosToMicros(this.totalUploadCpuNanos);
 	}
 	
 	private static long nanosToMicros(long nanos) {

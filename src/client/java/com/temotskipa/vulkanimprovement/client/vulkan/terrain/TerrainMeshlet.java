@@ -4,9 +4,6 @@ import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLay
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.core.SectionPos;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
-
 /**
  * One meshlet of a section layer: which vertices or indices it draws, the box around them in the
  * section's own coordinates, and which way all of its faces point, if they all point one way.
@@ -38,22 +35,5 @@ public record TerrainMeshlet(long sectionNode, int sectionX, int sectionY, int s
 	 */
 	static TerrainMeshlet quads(long sectionNode, ChunkSectionLayer layer, int firstVertex, int vertexCount, float[] bounds, int facing) {
 		return new TerrainMeshlet(sectionNode, SectionPos.x(sectionNode), SectionPos.y(sectionNode), SectionPos.z(sectionNode), layer, firstVertex, vertexCount, 0, 0, TerrainMaterialClassifier.materialIdForLayer(layer), bounds[0], bounds[1], bounds[2], bounds[3], bounds[4], bounds[5], facing);
-	}
-	
-	public Map<String, Object> asMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("sectionNode", this.sectionNode);
-		map.put("sectionX", this.sectionX);
-		map.put("sectionY", this.sectionY);
-		map.put("sectionZ", this.sectionZ);
-		map.put("layer", this.layer.label());
-		map.put("firstVertex", this.firstVertex);
-		map.put("vertexCount", this.vertexCount);
-		map.put("firstIndex", this.firstIndex);
-		map.put("indexCount", this.indexCount);
-		map.put("materialId", this.materialId);
-		map.put("bounds", new float[]{this.minX, this.minY, this.minZ, this.maxX, this.maxY, this.maxZ});
-		map.put("facing", this.facing);
-		return map;
 	}
 }

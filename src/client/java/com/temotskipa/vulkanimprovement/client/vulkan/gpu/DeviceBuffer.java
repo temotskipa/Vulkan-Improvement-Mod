@@ -104,16 +104,8 @@ public final class DeviceBuffer implements Destroyable {
 		return this.label;
 	}
 	
-	public String vkBufferHex() {
-		return "0x" + Long.toUnsignedString(this.vkBuffer, 16);
-	}
-	
 	public boolean closed() {
 		return this.closed;
-	}
-	
-	public boolean destroyed() {
-		return this.destroyed;
 	}
 	
 	public long size() {

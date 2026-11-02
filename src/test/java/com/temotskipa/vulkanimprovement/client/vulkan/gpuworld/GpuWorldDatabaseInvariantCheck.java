@@ -3,11 +3,10 @@ package com.temotskipa.vulkanimprovement.client.vulkan.gpuworld;
 import com.temotskipa.vulkanimprovement.client.vulkan.rtpt.RtPtAccelerationDataRegistry;
 import com.temotskipa.vulkanimprovement.client.vulkan.rtpt.RtPtAccelerationDomain;
 import com.temotskipa.vulkanimprovement.client.vulkan.rtpt.RtPtAccelerationPage;
+import com.temotskipa.vulkanimprovement.client.vulkan.rtpt.RtPtSourceInvalidation;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.GpuMaterialRecord;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
 import net.minecraft.core.SectionPos;
-
-import java.util.Map;
 
 public final class GpuWorldDatabaseInvariantCheck {
 	private GpuWorldDatabaseInvariantCheck() {
@@ -19,7 +18,7 @@ public final class GpuWorldDatabaseInvariantCheck {
 		checkRevisionRollover();
 		checkMaterialTableContract();
 		checkPageKindAuthority();
-		checkResidencyBudgetAndPipelineDiagnostics();
+		checkResidencyBudget();
 		checkResidencyStatsContract();
 		checkVisibilityCommandStatsContract();
 		checkCaptureReleaseAndClearDiagnostics();
@@ -63,39 +62,20 @@ public final class GpuWorldDatabaseInvariantCheck {
 	}
 	
 	private static void checkPageKindAuthority() {
-		Map<String, Object> canonical = GpuWorldPageKind.CANONICAL_MIRROR.asMap();
-		Map<String, Object> lod = GpuWorldPageKind.RENDER_ONLY_LOD.asMap();
-		Map<String, Object> predictive = GpuWorldPageKind.PREDICTIVE_DISTANT.asMap();
-		
-		require(Boolean.TRUE.equals(canonical.get("mirrorsCpuChunkState")), "canonical mirror pages must declare CPU chunk mirroring");
-		require(Boolean.FALSE.equals(canonical.get("gameplayAuthoritative")), "canonical mirror pages must not claim gameplay authority");
-		require(Boolean.FALSE.equals(lod.get("mirrorsCpuChunkState")), "LOD pages must not claim CPU chunk mirroring");
-		require(Boolean.FALSE.equals(lod.get("gameplayAuthoritative")), "LOD pages must not claim gameplay authority");
-		require(Boolean.FALSE.equals(predictive.get("mirrorsCpuChunkState")), "predictive pages must not claim CPU chunk mirroring");
-		require(Boolean.FALSE.equals(predictive.get("gameplayAuthoritative")), "predictive pages must not claim gameplay authority");
+		require(GpuWorldPageKind.CANONICAL_MIRROR.mirrorsCpuChunkState(), "canonical mirror pages must declare CPU chunk mirroring");
+		require(!GpuWorldPageKind.CANONICAL_MIRROR.gameplayAuthoritative(), "canonical mirror pages must not claim gameplay authority");
+		require(!GpuWorldPageKind.RENDER_ONLY_LOD.mirrorsCpuChunkState(), "LOD pages must not claim CPU chunk mirroring");
+		require(!GpuWorldPageKind.RENDER_ONLY_LOD.gameplayAuthoritative(), "LOD pages must not claim gameplay authority");
+		require(!GpuWorldPageKind.PREDICTIVE_DISTANT.mirrorsCpuChunkState(), "predictive pages must not claim CPU chunk mirroring");
+		require(!GpuWorldPageKind.PREDICTIVE_DISTANT.gameplayAuthoritative(), "predictive pages must not claim gameplay authority");
 	}
 	
-	private static void checkResidencyBudgetAndPipelineDiagnostics() {
+	private static void checkResidencyBudget() {
 		GpuWorldResidencyBudget budget = GpuWorldResidencyBudget.conservativeDefault();
 		
 		require(budget.fitsWithinMaxResidentBytes(), "conservative GPU world residency budget must fit inside its cap");
 		require(budget.pageKindBudgetBytes(GpuWorldPageKind.CANONICAL_MIRROR) > budget.pageKindBudgetBytes(GpuWorldPageKind.RENDER_ONLY_LOD), "canonical mirror pages must receive the primary residency budget");
 		require(budget.derivedWorkBudgetBytes() > 0L, "derived visibility and command work must have a budget");
-		
-		Map<String, Object> budgetDiagnostics = budget.asMap();
-		require(Boolean.TRUE.equals(budgetDiagnostics.get("fitsWithinMaxResidentBytes")), "budget diagnostics must report cap fit");
-		require(budgetDiagnostics.get("maxResidentBytes").equals(budget.maxResidentBytes()), "budget diagnostics must expose max bytes");
-		
-		Map<String, Object> stageDiagnostics = GpuWorldPipelineStage.asDiagnostics();
-		require(stageDiagnostics.containsKey("persistent-residency"), "pipeline diagnostics must include persistent residency");
-		require(stageDiagnostics.containsKey("visibility-compaction"), "pipeline diagnostics must include visibility compaction");
-		require(stageDiagnostics.containsKey("indirect-command-generation"), "pipeline diagnostics must include indirect command generation");
-		
-		Map<String, Object> databaseDiagnostics = GpuWorldDatabase.get().asMap();
-		require(databaseDiagnostics.containsKey("residencyBudget"), "GPU world diagnostics must expose the residency budget");
-		require(databaseDiagnostics.containsKey("residencyStats"), "GPU world diagnostics must expose residency usage stats");
-		require(databaseDiagnostics.containsKey("visibilityCommandStats"), "GPU world diagnostics must expose visibility compaction and indirect command generation stats");
-		require(databaseDiagnostics.containsKey("pipelineStages"), "GPU world diagnostics must expose pipeline stages");
 	}
 	
 	private static void checkResidencyStatsContract() {
@@ -107,19 +87,14 @@ public final class GpuWorldDatabaseInvariantCheck {
 		require(!stats.tryReservePage(GpuWorldPageKind.CANONICAL_MIRROR, 1L), "over-budget canonical page must be refused");
 		stats.recordEviction(GpuWorldPageKind.CANONICAL_MIRROR, 16L);
 		
-		Map<String, Object> diagnostics = stats.asMap();
-		require(diagnostics.get("livePageCount").equals(1L), "eviction must reduce live page count");
-		require(diagnostics.get("usedResidentBytes").equals(48L), "eviction must reduce used resident bytes");
-		require(diagnostics.get("evictedPageCount").equals(1L), "eviction count must be reported");
-		require(diagnostics.get("evictedBytes").equals(16L), "evicted bytes must be reported");
-		require(diagnostics.get("overBudgetRefusals").equals(1L), "over-budget refusals must be reported");
-		require(diagnostics.get("overBudgetRefusedBytes").equals(1L), "over-budget refused bytes must be reported");
-		require(diagnostics.get("reservedBytes").equals(budget.reservedBytes()), "stats must expose reserved budget bytes");
-		
-		Map<?, ?> livePageCounts = child(diagnostics, "livePageCountsByKind");
-		Map<?, ?> usedBytes = child(diagnostics, "usedBytesByKind");
-		require(livePageCounts.get("canonical-mirror").equals(1L), "canonical live page count must be reported by kind");
-		require(usedBytes.get("canonical-mirror").equals(48L), "canonical used bytes must be reported by kind");
+		require(stats.livePageCount() == 1L, "eviction must reduce live page count");
+		require(stats.usedResidentBytes() == 48L, "eviction must reduce used resident bytes");
+		require(stats.evictedPageCount() == 1L, "eviction count must be reported");
+		require(stats.evictedBytes() == 16L, "evicted bytes must be reported");
+		require(stats.overBudgetRefusals() == 1L, "over-budget refusals must be reported");
+		require(stats.overBudgetRefusedBytes() == 1L, "over-budget refused bytes must be reported");
+		require(stats.livePageCount(GpuWorldPageKind.CANONICAL_MIRROR) == 1L, "canonical live page count must be reported by kind");
+		require(stats.usedBytes(GpuWorldPageKind.CANONICAL_MIRROR) == 48L, "canonical used bytes must be reported by kind");
 		
 		requireThrows(() -> stats.tryReservePage(GpuWorldPageKind.RENDER_ONLY_LOD, -1L), "negative page bytes must be rejected");
 		requireThrows(() -> stats.releasePage(GpuWorldPageKind.RENDER_ONLY_LOD, 1L), "releasing a missing page must be rejected");
@@ -130,30 +105,26 @@ public final class GpuWorldDatabaseInvariantCheck {
 		stats.recordPass(12L, 5L, 7L, 6L, 1L, 1L);
 		stats.recordPass(3L, 1L, 2L, 2L, 0L, 0L);
 		
-		Map<String, Object> diagnostics = stats.asMap();
-		require(diagnostics.get("compactionPassCount").equals(2L), "compaction pass count must be reported");
-		require(diagnostics.get("inputSectionCount").equals(15L), "input section count must accumulate");
-		require(diagnostics.get("culledSectionCount").equals(6L), "culled section count must accumulate");
-		require(diagnostics.get("visibleSectionCount").equals(9L), "visible section count must accumulate");
-		require(diagnostics.get("emittedCommandCount").equals(8L), "emitted command count must accumulate");
-		require(diagnostics.get("overflowedCommandCount").equals(1L), "overflowed command count must accumulate");
-		require(diagnostics.get("fallbackCommandCount").equals(1L), "fallback command count must accumulate");
-		require(Boolean.TRUE.equals(diagnostics.get("gpuResidentInputRequired")), "visibility command stats must require GPU-resident inputs");
-		require(Boolean.FALSE.equals(diagnostics.get("affectsVanillaCancellation")), "diagnostic counters must not authorize vanilla cancellation");
+		require(stats.compactionPassCount() == 2L, "compaction pass count must be reported");
+		require(stats.inputSectionCount() == 15L, "input section count must accumulate");
+		require(stats.culledSectionCount() == 6L, "culled section count must accumulate");
+		require(stats.visibleSectionCount() == 9L, "visible section count must accumulate");
+		require(stats.emittedCommandCount() == 8L, "emitted command count must accumulate");
+		require(stats.overflowedCommandCount() == 1L, "overflowed command count must accumulate");
+		require(stats.fallbackCommandCount() == 1L, "fallback command count must accumulate");
 		
-		Map<?, ?> lastPass = child(diagnostics, "lastPass");
-		require(lastPass.get("inputSectionCount").equals(3L), "last pass must expose input sections");
-		require(lastPass.get("visibleSectionCount").equals(2L), "last pass must expose visible sections");
-		require(lastPass.get("emittedCommandCount").equals(2L), "last pass must expose emitted commands");
+		GpuWorldVisibilityCommandPass lastPass = stats.lastPass();
+		require(lastPass.inputSectionCount() == 3L, "last pass must expose input sections");
+		require(lastPass.visibleSectionCount() == 2L, "last pass must expose visible sections");
+		require(lastPass.emittedCommandCount() == 2L, "last pass must expose emitted commands");
 		
 		GpuWorldDatabase database = GpuWorldDatabase.get();
 		database.resetForTests();
 		database.recordVisibilityCommandPass(4L, 1L, 3L, 2L, 1L, 0L);
-		Map<?, ?> databaseStats = child(database.asMap(), "visibilityCommandStats");
-		require(databaseStats.get("inputSectionCount").equals(4L), "database diagnostics must expose visibility inputs");
-		require(databaseStats.get("overflowedCommandCount").equals(1L), "database diagnostics must expose command overflows");
+		require(database.visibilityCommandStats().inputSectionCount() == 4L, "the database must count visibility inputs");
+		require(database.visibilityCommandStats().overflowedCommandCount() == 1L, "the database must count command overflows");
 		database.resetForTests();
-		require(child(database.asMap(), "visibilityCommandStats").get("compactionPassCount").equals(0L), "test reset must clear visibility command stats");
+		require(database.visibilityCommandStats().compactionPassCount() == 0L, "test reset must clear visibility command stats");
 		
 		requireThrows(() -> stats.recordPass(-1L, 0L, 0L, 0L, 0L, 0L), "negative visibility counts must be rejected");
 		requireThrows(() -> stats.recordPass(1L, 1L, 1L, 0L, 0L, 0L), "culled plus visible sections cannot exceed inputs");
@@ -175,32 +146,27 @@ public final class GpuWorldDatabaseInvariantCheck {
 		require(second.sequence() == 2L, "second capture must advance sequence");
 		require(second.revision().value() == 2L, "second capture must advance section revision");
 		
-		Map<String, Object> diagnostics = database.asMap();
-		require("cpu-chunk-state".equals(diagnostics.get("authority")), "GPU world database must report CPU chunk authority");
-		require(diagnostics.get("liveSections").equals(1), "one captured section must be live");
-		require(diagnostics.get("updateSequence").equals(2L), "diagnostics must expose update sequence");
-		Map<?, ?> residencyStats = child(diagnostics, "residencyStats");
-		Map<?, ?> livePageCounts = child(residencyStats, "livePageCountsByKind");
-		require(residencyStats.get("livePageCount").equals(1L), "recapturing a section must not duplicate resident pages");
-		require(livePageCounts.get("canonical-mirror").equals(1L), "database residency stats must count canonical mirror pages");
+		require(database.liveSections() == 1, "one captured section must be live");
+		require(database.updateSequence() == 2L, "the database must count updates");
+		GpuWorldResidencyStats residencyStats = database.residencyStats();
+		require(residencyStats.livePageCount() == 1L, "recapturing a section must not duplicate resident pages");
+		require(residencyStats.livePageCount(GpuWorldPageKind.CANONICAL_MIRROR) == 1L, "database residency stats must count canonical mirror pages");
 		
-		Map<?, ?> samples = child(diagnostics, "sampleSections");
-		Map<?, ?> section = child(samples, Long.toString(sectionNode));
-		require(section.get("capturedLayerMask").equals(0b0101), "captured layer mask must accumulate captured terrain layers");
-		require(section.get("materialId").equals(2), "section diagnostics must report latest material id");
+		GpuWorldSectionRecord section = database.section(sectionNode);
+		require(section.capturedLayerMask() == 0b0101, "captured layer mask must accumulate captured terrain layers");
+		require(section.latestMaterialId() == 2, "a section must keep its latest material id");
 		
 		GpuWorldSectionUpdate release = database.recordSectionRelease(sectionNode);
 		require(release.sequence() == 3L, "release must advance sequence");
 		require(release.reason() == GpuWorldDirtyReason.SECTION_RELEASED, "release reason must be explicit");
 		require(release.dirtyMask() == GpuWorldDatabase.DIRTY_REMOVED, "release must mark removal dirty");
-		require(database.asMap().get("liveSections").equals(0), "release must remove the live section");
-		require(child(database.asMap(), "residencyStats").get("livePageCount").equals(0L), "release must remove the resident page");
+		require(database.liveSections() == 0, "release must remove the live section");
+		require(database.residencyStats().livePageCount() == 0L, "release must remove the resident page");
 		
 		database.clear("test clear");
-		Map<String, Object> afterClear = database.asMap();
-		require(afterClear.get("clearCount").equals(1L), "clear must increment clear count");
-		require(afterClear.get("lastClearReason").equals("test clear"), "clear must preserve reason");
-		require(afterClear.get("liveSections").equals(0), "clear must leave no live sections");
+		require(database.clearCount() == 1L, "clear must increment clear count");
+		require(database.lastClearReason().equals("test clear"), "clear must preserve reason");
+		require(database.liveSections() == 0, "clear must leave no live sections");
 		
 		database.resetForTests();
 	}
@@ -219,19 +185,17 @@ public final class GpuWorldDatabaseInvariantCheck {
 		accelerationData.registerPage(accelerationPage(second, 102L, "current canonical page"));
 		accelerationData.registerPage(accelerationPage(other, 103L, "other section canonical page"));
 		accelerationData.invalidateSource(second, "canonical source revision advanced");
-		Map<String, Object> diagnostics = accelerationData.asMap();
-		require(diagnostics.get("registeredPageCount").equals(3L), "registry must count pages registered before invalidation");
-		require(diagnostics.get("livePageCount").equals(2L), "source invalidation must leave current-revision and other-section pages live");
-		require(diagnostics.get("pendingRebuildCount").equals(1L), "source invalidation must mark stale pages pending rebuild");
-		require(diagnostics.get("sourceInvalidationCount").equals(1L), "registry must count source invalidation events");
-		require(diagnostics.get("sourceInvalidatedPageCount").equals(1L), "registry must count stale pages invalidated by source updates");
-		Map<?, ?> lastInvalidation = child(diagnostics, "lastSourceInvalidation");
-		require(lastInvalidation.get("updateSequence").equals(2L), "source invalidation must preserve the GPU world update sequence");
-		require(lastInvalidation.get("sourceRevision").equals(2L), "source invalidation must preserve the canonical source revision");
-		require(lastInvalidation.get("pageKind").equals("canonical-mirror"), "source invalidation must preserve canonical page kind");
-		require(lastInvalidation.get("invalidatedPageCount").equals(1L), "last source invalidation must expose affected page count");
-		Map<?, ?> fallbackReasons = child(diagnostics, "fallbackReasonCounts");
-		require(fallbackReasons.get("canonical source revision advanced").equals(1L), "source invalidation reason must be counted");
+		require(accelerationData.registeredPageCount() == 3L, "registry must count pages registered before invalidation");
+		require(accelerationData.livePageCount() == 2L, "source invalidation must leave current-revision and other-section pages live");
+		require(accelerationData.pendingRebuildCount() == 1L, "source invalidation must mark stale pages pending rebuild");
+		require(accelerationData.sourceInvalidationCount() == 1L, "registry must count source invalidation events");
+		require(accelerationData.sourceInvalidatedPageCount() == 1L, "registry must count stale pages invalidated by source updates");
+		RtPtSourceInvalidation lastInvalidation = accelerationData.lastSourceInvalidation();
+		require(lastInvalidation.updateSequence() == 2L, "source invalidation must preserve the GPU world update sequence");
+		require(lastInvalidation.sourceRevision().value() == 2L, "source invalidation must preserve the canonical source revision");
+		require(lastInvalidation.pageKind() == GpuWorldPageKind.CANONICAL_MIRROR, "source invalidation must preserve canonical page kind");
+		require(lastInvalidation.invalidatedPageCount() == 1L, "last source invalidation must expose affected page count");
+		require(accelerationData.fallbackReasonCount("canonical source revision advanced") == 1L, "source invalidation reason must be counted");
 		accelerationData.resetForTests();
 		database.resetForTests();
 	}
@@ -251,12 +215,6 @@ public final class GpuWorldDatabaseInvariantCheck {
 	
 	private static RtPtAccelerationPage accelerationPage(GpuWorldSectionUpdate update, long handle, String fallbackReason) {
 		return new RtPtAccelerationPage(RtPtAccelerationDomain.TERRAIN, update.section(), update.revision(), update.pageKind(), handle, handle + 1000L, fallbackReason);
-	}
-	
-	private static Map<?, ?> child(Map<?, ?> map, String key) {
-		Object value = map.get(key);
-		require(value instanceof Map<?, ?>, key + " diagnostics must be a map");
-		return (Map<?, ?>) value;
 	}
 	
 	private static void requireThrows(Runnable action, String message) {

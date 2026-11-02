@@ -7,7 +7,6 @@ import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.*;
 import org.slf4j.Logger;
 
-import java.util.Map;
 import java.util.Set;
 
 public final class VulkanImprovementCapabilities {
@@ -67,7 +66,7 @@ public final class VulkanImprovementCapabilities {
 		
 		lastSnapshot = snapshot;
 		if (TerrainRendererDebugConfig.dumpCapabilities()) {
-			LOGGER.info("[Vulkan Improvement] {}", snapshot.toJson());
+			LOGGER.info("[Vulkan Improvement] {}", snapshot.describe());
 		}
 		return snapshot;
 	}
@@ -99,12 +98,8 @@ public final class VulkanImprovementCapabilities {
 		return maxBufferBytes;
 	}
 	
-	public static Map<String, Object> asMap() {
-		return lastSnapshot.asMap();
+	public static String describe() {
+		return lastSnapshot.describe();
 	}
 	
-	
-	public static String json() {
-		return lastSnapshot.toJson();
-	}
 }

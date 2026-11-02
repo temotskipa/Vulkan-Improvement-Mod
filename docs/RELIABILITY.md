@@ -30,7 +30,7 @@ validation on real Vulkan hardware.
   terrain meshlet partitioning, capture payload validation, custom-index bounds,
   and default material IDs.
 - `.\gradlew.bat checkRendererDomainInvariants` runs pure Java checks for
-  renderer domain reset defaults, required diagnostic keys, per-domain
+  renderer domain reset defaults, required domain names, per-domain
   compatibility contracts, and terrain path diagnostics.
 - `.\gradlew.bat checkRendererCoreServiceInvariants` runs pure Java source
   checks that renderer-wide lifecycle, domain reset, present pacing, and
@@ -118,43 +118,36 @@ validation on real Vulkan hardware.
 ## Runtime Signals
 
 - `VulkanImprovementCapabilities` logs device capability snapshots when
-  `vim.dumpCapabilities=true`; the snapshot includes a runtime profile grouped
-  by hard requirements, preferred acceleration features, RT/PT-readiness
-  features, selected paths, and disabled reasons. Selected paths explicitly
-  report descriptor buffer, descriptor heap, mesh-task dispatch, multi-draw
+  `vim.dumpCapabilities=true`, as `key=value` text: every capability, the paths
+  the device and the flags select, and why the others are not selected. Selected
+  paths explicitly report descriptor buffer, descriptor heap, mesh-task dispatch, multi-draw
   fallback, device-generated commands, present pacing, fragment shading rate,
   and RT/PT readiness.
-- `RendererCoreServices.asMap()` exposes renderer-wide lifecycle state,
-  lifecycle reason, renderer-domain states and compatibility contracts, present
-  pacing, and fragment shading-rate diagnostics separately from terrain
-  diagnostics.
-- `RendererDiagnostics.bugReport()` includes `videoSettings` so captures can be
-  correlated with texture filtering, mipmap count, anisotropy, preferred
-  backend, and VIM Video Settings visibility. Terrain descriptor diagnostics
-  also expose captured `Sampler0`/`Sampler2` texture bindings, including image
+- `RendererDiagnostics.bugReport()` is plain `key=value` text, one section per
+  line: versions, flags, video settings, device, renderer lifecycle, the path
+  each domain draws with and why, present pacing, fragment shading rate,
+  framebuffers, transfer barriers, terrain, models, particles, text, the GPU
+  world and RT/PT data. Nothing parses it; it is for reading.
+- The report's `videoSettings` line ties captures to texture filtering, mipmap
+  count, anisotropy, preferred backend, and VIM Video Settings visibility. Its
+  `terrainResources` line also gives captured `Sampler0`/`Sampler2` texture bindings, including image
   dimensions, mip levels, and sampler anisotropy.
-- `MeshTerrainRenderer.asMap()` exposes renderer counters and nested subsystem
-  state, including lifecycle state, the last lifecycle reason, and per-domain
-  renderer path diagnostics. It also reports the last terrain mesh-task
-  dispatch record, including dispatch source, task count, task-limit truncation,
+- `MeshTerrainRenderer.describe()` gives renderer counters and the last terrain
+  mesh-task dispatch record, including dispatch source, task count, task-limit truncation,
   whether a CPU-written visible meshlet list was used, and whether a CPU-filled
   terrain work queue was used. Default Vulkan sessions keep vanilla terrain
   visible and leave VIM terrain capture/bootstrap disabled. Diagnostic terrain
   capture/bootstrap, visible draw-list replacement, work-queue mesh-task
   dispatch, and GPU-generated indirect-command preparation are validation-gated
   opt-ins until their runtime cost and device-loss risk are fixed.
-- `RendererDiagnostics.bugReport()` exposes `gpuWorldDatabase`, a CPU-authority
-  GPU-world mirror contract with live section count, update sequence, clear
-  count, material-table contract, page-kind authority labels, residency budget
-  and usage stats, visibility compaction and indirect-command counters, the
-  last dirty update, and sampled section diagnostics.
-- `RendererDiagnostics.bugReport()` exposes `rtPtAccelerationData`, a
-  diagnostics-only acceleration-data registry. Allocation is disabled, while
+- The report's `gpuWorld` line describes a CPU-authority GPU-world mirror: live
+  section count, update sequence, clear count, residency usage, visibility
+  compaction and indirect-command counters, and the last dirty update.
+- The report's `rtPtAccelerationData` line describes a diagnostics-only acceleration-data registry. Allocation is disabled, while
   registered/live/retired page counts, pending rebuilds, device-lost clears,
   and fallback reason counts are tracked for future RT/PT work.
-- `DescriptorHeapTerrainResources.asMap()` exposes terrain material-table
-  address, allocation size, material record layout, write count, and
-  missing-resource count. It also reports retired GPU resource-set, buffer, and
+- `DescriptorHeapTerrainResources.describe()` gives the terrain material table's
+  write and missing-resource counts. It also reports retired GPU resource-set, buffer, and
   byte counts so capacity growth and shutdown pressure can be inspected. Its
   visible meshlet diagnostics include ring wrap count and the last allocation's
   wrap/fence-blocked state. Terrain work-queue and mesh-task indirect-command
@@ -227,9 +220,9 @@ validation on real Vulkan hardware.
 | `vim.gpuParticleVertices`                          | `true`      | Let the GPU write the vertices of Minecraft's particles (`client.vulkan.model.ParticleGpuVertices`) from the arrays Minecraft keeps them in, copied whole, with a compute pass of its own. Off while another mod's mixin has merged a method other than an accessor or invoker into `QuadParticleFeatureRenderer`, `QuadParticleRenderState` or its `Storage`. Can be switched between frames. |
 | `vim.gpuTextVertices`                              | `true`      | Let the GPU write the vertices of text Minecraft draws in the level (`client.vulkan.model.TextGpuVertices`) from quads kept per string once a string is drawn in a second frame. Text stays on Minecraft's path when the path cannot write it exactly: see-through, outlined and obfuscated text, text made anew every frame, and text Minecraft sorts on upload, which is all sign and display text while improved transparency is off. Off while another mod's mixin has merged a method other than an accessor or invoker into `TextFeatureRenderer`, `Font` or `BakedSheetGlyph`. Can be switched between frames. |
 | `vim.cullMeshlets`                                 | `true`      | Let the task stage drop a page's meshlets that face away from the camera or are out of view. Off draws every meshlet of every page the visibility pass kept.                                                                                                                                      |
-| `vim.terrainGpuTimer`                              | `false`     | Write GPU timestamps around the mod's per-frame prepared work and each group of terrain layers, for `terrainRenderer.performance.gpu`. Measures vanilla terrain and the mesh path alike.                                                                                                          |
+| `vim.terrainGpuTimer`                              | `false`     | Write GPU timestamps around the mod's per-frame prepared work and each group of terrain layers, for the bug report's `performance` line. Measures vanilla terrain and the mesh path alike.                                                                                                          |
 
-Press the **Dump Vulkan Improvement Diagnostics** key (default: `K` in the Debug category) to log a compact bug-report JSON blob via `RendererDiagnostics`.
+Press the **Dump Vulkan Improvement Diagnostics** key (default: `K` in the Debug category) to log the bug report via `RendererDiagnostics`.
 
 Update this table when adding or removing flags.
 
@@ -274,27 +267,17 @@ Required JVM flags to record per run: `vim.replaceVanillaTerrain`, `vim.enableTe
 Required runtime counters to inspect: `meshReplacementDrawCalls`, `meshReplacementWorkQueueDrawCalls`, `meshReplacementTasks`, `meshReplacementTaskTruncations`, `meshReplacementDrawCallsByLayer`, `meshReplacementPreparedGpuCommands`, `meshReplacementPreparedGpuCommandDisabled`, `meshReplacementPreparedDispatchQueueLeaks`, `meshReplacementVisibleMeshletFallbackRefusals`, `meshReplacementPreparedGpuCommandRefusals`.
 
 Required GPU-world counters to inspect when validating the resident terrain
-path: `gpuWorldDatabase.residentTerrain.livePages`,
-`gpuWorldDatabase.residentTerrain.usedBytes`,
-`gpuWorldDatabase.residentTerrain.allocationRefusals`,
-`terrainRenderer.sectionStore.residentPages`,
-`terrainRenderer.descriptorHeap.terrainCapacityGrowths`,
-`gpuWorldDatabase.visibilityCommandStats.culledSectionCount`,
-`gpuWorldDatabase.residencyStats.livePageCount`,
-`gpuWorldDatabase.residencyStats.overBudgetRefusals`,
-`gpuWorldDatabase.visibilityCommandStats.inputSectionCount`,
-`gpuWorldDatabase.visibilityCommandStats.visibleSectionCount`,
-`gpuWorldDatabase.visibilityCommandStats.emittedCommandCount`,
-`gpuWorldDatabase.visibilityCommandStats.overflowedCommandCount`, and
-`gpuWorldDatabase.visibilityCommandStats.fallbackCommandCount`.
+path: on the `gpuWorld` line, `residentTerrain` (`livePages`, `usedBytes`,
+`allocationRefusals`), `residency` (`livePages`, `overBudgetRefusals`) and
+`visibility` (`inputSections`, `culledSections`, `visibleSections`,
+`emittedCommands`, `overflowedCommands`, `fallbackCommands`); `residentPages` on
+the `terrainSections` line; and `terrainCapacityGrowths` on the
+`terrainResources` line.
 
 Required texture-quality diagnostics to inspect when evaluating close terrain:
-`videoSettings.quality.textureFiltering`, `videoSettings.quality.mipmapLevels`,
-`videoSettings.quality.maxAnisotropyValue`, and
-`terrainRenderer.descriptorHeap.textureBindings.Sampler0.maxAnisotropy`,
-`terrainRenderer.descriptorHeap.textureBindings.Sampler0.minFilter`,
-`terrainRenderer.descriptorHeap.textureBindings.Sampler0.magFilter`, and
-`terrainRenderer.descriptorHeap.textureBindings.Sampler0.maxLod`.
+`textureFiltering`, `mipmapLevels` and `maxAnisotropy` on the `videoSettings`
+line, and `maxAnisotropy`, `minFilter`, `magFilter` and `maxLod` of `Sampler0` in
+`textureBindings` on the `terrainResources` line.
 
 ## Vulkan Validation Run
 
@@ -355,10 +338,10 @@ path with itself. Improved transparency adds up to a few hundred pixels of 1 to
 ## Performance Check
 
 The mesh path has to be faster than vanilla terrain, not only look like it.
-`TerrainPerformanceMonitor` (in the bug report under
-`terrainRenderer.performance`) times every frame in a world and, with
-`vim.terrainGpuTimer`, the GPU time of the mod's prepared work (`prepareMs`)
-and of each group of terrain layers (`opaqueMs`, `translucentMs`). Its
+`TerrainPerformanceMonitor` (the bug report's `performance` line) times every
+frame in a world and, with `vim.terrainGpuTimer`, the GPU time of the mod's
+prepared work (`gpuPrepareMs`) and of each group of terrain layers
+(`gpuOpaqueMs`, `gpuTranslucentMs`). Its
 `reset()` starts a new sample. `meanCpuMs` is the time Minecraft's render
 thread spent on a frame without waiting for the GPU; when the frame takes
 longer than that in one mode and not the other, the GPU sets that mode's pace.

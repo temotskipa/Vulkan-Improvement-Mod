@@ -14,7 +14,6 @@ import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ComputePipeline;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ShaderCompiler;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ShaderStorage;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
-import net.minecraft.client.particle.SingleQuadParticle;
 import net.minecraft.client.particle.SingleQuadParticle.Layer;
 import net.minecraft.client.renderer.StagedVertexBuffer;
 import net.minecraft.client.renderer.StagedVertexBuffer.Draw;
@@ -306,14 +305,7 @@ public final class ParticleGpuVertices {
 		}
 	}
 	
-	public synchronized Map<String, Object> asMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("enabled", TerrainRendererDebugConfig.gpuParticleVerticesEnabled());
-		map.put("ready", this.pipeline != null);
-		map.put("otherModMixins", this.otherModMixins == null ? List.of() : this.otherModMixins);
-		map.put("gpuLayers", this.gpuLayers);
-		map.put("writtenFrames", this.writtenFrames);
-		map.put("lastFrameParticles", this.lastFrameParticles);
-		return map;
+	public synchronized String describe() {
+		return "enabled=" + TerrainRendererDebugConfig.gpuParticleVerticesEnabled() + ", ready=" + (this.pipeline != null) + ", otherModMixins=" + this.otherModMixins + ", gpuLayers=" + this.gpuLayers + ", writtenFrames=" + this.writtenFrames + ", lastFrameParticles=" + this.lastFrameParticles;
 	}
 }

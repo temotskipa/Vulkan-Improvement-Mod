@@ -4,8 +4,6 @@ import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuRec
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainMaterialRecord;
 
 import java.lang.foreign.MemorySegment;
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 public record GpuMaterialRecord(int materialId, int flags, int blockAtlasWidth, int blockAtlasHeight, int blockAtlasBaseMip, int blockAtlasMipLevels, int lightmapWidth, int lightmapHeight, int normalTextureIndex, int specularTextureIndex, int emissionTextureIndex, int tintFlags, int alphaMode, int renderLayerOrdinal, int materialDomain, int reserved0) {
 	public static final int DEFAULT_TERRAIN_MATERIAL_ID = 0;
@@ -38,21 +36,6 @@ public record GpuMaterialRecord(int materialId, int flags, int blockAtlasWidth, 
 			flags |= FLAG_ALPHA_BLENDED;
 		}
 		return new GpuMaterialRecord(materialId, flags, blockAtlas.width(), blockAtlas.height(), blockAtlas.baseMipLevel(), blockAtlas.mipLevels(), lightmap.width(), lightmap.height(), MISSING_TEXTURE_INDEX, MISSING_TEXTURE_INDEX, MISSING_TEXTURE_INDEX, TINT_FLAGS_NONE, alphaMode.id(), renderLayerOrdinal, MATERIAL_DOMAIN_TERRAIN, 0);
-	}
-	
-	static Map<String, Object> layoutMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("intCount", INT_COUNT);
-		map.put("bytes", BYTES);
-		map.put("defaultTerrainMaterialId", DEFAULT_TERRAIN_MATERIAL_ID);
-		map.put("flagBlockAtlasReady", FLAG_BLOCK_ATLAS_READY);
-		map.put("flagLightmapReady", FLAG_LIGHTMAP_READY);
-		map.put("flagAlphaMasked", FLAG_ALPHA_MASKED);
-		map.put("flagAlphaBlended", FLAG_ALPHA_BLENDED);
-		map.put("missingTextureIndex", MISSING_TEXTURE_INDEX);
-		map.put("tintFlagsNone", TINT_FLAGS_NONE);
-		map.put("materialDomainTerrain", MATERIAL_DOMAIN_TERRAIN);
-		return map;
 	}
 	
 	/**

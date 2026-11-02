@@ -114,20 +114,44 @@ public final class RtPtAccelerationDataRegistry {
 		countReason(fallbackReason);
 	}
 	
-	public synchronized Map<String, Object> asMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("allocationEnabled", ALLOCATION_ENABLED);
-		map.put("allocationGate", allocationGate(VulkanRuntimeProfile.from(VulkanImprovementCapabilities.snapshot())).asMap());
-		map.put("registeredPageCount", this.registeredPageCount);
-		map.put("livePageCount", (long) this.livePages.size());
-		map.put("retiredPageCount", this.retiredPageCount);
-		map.put("pendingRebuildCount", this.pendingRebuildCount);
-		map.put("deviceLostClearCount", this.deviceLostClearCount);
-		map.put("sourceInvalidationCount", this.sourceInvalidationCount);
-		map.put("sourceInvalidatedPageCount", this.sourceInvalidatedPageCount);
-		map.put("lastSourceInvalidation", this.lastSourceInvalidation == null ? Map.of("present", false) : this.lastSourceInvalidation.asMap());
-		map.put("fallbackReasonCounts", new LinkedHashMap<>(this.fallbackReasonCounts));
-		return map;
+	public synchronized String describe() {
+		return "allocationGate=" + allocationGate(VulkanRuntimeProfile.from(VulkanImprovementCapabilities.snapshot())) + ", registeredPages=" + this.registeredPageCount + ", livePages=" + this.livePages.size() + ", retiredPages=" + this.retiredPageCount + ", pendingRebuilds=" + this.pendingRebuildCount + ", deviceLostClears=" + this.deviceLostClearCount + ", sourceInvalidations=" + this.sourceInvalidationCount + ", sourceInvalidatedPages=" + this.sourceInvalidatedPageCount + ", lastSourceInvalidation=" + this.lastSourceInvalidation + ", fallbackReasons=" + this.fallbackReasonCounts;
+	}
+	
+	public synchronized long registeredPageCount() {
+		return this.registeredPageCount;
+	}
+	
+	public synchronized long livePageCount() {
+		return this.livePages.size();
+	}
+	
+	public synchronized long retiredPageCount() {
+		return this.retiredPageCount;
+	}
+	
+	public synchronized long pendingRebuildCount() {
+		return this.pendingRebuildCount;
+	}
+	
+	public synchronized long deviceLostClearCount() {
+		return this.deviceLostClearCount;
+	}
+	
+	public synchronized long sourceInvalidationCount() {
+		return this.sourceInvalidationCount;
+	}
+	
+	public synchronized long sourceInvalidatedPageCount() {
+		return this.sourceInvalidatedPageCount;
+	}
+	
+	public synchronized RtPtSourceInvalidation lastSourceInvalidation() {
+		return this.lastSourceInvalidation;
+	}
+	
+	public synchronized long fallbackReasonCount(String reason) {
+		return this.fallbackReasonCounts.getOrDefault(reason, 0L);
 	}
 	
 	/**

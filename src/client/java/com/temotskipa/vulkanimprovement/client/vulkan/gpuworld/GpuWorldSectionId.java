@@ -2,9 +2,6 @@ package com.temotskipa.vulkanimprovement.client.vulkan.gpuworld;
 
 import net.minecraft.core.SectionPos;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
-
 public record GpuWorldSectionId(long sectionNode, int sectionX, int sectionY, int sectionZ) {
 	public GpuWorldSectionId {
 		long encoded = SectionPos.asLong(sectionX, sectionY, sectionZ);
@@ -19,14 +16,5 @@ public record GpuWorldSectionId(long sectionNode, int sectionX, int sectionY, in
 	
 	public static GpuWorldSectionId fromSectionNode(long sectionNode) {
 		return new GpuWorldSectionId(sectionNode, SectionPos.x(sectionNode), SectionPos.y(sectionNode), SectionPos.z(sectionNode));
-	}
-	
-	public Map<String, ? extends Number> asMap() {
-		Map<String, Number> map = new LinkedHashMap<>();
-		map.put("sectionNode", this.sectionNode);
-		map.put("sectionX", this.sectionX);
-		map.put("sectionY", this.sectionY);
-		map.put("sectionZ", this.sectionZ);
-		return map;
 	}
 }

@@ -2,38 +2,39 @@ package com.temotskipa.vulkanimprovement.client.vulkan.runtime;
 
 import com.mojang.logging.LogUtils;
 import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanImprovementCapabilities;
+import com.temotskipa.vulkanimprovement.client.vulkan.gpu.FramebufferCache;
+import com.temotskipa.vulkanimprovement.client.vulkan.gpu.TransferBarriers;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldDatabase;
+import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelGpuVertices;
+import com.temotskipa.vulkanimprovement.client.vulkan.model.ParticleGpuVertices;
+import com.temotskipa.vulkanimprovement.client.vulkan.model.TextGpuVertices;
+import com.temotskipa.vulkanimprovement.client.vulkan.presentation.PresentPacingController;
 import com.temotskipa.vulkanimprovement.client.vulkan.rtpt.RtPtAccelerationDataRegistry;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.DescriptorHeapTerrainResources;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.FragmentShadingRateController;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.MeshShaderTerrainProgram;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.MeshTerrainRenderer;
-import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRenderContext;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.SectionMeshletStore;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainPerformanceMonitor;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
 import net.fabricmc.loader.api.FabricLoader;
 import org.slf4j.Logger;
-
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 public final class RendererDiagnostics {
 	private static final Logger LOGGER = LogUtils.getLogger();
 	
 	public static void logBugReport() {
-		LOGGER.info("[Vulkan Improvement] bug-report {}", RendererJson.toJson(bugReport()));
+		LOGGER.info("[Vulkan Improvement] bug-report{}{}", System.lineSeparator(), bugReport());
 	}
 	
-	public static Map<String, Object> bugReport() {
-		Map<String, Object> report = new LinkedHashMap<>();
-		report.put("modVersion", FabricLoader.getInstance().getModContainer("vulkanimprovement").map(container -> container.getMetadata().getVersion().getFriendlyString()).orElse("unknown"));
-		report.put("minecraftVersion", FabricLoader.getInstance().getModContainer("minecraft").map(container -> container.getMetadata().getVersion().getFriendlyString()).orElse("unknown"));
-		report.put("fabricLoaderVersion", FabricLoader.getInstance().getModContainer("fabricloader").map(container -> container.getMetadata().getVersion().getFriendlyString()).orElse("unknown"));
-		report.put("debugConfig", TerrainRendererDebugConfig.describe());
-		report.put("videoSettings", VulkanVideoSettingsCompatibility.snapshot());
-		report.put("capabilities", VulkanImprovementCapabilities.asMap());
-		report.put("rendererServices", RendererCoreServices.get().asMap());
-		report.put("acceleratedWorldgenProvider", AcceleratedWorldgenProviderCompatibility.snapshot());
-		report.put("terrainRenderer", MeshTerrainRenderer.get().asMap());
-		report.put("gpuWorldDatabase", GpuWorldDatabase.get().asMap());
-		report.put("rtPtAccelerationData", RtPtAccelerationDataRegistry.get().asMap());
-		report.put("preparedDispatchQueues", TerrainRenderContext.preparedDispatchQueueDepths());
-		return report;
+	/**
+	 * What the mod runs on and with, which paths are active and why, and what each path has done.
+	 */
+	public static String bugReport() {
+		return String.join(System.lineSeparator(), "versions: mod=" + version("vulkanimprovement") + ", minecraft=" + version("minecraft") + ", fabricLoader=" + version("fabricloader"), "flags: " + TerrainRendererDebugConfig.describe(), "videoSettings: " + VulkanVideoSettingsCompatibility.describe(), "device: " + VulkanImprovementCapabilities.describe(), "renderer: " + RendererCoreServices.get().describe(), "domains: " + RendererDomainRegistry.get().describe(), "presentPacing: " + PresentPacingController.get().describe(), "fragmentShadingRate: " + FragmentShadingRateController.get().describe(), "framebuffers: " + FramebufferCache.latest().map(FramebufferCache::describe).orElse("none"), "transferBarriers: " + TransferBarriers.latest().map(TransferBarriers::describe).orElse("none"), "terrain: " + MeshTerrainRenderer.get().describe(), "terrainProgram: " + MeshShaderTerrainProgram.get().describe(), "terrainSections: " + SectionMeshletStore.describe(), "terrainResources: " + DescriptorHeapTerrainResources.get().describe(), "performance: " + TerrainPerformanceMonitor.get().describe(), "models: " + ModelGpuVertices.get().describe(), "particles: " + ParticleGpuVertices.get().describe(), "text: " + TextGpuVertices.get().describe(), "gpuWorld: " + GpuWorldDatabase.get().describe(), "rtPtAccelerationData: " + RtPtAccelerationDataRegistry.get().describe(), "worldgenProvider: " + AcceleratedWorldgenProviderCompatibility.snapshot());
+	}
+	
+	private static String version(String modId) {
+		return FabricLoader.getInstance().getModContainer(modId).map(container -> container.getMetadata().getVersion().getFriendlyString()).orElse("unknown");
 	}
 }

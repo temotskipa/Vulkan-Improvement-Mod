@@ -4,7 +4,6 @@ import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuRec
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainMaterialRecord;
 
 import java.lang.foreign.MemorySegment;
-import java.util.Map;
 
 public final class GpuMaterialRecordInvariantCheck {
 	private GpuMaterialRecordInvariantCheck() {
@@ -13,7 +12,6 @@ public final class GpuMaterialRecordInvariantCheck {
 	
 	static void main() {
 		checkRecordSizeMatchesTerrainLayout();
-		checkLayoutDiagnostics();
 		checkUnavailableTerrainMaterialEncoding();
 		checkReadyTerrainMaterialEncoding();
 	}
@@ -22,17 +20,6 @@ public final class GpuMaterialRecordInvariantCheck {
 		require(GpuMaterialRecord.BYTES == TerrainMaterialRecord.LAYOUT.byteSize(), "material record byte size must match the shader's record");
 		require(GpuMaterialRecord.INT_COUNT == TerrainMaterialRecord.LAYOUT.memberLayouts().size(), "material record must write one int per member of the shader's record");
 		require(GpuMaterialRecord.INT_COUNT == GpuMaterialRecord.class.getRecordComponents().length, "material record must write every one of its components");
-	}
-	
-	private static void checkLayoutDiagnostics() {
-		Map<String, Object> layout = GpuMaterialRecord.layoutMap();
-		require(layout.get("intCount").equals(GpuMaterialRecord.INT_COUNT), "material layout diagnostics must include int count");
-		require(layout.get("bytes").equals(GpuMaterialRecord.BYTES), "material layout diagnostics must include byte size");
-		require(layout.get("flagBlockAtlasReady").equals(GpuMaterialRecord.FLAG_BLOCK_ATLAS_READY), "material layout diagnostics must include atlas flag");
-		require(layout.get("flagLightmapReady").equals(GpuMaterialRecord.FLAG_LIGHTMAP_READY), "material layout diagnostics must include lightmap flag");
-		require(layout.get("flagAlphaMasked").equals(GpuMaterialRecord.FLAG_ALPHA_MASKED), "material layout diagnostics must include masked alpha flag");
-		require(layout.get("flagAlphaBlended").equals(GpuMaterialRecord.FLAG_ALPHA_BLENDED), "material layout diagnostics must include blended alpha flag");
-		require(layout.get("materialDomainTerrain").equals(GpuMaterialRecord.MATERIAL_DOMAIN_TERRAIN), "material layout diagnostics must include terrain domain");
 	}
 	
 	private static void checkUnavailableTerrainMaterialEncoding() {

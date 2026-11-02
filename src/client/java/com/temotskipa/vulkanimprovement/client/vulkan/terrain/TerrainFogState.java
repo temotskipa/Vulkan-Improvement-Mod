@@ -1,8 +1,6 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
 import java.nio.ByteBuffer;
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 /**
  * The fog Minecraft set up for the frame being drawn. Minecraft uploads it to a uniform buffer its
@@ -41,17 +39,5 @@ public final class TerrainFogState {
 		target.putFloat(fog.red()).putFloat(fog.green()).putFloat(fog.blue()).putFloat(fog.alpha());
 		target.putFloat(fog.environmentalStart()).putFloat(fog.environmentalEnd()).putFloat(fog.renderDistanceStart()).putFloat(fog.renderDistanceEnd());
 		target.putInt(improvedFog ? 1 : 0).putInt(0).putInt(0).putInt(0);
-	}
-	
-	public static Map<String, Object> asMap() {
-		TerrainFog fog = current;
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("enabled", fog.enabled());
-		map.put("color", fog.red() + "," + fog.green() + "," + fog.blue() + "," + fog.alpha());
-		map.put("environmentalStart", fog.environmentalStart());
-		map.put("environmentalEnd", fog.environmentalEnd());
-		map.put("renderDistanceStart", fog.renderDistanceStart());
-		map.put("renderDistanceEnd", fog.renderDistanceEnd());
-		return map;
 	}
 }

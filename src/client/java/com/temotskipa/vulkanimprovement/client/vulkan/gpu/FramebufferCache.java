@@ -109,12 +109,7 @@ public final class FramebufferCache {
 		keysByView.clear();
 	}
 	
-	public Map<String, Object> asMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("kept", framebuffers.size());
-		map.put("created", created);
-		map.put("reused", reused);
-		map.put("released", released);
-		return map;
+	public String describe() {
+		return "kept=" + framebuffers.size() + ", created=" + created + ", reused=" + reused + ", released=" + released;
 	}
 }

@@ -1,8 +1,5 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.runtime;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
-
 record RendererDomainContract(RendererDomain domain, String vanillaOwner, String assetContract, String orderingContract, String materialContract, String fallbackReason, boolean replacementAllowed) {
 	static RendererDomainContract defaultFor(RendererDomain domain) {
 		return switch (domain) {
@@ -33,17 +30,5 @@ record RendererDomainContract(RendererDomain domain, String vanillaOwner, String
 	
 	private static RendererDomainContract uncontracted(RendererDomain domain, String vanillaOwner, String assetContract, String orderingContract, String materialContract, String fallbackReason) {
 		return new RendererDomainContract(domain, vanillaOwner, assetContract, orderingContract, materialContract, fallbackReason, false);
-	}
-	
-	Map<String, Object> asMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("domain", this.domain.diagnosticName());
-		map.put("vanillaOwner", this.vanillaOwner);
-		map.put("assetContract", this.assetContract);
-		map.put("orderingContract", this.orderingContract);
-		map.put("materialContract", this.materialContract);
-		map.put("fallbackReason", this.fallbackReason);
-		map.put("replacementAllowed", this.replacementAllowed);
-		return map;
 	}
 }

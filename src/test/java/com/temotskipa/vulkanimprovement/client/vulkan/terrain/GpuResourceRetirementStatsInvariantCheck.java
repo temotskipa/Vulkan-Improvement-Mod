@@ -1,7 +1,5 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
-import java.util.Map;
-
 public final class GpuResourceRetirementStatsInvariantCheck {
 	private GpuResourceRetirementStatsInvariantCheck() {
 	}
@@ -20,7 +18,7 @@ public final class GpuResourceRetirementStatsInvariantCheck {
 		require(stats.resourceSets() == 0, "empty stats must report zero resource sets");
 		require(stats.buffers() == 0, "empty stats must report zero buffers");
 		require(stats.bytes() == 0L, "empty stats must report zero bytes");
-		requireMap(stats.asMap(), 0, 0, 0L);
+		requireStats(stats, 0, 0, 0L);
 	}
 	
 	private static void checkSingleSetStats() {
@@ -28,7 +26,7 @@ public final class GpuResourceRetirementStatsInvariantCheck {
 		require(stats.resourceSets() == 1, "non-empty single set stats must count one resource set");
 		require(stats.buffers() == 11, "single set stats must keep buffer count");
 		require(stats.bytes() == 4096L, "single set stats must keep byte count");
-		requireMap(stats.asMap(), 1, 11, 4096L);
+		requireStats(stats, 1, 11, 4096L);
 	}
 	
 	private static void checkMergedStats() {
@@ -39,7 +37,7 @@ public final class GpuResourceRetirementStatsInvariantCheck {
 		require(merged.resourceSets() == 2, "merged stats must add resource sets");
 		require(merged.buffers() == 11, "merged stats must add buffers");
 		require(merged.bytes() == 384L, "merged stats must add bytes");
-		requireMap(merged.asMap(), 2, 11, 384L);
+		requireStats(merged, 2, 11, 384L);
 	}
 	
 	private static void checkSaturatingMerge() {
@@ -58,10 +56,10 @@ public final class GpuResourceRetirementStatsInvariantCheck {
 		requireThrows(() -> new GpuResourceRetirementStats(0, 0, -1L), "negative bytes must be rejected");
 	}
 	
-	private static void requireMap(Map<String, Object> map, int resourceSets, int buffers, long bytes) {
-		require(map.get("resourceSets").equals(resourceSets), "diagnostic map must include resource set count");
-		require(map.get("buffers").equals(buffers), "diagnostic map must include buffer count");
-		require(map.get("bytes").equals(bytes), "diagnostic map must include byte count");
+	private static void requireStats(GpuResourceRetirementStats stats, int resourceSets, int buffers, long bytes) {
+		require(stats.resourceSets() == resourceSets, "stats must count resource sets");
+		require(stats.buffers() == buffers, "stats must count buffers");
+		require(stats.bytes() == bytes, "stats must count bytes");
 	}
 	
 	private static void requireThrows(Runnable action, String message) {

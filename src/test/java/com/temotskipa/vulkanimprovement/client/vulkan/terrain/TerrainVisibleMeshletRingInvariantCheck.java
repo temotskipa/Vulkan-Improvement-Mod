@@ -1,6 +1,5 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
-import java.util.Map;
 
 public final class TerrainVisibleMeshletRingInvariantCheck {
 	private TerrainVisibleMeshletRingInvariantCheck() {
@@ -60,16 +59,15 @@ public final class TerrainVisibleMeshletRingInvariantCheck {
 	
 	private static void checkDiagnostics() {
 		VisibleMeshletAllocation allocation = new TerrainVisibleMeshletRing(16, 14).allocate(4, true);
-		Map<String, Object> map = allocation.asMap();
 		
-		require(map.get("requestedRecords").equals(4), "diagnostics must include requested records");
-		require(map.get("offset").equals(0), "diagnostics must include offset");
-		require(map.get("count").equals(4), "diagnostics must include count");
-		require(map.get("capacity").equals(16), "diagnostics must include capacity");
-		require(map.get("nextOffset").equals(4), "diagnostics must include next offset");
-		require(Boolean.TRUE.equals(map.get("wrapped")), "diagnostics must include wrap state");
-		require(Boolean.TRUE.equals(map.get("ready")), "diagnostics must include readiness");
-		require(Boolean.FALSE.equals(map.get("wrapBlocked")), "diagnostics must include blocked-wrap state");
+		require(allocation.requestedRecords() == 4, "diagnostics must include requested records");
+		require(allocation.offset() == 0, "diagnostics must include offset");
+		require(allocation.count() == 4, "diagnostics must include count");
+		require(allocation.capacity() == 16, "diagnostics must include capacity");
+		require(allocation.nextOffset() == 4, "diagnostics must include next offset");
+		require(allocation.wrapped(), "diagnostics must include wrap state");
+		require(allocation.ready(), "diagnostics must include readiness");
+		require(!allocation.wrapBlocked(), "diagnostics must include blocked-wrap state");
 	}
 	
 	private static void checkInvalidRingRejected() {

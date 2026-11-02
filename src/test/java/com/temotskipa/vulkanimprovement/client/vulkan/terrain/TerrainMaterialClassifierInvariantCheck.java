@@ -6,7 +6,6 @@ import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 
 import java.lang.foreign.MemorySegment;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
 
 public final class TerrainMaterialClassifierInvariantCheck {
@@ -18,7 +17,6 @@ public final class TerrainMaterialClassifierInvariantCheck {
 		checkMaterialIdsFitTableAndAreStable();
 		checkLayerAlphaClassification();
 		checkTerrainLayerRecords();
-		checkDiagnostics();
 	}
 	
 	private static void checkMaterialIdsFitTableAndAreStable() {
@@ -63,19 +61,6 @@ public final class TerrainMaterialClassifierInvariantCheck {
 			require(encoded[12] == alphaMode.id(), layer.label() + " material record must encode alpha mode");
 			require(encoded[13] == layer.ordinal(), layer.label() + " material record must encode render-layer ordinal");
 			require(encoded[14] == GpuMaterialRecord.MATERIAL_DOMAIN_TERRAIN, layer.label() + " material record must encode terrain domain");
-		}
-	}
-	
-	private static void checkDiagnostics() {
-		Map<String, Object> diagnostics = TerrainMaterialClassifier.asMap();
-		require(diagnostics.size() == ChunkSectionLayer.values().length, "material diagnostics must include every chunk section layer");
-		for (ChunkSectionLayer layer : ChunkSectionLayer.values()) {
-			Object value = diagnostics.get(layer.label());
-			require(value instanceof Map<?, ?>, layer.label() + " material diagnostics must be a map");
-			Map<?, ?> layerMap = (Map<?, ?>) value;
-			require(layerMap.get("materialId").equals(layer.ordinal()), layer.label() + " diagnostics must include material ID");
-			require(layerMap.get("alphaMode").equals(TerrainMaterialClassifier.alphaModeForLayer(layer).name()), layer.label() + " diagnostics must include alpha mode");
-			require(layerMap.get("renderLayerOrdinal").equals(layer.ordinal()), layer.label() + " diagnostics must include render-layer ordinal");
 		}
 	}
 	

@@ -34,7 +34,7 @@ public final class RendererCoreServiceInvariantCheck {
 		require(source.contains("PresentPacingController.get().configure(capabilities)"), "renderer core services must configure present pacing");
 		require(source.contains("FragmentShadingRateController.get().configure(capabilities)"), "renderer core services must configure fragment shading rate");
 		require(source.contains("RendererDomainRegistry.get().reset()"), "renderer core services must reset renderer domain state");
-		require(source.contains("Map<String, Object> asMap()"), "renderer core services must expose diagnostics");
+		require(source.contains("public String describe()"), "renderer core services must expose diagnostics");
 	}
 	
 	private static void checkTerrainRendererDelegatesSharedLifecycle(String source) {
@@ -47,15 +47,14 @@ public final class RendererCoreServiceInvariantCheck {
 	
 	private static void checkRuntimeAndDiagnosticsUseCoreServices(String runtimeSource, String diagnosticsSource) {
 		require(runtimeSource.contains("RendererCoreServices.get().currentLifecycleState()"), "VIM runtime active-state checks must use renderer core lifecycle");
-		require(diagnosticsSource.contains("report.put(\"rendererServices\", RendererCoreServices.get().asMap())"), "bug reports must expose renderer core service diagnostics separately from terrain diagnostics");
+		require(diagnosticsSource.contains("\"renderer: \" + RendererCoreServices.get().describe()"), "bug reports must expose renderer core service diagnostics separately from terrain diagnostics");
 	}
 	
 	private static void checkVisualDiagnosticsCaptureTextureFiltering(String diagnosticsSource, String terrainResourceSource, String textureBindingSource) {
-		require(diagnosticsSource.contains("report.put(\"videoSettings\", VulkanVideoSettingsCompatibility.snapshot())"), "bug reports must include video settings so blurry captures can be tied to filtering and mipmap options");
-		require(terrainResourceSource.contains("map.put(\"textureBindings\", textureBindingMap())"), "terrain descriptor diagnostics must expose captured terrain texture bindings");
+		require(diagnosticsSource.contains("\"videoSettings: \" + VulkanVideoSettingsCompatibility.describe()"), "bug reports must include video settings so blurry captures can be tied to filtering and mipmap options");
+		require(terrainResourceSource.contains("textureBindings=\" + new TreeMap<>(this.textureBindings)"), "terrain descriptor diagnostics must expose captured terrain texture bindings");
 		require(textureBindingSource.contains("int maxAnisotropy"), "captured terrain texture bindings must record sampler anisotropy");
-		require(textureBindingSource.contains("map.put(\"maxAnisotropy\", this.maxAnisotropy)"), "terrain texture binding diagnostics must emit sampler anisotropy");
-		require(textureBindingSource.contains("map.put(\"mipLevels\", this.mipLevels)"), "terrain texture binding diagnostics must emit mip level count");
+		require(textureBindingSource.contains("int mipLevels"), "captured terrain texture bindings must record the mip level count");
 	}
 	
 	private static void require(boolean condition, String message) {

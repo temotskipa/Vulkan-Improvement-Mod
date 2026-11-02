@@ -2,8 +2,6 @@ package com.temotskipa.vulkanimprovement.client.vulkan.gpuworld;
 
 import net.minecraft.core.SectionPos;
 
-import java.util.Map;
-
 public final class GpuWorldTerrainLayerDirectoryInvariantCheck {
 	private GpuWorldTerrainLayerDirectoryInvariantCheck() {
 	}
@@ -35,15 +33,9 @@ public final class GpuWorldTerrainLayerDirectoryInvariantCheck {
 		require(record.visibility() == 0.75F, "resident layer record must preserve visibility");
 		require(record.sourceUpdateSequence() == update.sequence(), "resident layer record must preserve source update sequence");
 		
-		Map<String, Object> diagnostics = directory.asMap();
-		require(diagnostics.get("residentLayerRecords").equals(1), "directory diagnostics must count resident records");
-		require(diagnostics.get("publicationCount").equals(1L), "directory diagnostics must count publications");
-		require(diagnostics.get("vanillaDrawKeyed").equals(Boolean.FALSE), "directory must not be keyed by vanilla draw objects");
-		require(diagnostics.get("authority").equals("cpu-chunk-state"), "directory must preserve CPU chunk authority label");
-		require(diagnostics.containsKey("sampleRecords"), "directory diagnostics must expose sample records");
-		
-		Map<String, Object> databaseDiagnostics = database.asMap();
-		require(databaseDiagnostics.containsKey("terrainLayerDirectory"), "GPU world diagnostics must expose terrain layer directory");
+		require(directory.residentLayerRecords() == 1, "the directory must count resident records");
+		require(directory.publicationCount() == 1L, "the directory must count publications");
+		require(database.describe().contains("layerDirectory=["), "GPU world diagnostics must expose terrain layer directory");
 		
 		directory.resetForTests();
 		database.resetForTests();
@@ -65,7 +57,7 @@ public final class GpuWorldTerrainLayerDirectoryInvariantCheck {
 		require(replaced.materialId() == 3, "recapture must replace material id");
 		require(replaced.meshletOffset() == 64, "recapture must replace meshlet offset");
 		require(replaced.meshletCount() == 12, "recapture must replace meshlet count");
-		require(directory.asMap().get("residentLayerRecords").equals(1), "recapture must not duplicate section-layer records");
+		require(directory.residentLayerRecords() == 1, "recapture must not duplicate section-layer records");
 		require(directory.recordFor(sectionNode, 0).orElseThrow().sourceUpdateSequence() == second.sequence(), "lookup must return latest record");
 		
 		directory.resetForTests();
@@ -85,11 +77,11 @@ public final class GpuWorldTerrainLayerDirectoryInvariantCheck {
 		directory.publish(database.recordTerrainLayerCapture(retainedSection, 0, 0), 8, 4, 1.0F);
 		
 		database.recordSectionRelease(releasedSection);
-		require(directory.asMap().get("residentLayerRecords").equals(1), "section release must remove all resident layer records for that section");
+		require(directory.residentLayerRecords() == 1, "section release must remove all resident layer records for that section");
 		require(directory.recordFor(retainedSection, 0).isPresent(), "section release must retain other sections");
 		
 		database.clear("directory invariant clear");
-		require(directory.asMap().get("residentLayerRecords").equals(0), "database clear must remove all resident layer records");
+		require(directory.residentLayerRecords() == 0, "database clear must remove all resident layer records");
 		
 		directory.resetForTests();
 		database.resetForTests();

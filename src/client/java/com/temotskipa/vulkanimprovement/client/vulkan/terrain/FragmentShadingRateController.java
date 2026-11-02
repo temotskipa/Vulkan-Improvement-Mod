@@ -6,8 +6,6 @@ import org.lwjgl.vulkan.KHRFragmentShadingRate;
 import org.lwjgl.vulkan.VkCommandBuffer;
 import org.lwjgl.vulkan.VkExtent2D;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 public final class FragmentShadingRateController {
@@ -54,15 +52,7 @@ public final class FragmentShadingRateController {
 		}
 	}
 	
-	public Map<String, Object> asMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("available", this.available);
-		map.put("disabled", this.disabled);
-		map.put("width", this.width);
-		map.put("height", this.height);
-		map.put("maxWidth", this.maxWidth);
-		map.put("maxHeight", this.maxHeight);
-		map.put("terrainCommands", this.terrainCommands.get());
-		return map;
+	public String describe() {
+		return "available=" + this.available + ", disabled=" + this.disabled + ", width=" + this.width + ", height=" + this.height + ", maxWidth=" + this.maxWidth + ", maxHeight=" + this.maxHeight + ", terrainCommands=" + this.terrainCommands.get();
 	}
 }

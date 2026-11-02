@@ -71,31 +71,15 @@ public final class GpuWorldTerrainLayerDirectory {
 		this.lastClearReason = "not cleared";
 	}
 	
-	public synchronized Map<String, Object> asMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("authority", "cpu-chunk-state");
-		map.put("keyType", "section-node-layer-ordinal");
-		map.put("vanillaDrawKeyed", false);
-		map.put("residentLayerRecords", this.records.size());
-		map.put("publicationCount", this.publicationCount.get());
-		map.put("replacementCount", this.replacementCount.get());
-		map.put("removedSectionCount", this.removedSectionCount.get());
-		map.put("clearCount", this.clearCount.get());
-		map.put("lastClearReason", this.lastClearReason);
-		map.put("sampleRecords", sampleRecords());
-		return map;
+	public synchronized String describe() {
+		return "residentLayerRecords=" + this.records.size() + ", publications=" + this.publicationCount.get() + ", replacements=" + this.replacementCount.get() + ", removedSections=" + this.removedSectionCount.get() + ", clearCount=" + this.clearCount.get() + ", lastClearReason=" + this.lastClearReason;
 	}
 	
-	private Map<String, Object> sampleRecords() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		int count = 0;
-		for (GpuWorldTerrainLayerRecord record : this.records.values()) {
-			map.put(record.section().sectionNode() + ":" + record.layerOrdinal(), record.asMap());
-			count++;
-			if (count >= 8) {
-				break;
-			}
-		}
-		return map;
+	synchronized int residentLayerRecords() {
+		return this.records.size();
+	}
+	
+	long publicationCount() {
+		return this.publicationCount.get();
 	}
 }

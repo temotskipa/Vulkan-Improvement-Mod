@@ -63,7 +63,7 @@ public final class TerrainPerformanceMonitor {
 	public synchronized boolean gpuTimerAvailable() {
 		return this.queryPool != null;
 	}
-
+	
 	synchronized void configure(VulkanDevice device) {
 		shutdown();
 		this.device = device;
@@ -192,35 +192,33 @@ public final class TerrainPerformanceMonitor {
 		this.gpuReadMisses = 0L;
 	}
 	
-	public synchronized Map<String, Object> asMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
+	public synchronized String describe() {
+		StringBuilder text = new StringBuilder();
 		int samples = Math.min(this.frameCount, FRAME_SAMPLES);
-		map.put("frames", samples);
+		text.append("frames=").append(samples);
 		if (samples > 0) {
 			long[] sorted = Arrays.copyOf(this.frameIntervals, samples);
 			Arrays.sort(sorted);
 			double meanNanos = Arrays.stream(sorted).average().orElse(0.0);
-			map.put("meanFrameMs", meanNanos / 1.0e6);
-			map.put("p50FrameMs", percentile(sorted, 0.50) / 1.0e6);
-			map.put("p95FrameMs", percentile(sorted, 0.95) / 1.0e6);
-			map.put("p99FrameMs", percentile(sorted, 0.99) / 1.0e6);
-			map.put("maxFrameMs", sorted[samples - 1] / 1.0e6);
-			map.put("meanFps", meanNanos > 0.0 ? 1.0e9 / meanNanos : 0.0);
-			map.put("meanCpuMs", Arrays.stream(this.cpuFrameTimes, 0, samples).average().orElse(0.0) / 1.0e6);
-			map.put("onePercentLowFps", lowFps(sorted));
+			text.append(", meanFrameMs=").append(meanNanos / 1.0e6);
+			text.append(", p50FrameMs=").append(percentile(sorted, 0.50) / 1.0e6);
+			text.append(", p95FrameMs=").append(percentile(sorted, 0.95) / 1.0e6);
+			text.append(", p99FrameMs=").append(percentile(sorted, 0.99) / 1.0e6);
+			text.append(", maxFrameMs=").append(sorted[samples - 1] / 1.0e6);
+			text.append(", meanFps=").append(meanNanos > 0.0 ? 1.0e9 / meanNanos : 0.0);
+			text.append(", meanCpuMs=").append(Arrays.stream(this.cpuFrameTimes, 0, samples).average().orElse(0.0) / 1.0e6);
+			text.append(", onePercentLowFps=").append(lowFps(sorted));
 		}
-		Map<String, Object> gpu = new LinkedHashMap<>();
-		gpu.put("enabled", TerrainRendererDebugConfig.terrainGpuTimerEnabled());
-		gpu.put("available", this.queryPool != null);
-		gpu.put("frames", this.gpuFrames);
-		gpu.put("readMisses", this.gpuReadMisses);
-		gpu.put("prepareMs", meanMs(0));
+		text.append(", gpuTimerEnabled=").append(TerrainRendererDebugConfig.terrainGpuTimerEnabled());
+		text.append(", gpuTimerAvailable=").append(this.queryPool != null);
+		text.append(", gpuFrames=").append(this.gpuFrames);
+		text.append(", gpuReadMisses=").append(this.gpuReadMisses);
+		text.append(", gpuPrepareMs=").append(meanMs(0));
 		for (ChunkSectionLayerGroup group : ChunkSectionLayerGroup.values()) {
-			gpu.put(group.name().toLowerCase(Locale.ROOT) + "Ms", meanMs(1 + group.ordinal()));
+			text.append(", gpu").append(group.name().charAt(0)).append(group.name().substring(1).toLowerCase(Locale.ROOT)).append("Ms=").append(meanMs(1 + group.ordinal()));
 		}
-		gpu.put("terrainMs", this.gpuFrames == 0L ? 0.0 : this.gpuFrameNanos / (double) this.gpuFrames / 1.0e6);
-		map.put("gpu", gpu);
-		return map;
+		text.append(", gpuTerrainMs=").append(this.gpuFrames == 0L ? 0.0 : this.gpuFrameNanos / (double) this.gpuFrames / 1.0e6);
+		return text.toString();
 	}
 	
 	private static long percentile(long[] sorted, double fraction) {

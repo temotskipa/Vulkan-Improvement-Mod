@@ -2,8 +2,6 @@ package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Objects;
 
 public record TerrainMeshTaskDispatch(int meshletOffset, int layerOrdinal, int requestedMeshlets, int taskCount, long visibleMeshletListAddress, long workQueueAddress, long indirectCommandBuffer, long indirectCommandOffset, int indirectCommandStride, long indirectCommandAddress, boolean indirectCommandGpuGenerated, TerrainMeshTaskSource source, String reason) {
@@ -125,30 +123,6 @@ public record TerrainMeshTaskDispatch(int meshletOffset, int layerOrdinal, int r
 	
 	boolean ready() {
 		return this.source != TerrainMeshTaskSource.UNAVAILABLE && this.taskCount > 0;
-	}
-	
-	Map<String, Object> asMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("source", this.source.id());
-		map.put("meshletOffset", this.meshletOffset);
-		map.put("layerOrdinal", this.layerOrdinal);
-		map.put("requestedMeshlets", this.requestedMeshlets);
-		map.put("taskCount", this.taskCount);
-		map.put("visibleMeshletListAddress", this.visibleMeshletListAddress);
-		map.put("workQueueAddress", this.workQueueAddress);
-		map.put("indirectCommandBuffer", this.indirectCommandBuffer);
-		map.put("indirectCommandOffset", this.indirectCommandOffset);
-		map.put("indirectCommandStride", this.indirectCommandStride);
-		map.put("indirectCommandAddress", this.indirectCommandAddress);
-		map.put("indirectCommandGpuGenerated", this.indirectCommandGpuGenerated);
-		map.put("usesVisibleMeshletList", usesVisibleMeshletList());
-		map.put("usesWorkQueue", usesWorkQueue());
-		map.put("usesIndirectCommand", usesIndirectCommand());
-		map.put("usesGpuGeneratedIndirectCommand", usesGpuGeneratedIndirectCommand());
-		map.put("truncated", truncated());
-		map.put("directMeshTaskLimit", MAX_DIRECT_TASKS);
-		map.put("reason", this.reason);
-		return map;
 	}
 	
 	boolean usesVisibleMeshletList() {

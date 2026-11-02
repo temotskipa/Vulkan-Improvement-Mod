@@ -1,8 +1,6 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.gpuworld;
 
 import java.util.EnumMap;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Objects;
 
 public final class GpuWorldResidencyStats {
@@ -77,7 +75,7 @@ public final class GpuWorldResidencyStats {
 		}
 	}
 	
-	private long usedResidentBytes() {
+	synchronized long usedResidentBytes() {
 		long bytes = 0L;
 		for (long usedBytes : this.usedBytesByKind.values()) {
 			bytes = checkedAdd(bytes, usedBytes);
@@ -123,38 +121,39 @@ public final class GpuWorldResidencyStats {
 		}
 	}
 	
-	public synchronized Map<String, Object> asMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("reservedBytes", this.budget.reservedBytes());
-		map.put("maxResidentBytes", this.budget.maxResidentBytes());
-		map.put("livePageCount", livePageCount());
-		map.put("usedResidentBytes", usedResidentBytes());
-		map.put("availableResidentBytes", this.budget.maxResidentBytes() - usedResidentBytes());
-		map.put("livePageCountsByKind", mapByKind(this.livePageCountsByKind));
-		map.put("usedBytesByKind", mapByKind(this.usedBytesByKind));
-		map.put("acceptedPageCount", this.acceptedPageCount);
-		map.put("acceptedBytes", this.acceptedBytes);
-		map.put("evictedPageCount", this.evictedPageCount);
-		map.put("evictedBytes", this.evictedBytes);
-		map.put("overBudgetRefusals", this.overBudgetRefusals);
-		map.put("overBudgetRefusedBytes", this.overBudgetRefusedBytes);
-		map.put("withinResidentBudget", usedResidentBytes() <= this.budget.maxResidentBytes());
-		return map;
+	public synchronized String describe() {
+		return "livePages=" + livePageCount() + ", usedBytes=" + usedResidentBytes() + ", maxBytes=" + this.budget.maxResidentBytes() + ", acceptedPages=" + this.acceptedPageCount + ", acceptedBytes=" + this.acceptedBytes + ", evictedPages=" + this.evictedPageCount + ", evictedBytes=" + this.evictedBytes + ", overBudgetRefusals=" + this.overBudgetRefusals + ", overBudgetRefusedBytes=" + this.overBudgetRefusedBytes;
 	}
 	
-	private long livePageCount() {
+	synchronized long livePageCount(GpuWorldPageKind pageKind) {
+		return this.livePageCountsByKind.get(pageKind);
+	}
+	
+	synchronized long usedBytes(GpuWorldPageKind pageKind) {
+		return this.usedBytesByKind.get(pageKind);
+	}
+	
+	synchronized long evictedPageCount() {
+		return this.evictedPageCount;
+	}
+	
+	synchronized long evictedBytes() {
+		return this.evictedBytes;
+	}
+	
+	synchronized long overBudgetRefusals() {
+		return this.overBudgetRefusals;
+	}
+	
+	synchronized long overBudgetRefusedBytes() {
+		return this.overBudgetRefusedBytes;
+	}
+	
+	synchronized long livePageCount() {
 		long count = 0L;
 		for (long pageCount : this.livePageCountsByKind.values()) {
 			count = checkedAdd(count, pageCount);
 		}
 		return count;
-	}
-	
-	private static Map<String, Object> mapByKind(EnumMap<GpuWorldPageKind, Long> source) {
-		Map<String, Object> map = new LinkedHashMap<>();
-		for (GpuWorldPageKind kind : GpuWorldPageKind.values()) {
-			map.put(kind.diagnosticName(), source.get(kind));
-		}
-		return map;
 	}
 }

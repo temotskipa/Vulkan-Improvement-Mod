@@ -1,7 +1,5 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.gpuworld;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Objects;
 
 public record GpuWorldResidencyBudget(long canonicalMirrorBytes, long renderOnlyLodBytes, long predictiveDistantBytes, long visibilityCompactionBytes, long indirectCommandBytes, long maxResidentBytes) {
@@ -62,28 +60,5 @@ public record GpuWorldResidencyBudget(long canonicalMirrorBytes, long renderOnly
 	
 	public boolean fitsWithinMaxResidentBytes() {
 		return reservedBytes() <= this.maxResidentBytes;
-	}
-	
-	public Map<String, Object> asMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("canonicalMirrorBytes", this.canonicalMirrorBytes);
-		map.put("renderOnlyLodBytes", this.renderOnlyLodBytes);
-		map.put("predictiveDistantBytes", this.predictiveDistantBytes);
-		map.put("visibilityCompactionBytes", this.visibilityCompactionBytes);
-		map.put("indirectCommandBytes", this.indirectCommandBytes);
-		map.put("derivedWorkBudgetBytes", derivedWorkBudgetBytes());
-		map.put("reservedBytes", reservedBytes());
-		map.put("maxResidentBytes", this.maxResidentBytes);
-		map.put("fitsWithinMaxResidentBytes", fitsWithinMaxResidentBytes());
-		map.put("pageKindBudgetBytes", pageKindBudgetMap());
-		return map;
-	}
-	
-	private Map<String, Object> pageKindBudgetMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		for (GpuWorldPageKind pageKind : GpuWorldPageKind.values()) {
-			map.put(pageKind.diagnosticName(), pageKindBudgetBytes(pageKind));
-		}
-		return map;
 	}
 }

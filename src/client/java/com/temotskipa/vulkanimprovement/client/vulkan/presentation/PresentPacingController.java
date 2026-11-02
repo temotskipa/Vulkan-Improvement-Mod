@@ -8,8 +8,6 @@ import org.jspecify.annotations.Nullable;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.*;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 public final class PresentPacingController {
@@ -126,22 +124,11 @@ public final class PresentPacingController {
 		return mode == PresentMode.FIFO || mode == PresentMode.FIFO_RELAXED;
 	}
 	
-	public Map<String, Object> asMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("disabled", this.disabled);
-		map.put("presentIdAvailable", this.presentIdAvailable);
-		map.put("presentWaitAvailable", this.presentWaitAvailable);
-		map.put("frameLatency", this.frameLatency);
-		map.put("presentCalls", this.presentCalls.get());
-		map.put("presentIdsSubmitted", this.presentIdsSubmitted.get());
-		map.put("presentWaits", this.presentWaits.get());
-		map.put("presentWaitFailures", this.presentWaitFailures.get());
-		map.put("lastPresentDurationMicros", this.lastPresentDurationNanos.get() / 1_000L);
+	public String describe() {
 		Boolean swapchain = this.vulkanSwapchain;
-		map.put("presentSurface", swapchain == null ? "none" : swapchain ? "vulkan-swapchain" : "dxgi");
 		PresentMode mode = this.presentMode;
-		map.put("presentMode", mode == null ? "none" : mode.name());
-		map.put("mode", this.disabled ? "disabled" : Boolean.FALSE.equals(swapchain) ? "inactive" : presentsInVsyncOrder() ? "present-id-wait" : "unpaced-without-vsync");
-		return map;
+		String surface = swapchain == null ? "none" : swapchain ? "vulkan-swapchain" : "dxgi";
+		String pacing = this.disabled ? "disabled" : Boolean.FALSE.equals(swapchain) ? "inactive" : presentsInVsyncOrder() ? "present-id-wait" : "unpaced-without-vsync";
+		return "mode=" + pacing + ", presentSurface=" + surface + ", presentMode=" + mode + ", presentIdAvailable=" + this.presentIdAvailable + ", presentWaitAvailable=" + this.presentWaitAvailable + ", frameLatency=" + this.frameLatency + ", presentCalls=" + this.presentCalls.get() + ", presentIdsSubmitted=" + this.presentIdsSubmitted.get() + ", presentWaits=" + this.presentWaits.get() + ", presentWaitFailures=" + this.presentWaitFailures.get() + ", lastPresentDurationMicros=" + this.lastPresentDurationNanos.get() / 1_000L;
 	}
 }

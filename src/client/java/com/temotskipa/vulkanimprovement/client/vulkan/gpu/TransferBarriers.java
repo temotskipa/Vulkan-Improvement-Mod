@@ -136,12 +136,7 @@ public final class TransferBarriers {
 		clear();
 	}
 	
-	public Map<String, Object> asMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("transfers", transfers);
-		map.put("hazardBarriers", hazardBarriers);
-		map.put("releasedBarriers", releasedBarriers);
-		map.put("barriersSaved", transfers - hazardBarriers - releasedBarriers);
-		return map;
+	public String describe() {
+		return "transfers=" + transfers + ", hazardBarriers=" + hazardBarriers + ", releasedBarriers=" + releasedBarriers + ", barriersSaved=" + (transfers - hazardBarriers - releasedBarriers);
 	}
 }

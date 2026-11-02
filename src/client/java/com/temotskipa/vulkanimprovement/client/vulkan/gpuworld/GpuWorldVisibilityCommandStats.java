@@ -1,8 +1,5 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.gpuworld;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
-
 public final class GpuWorldVisibilityCommandStats {
 	private long compactionPassCount;
 	private long inputSectionCount;
@@ -67,18 +64,39 @@ public final class GpuWorldVisibilityCommandStats {
 		this.lastPass = null;
 	}
 	
-	public synchronized Map<String, Object> asMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("compactionPassCount", this.compactionPassCount);
-		map.put("inputSectionCount", this.inputSectionCount);
-		map.put("culledSectionCount", this.culledSectionCount);
-		map.put("visibleSectionCount", this.visibleSectionCount);
-		map.put("emittedCommandCount", this.emittedCommandCount);
-		map.put("overflowedCommandCount", this.overflowedCommandCount);
-		map.put("fallbackCommandCount", this.fallbackCommandCount);
-		map.put("gpuResidentInputRequired", true);
-		map.put("affectsVanillaCancellation", false);
-		map.put("lastPass", this.lastPass == null ? Map.of("present", false) : this.lastPass.asMap());
-		return map;
+	public synchronized String describe() {
+		return "compactionPasses=" + this.compactionPassCount + ", inputSections=" + this.inputSectionCount + ", culledSections=" + this.culledSectionCount + ", visibleSections=" + this.visibleSectionCount + ", emittedCommands=" + this.emittedCommandCount + ", overflowedCommands=" + this.overflowedCommandCount + ", fallbackCommands=" + this.fallbackCommandCount + ", lastPass=" + this.lastPass;
+	}
+	
+	synchronized long compactionPassCount() {
+		return this.compactionPassCount;
+	}
+	
+	synchronized long inputSectionCount() {
+		return this.inputSectionCount;
+	}
+	
+	synchronized long culledSectionCount() {
+		return this.culledSectionCount;
+	}
+	
+	synchronized long visibleSectionCount() {
+		return this.visibleSectionCount;
+	}
+	
+	synchronized long emittedCommandCount() {
+		return this.emittedCommandCount;
+	}
+	
+	synchronized long overflowedCommandCount() {
+		return this.overflowedCommandCount;
+	}
+	
+	synchronized long fallbackCommandCount() {
+		return this.fallbackCommandCount;
+	}
+	
+	synchronized GpuWorldVisibilityCommandPass lastPass() {
+		return this.lastPass;
 	}
 }

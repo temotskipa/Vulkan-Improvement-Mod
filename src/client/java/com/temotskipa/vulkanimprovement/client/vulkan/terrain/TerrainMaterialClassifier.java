@@ -4,9 +4,7 @@ import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLay
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 
 import java.lang.foreign.MemorySegment;
-import java.util.LinkedHashMap;
 import java.util.Locale;
-import java.util.Map;
 
 final class TerrainMaterialClassifier {
 	private TerrainMaterialClassifier() {
@@ -45,18 +43,5 @@ final class TerrainMaterialClassifier {
 			return GpuMaterialAlphaMode.MASKED;
 		}
 		return GpuMaterialAlphaMode.OPAQUE;
-	}
-	
-	static Map<String, Object> asMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		for (ChunkSectionLayer layer : ChunkSectionLayer.values()) {
-			Map<String, Object> layerMap = new LinkedHashMap<>();
-			layerMap.put("materialId", materialIdForLayer(layer));
-			layerMap.put("alphaMode", alphaModeForLayer(layer).name());
-			layerMap.put("alphaModeId", alphaModeForLayer(layer).id());
-			layerMap.put("renderLayerOrdinal", layer.ordinal());
-			map.put(layer.label(), layerMap);
-		}
-		return map;
 	}
 }

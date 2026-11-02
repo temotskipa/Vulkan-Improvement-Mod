@@ -315,21 +315,8 @@ public final class TextGpuVertices {
 		}
 	}
 	
-	public synchronized Map<String, Object> asMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("enabled", TerrainRendererDebugConfig.gpuTextVerticesEnabled());
-		map.put("ready", this.pipeline != null);
-		map.put("otherModMixins", this.otherModMixins == null ? List.of() : this.otherModMixins);
-		map.put("gpuTexts", this.gpuTexts);
-		map.put("cpuTexts", this.cpuTexts);
-		map.put("writtenFrames", this.writtenFrames);
-		map.put("lastFrameTexts", this.lastFrameTexts);
-		map.put("lastFrameVertices", this.lastFrameVertices);
-		if (this.store != null) {
-			map.put("residentStrings", this.store.residentStrings());
-			map.put("residentBytes", this.store.residentBytes());
-		}
-		map.put("storesRenewed", this.storesRenewed);
-		return map;
+	public synchronized String describe() {
+		String resident = this.store == null ? "" : ", residentStrings=" + this.store.residentStrings() + ", residentBytes=" + this.store.residentBytes();
+		return "enabled=" + TerrainRendererDebugConfig.gpuTextVerticesEnabled() + ", ready=" + (this.pipeline != null) + ", otherModMixins=" + this.otherModMixins + ", gpuTexts=" + this.gpuTexts + ", cpuTexts=" + this.cpuTexts + ", writtenFrames=" + this.writtenFrames + ", lastFrameTexts=" + this.lastFrameTexts + ", lastFrameVertices=" + this.lastFrameVertices + resident + ", storesRenewed=" + this.storesRenewed;
 	}
 }

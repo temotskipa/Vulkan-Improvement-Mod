@@ -2,7 +2,6 @@ package com.temotskipa.vulkanimprovement.client.vulkan.model;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.PoseStack.Pose;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.logging.LogUtils;
@@ -494,38 +493,8 @@ public final class ModelGpuVertices {
 		}
 	}
 	
-	public synchronized Map<String, Object> asMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("enabled", TerrainRendererDebugConfig.gpuModelVerticesEnabled());
-		map.put("ready", this.pipeline != null);
-		map.put("otherModMixins", this.otherModMixins == null ? List.of() : this.otherModMixins);
-		map.put("gpuSubmits", this.gpuSubmits);
-		map.put("cpuSubmits", this.cpuSubmits);
-		map.put("itemVertices", TerrainRendererDebugConfig.gpuItemVerticesEnabled());
-		map.put("otherItemMixins", this.otherItemMixins == null ? List.of() : this.otherItemMixins);
-		map.put("gpuItemSubmits", this.gpuItemSubmits);
-		map.put("cpuItemSubmits", this.cpuItemSubmits);
-		map.put("writtenFrames", this.writtenFrames);
-		map.put("lastFrameParts", this.lastFrameParts);
-		map.put("lastFrameCubes", this.lastFrameCubes);
-		map.put("lastFrameVertices", this.lastFrameVertices);
-		map.put("lastFrameDraws", this.lastFrameDraws);
-		map.put("meshShaders", TerrainRendererDebugConfig.gpuModelMeshShadersEnabled());
-		map.put("meshShadersAvailable", this.meshShadersAvailable);
-		map.put("lastFrameMeshDraws", this.lastFrameMeshDraws);
-		map.put("lastFrameMeshCubes", this.lastFrameMeshCubes);
-		map.put("meshDraws", this.meshDraws);
-		map.put("meshDrawsLeftOut", this.meshDrawsLeftOut);
-		map.put("framesLeftOut", this.framesLeftOut);
-		map.put("meshPipelines", ModelMeshPipelines.asMap());
-		if (this.store != null) {
-			map.put("residentCubes", this.store.residentCubes());
-			map.put("residentItemLists", this.store.residentItemLists());
-			map.put("cpuOnlyCubes", this.store.cpuOnlyCubes());
-			map.put("residentPolygonBytes", this.store.residentBytes());
-			map.put("collectedPolygons", this.store.collectedPolygons());
-		}
-		map.put("storesRenewed", this.storesRenewed);
-		return map;
+	public synchronized String describe() {
+		String resident = this.store == null ? "" : ", residentCubes=" + this.store.residentCubes() + ", residentItemLists=" + this.store.residentItemLists() + ", cpuOnlyCubes=" + this.store.cpuOnlyCubes() + ", residentPolygonBytes=" + this.store.residentBytes() + ", collectedPolygons=" + this.store.collectedPolygons();
+		return "enabled=" + TerrainRendererDebugConfig.gpuModelVerticesEnabled() + ", ready=" + (this.pipeline != null) + ", otherModMixins=" + this.otherModMixins + ", gpuSubmits=" + this.gpuSubmits + ", cpuSubmits=" + this.cpuSubmits + ", itemVertices=" + TerrainRendererDebugConfig.gpuItemVerticesEnabled() + ", otherItemMixins=" + this.otherItemMixins + ", gpuItemSubmits=" + this.gpuItemSubmits + ", cpuItemSubmits=" + this.cpuItemSubmits + ", writtenFrames=" + this.writtenFrames + ", lastFrameParts=" + this.lastFrameParts + ", lastFrameCubes=" + this.lastFrameCubes + ", lastFrameVertices=" + this.lastFrameVertices + ", lastFrameDraws=" + this.lastFrameDraws + ", meshShaders=" + TerrainRendererDebugConfig.gpuModelMeshShadersEnabled() + ", meshShadersAvailable=" + this.meshShadersAvailable + ", lastFrameMeshDraws=" + this.lastFrameMeshDraws + ", lastFrameMeshCubes=" + this.lastFrameMeshCubes + ", meshDraws=" + this.meshDraws + ", meshDrawsLeftOut=" + this.meshDrawsLeftOut + ", framesLeftOut=" + this.framesLeftOut + ", meshPipelines=[" + ModelMeshPipelines.describe() + "]" + resident + ", storesRenewed=" + this.storesRenewed;
 	}
 }

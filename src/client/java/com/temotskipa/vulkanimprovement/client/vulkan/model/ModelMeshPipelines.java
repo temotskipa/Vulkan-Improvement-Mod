@@ -279,11 +279,7 @@ public final class ModelMeshPipelines {
 		return pipeline instanceof ModelMeshPipelineHolder holder ? holder.vim$meshPipeline() : null;
 	}
 	
-	public static Map<String, Object> asMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("built", BUILT.sum());
-		map.put("unsupported", UNSUPPORTED.sum());
-		map.put("failed", FAILED.sum());
-		return map;
+	public static String describe() {
+		return "built=" + BUILT.sum() + ", unsupported=" + UNSUPPORTED.sum() + ", failed=" + FAILED.sum();
 	}
 }

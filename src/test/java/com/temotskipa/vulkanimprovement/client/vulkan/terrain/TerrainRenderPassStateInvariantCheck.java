@@ -176,9 +176,9 @@ public final class TerrainRenderPassStateInvariantCheck {
 		require(source.contains("sampler.getMinFilter()"), "terrain texture binding diagnostics must capture min sampler filtering");
 		require(source.contains("sampler.getMagFilter()"), "terrain texture binding diagnostics must capture mag sampler filtering");
 		require(source.contains("sampler.getMaxLod()"), "terrain texture binding diagnostics must capture sampler max LOD");
-		require(textureBinding.contains("map.put(\"minFilter\""), "terrain texture binding diagnostics must report min sampler filtering");
-		require(textureBinding.contains("map.put(\"magFilter\""), "terrain texture binding diagnostics must report mag sampler filtering");
-		require(textureBinding.contains("map.put(\"maxLod\""), "terrain texture binding diagnostics must report sampler max LOD");
+		require(textureBinding.contains("String minFilter"), "terrain texture binding diagnostics must report min sampler filtering");
+		require(textureBinding.contains("String magFilter"), "terrain texture binding diagnostics must report mag sampler filtering");
+		require(textureBinding.contains("String maxLod"), "terrain texture binding diagnostics must report sampler max LOD");
 	}
 	
 	private static String read(Path path) throws IOException {

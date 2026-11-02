@@ -4,18 +4,16 @@ import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
 import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanCapabilitySnapshot;
 import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanImprovementCapabilities;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpuworld.GpuWorldDatabase;
-import com.temotskipa.vulkanimprovement.client.vulkan.presentation.PresentPacingController;
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.RendererCoreServices;
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.RendererDomainObserver;
-import com.temotskipa.vulkanimprovement.client.vulkan.runtime.RendererDomainRegistry;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
-import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
 import net.minecraft.client.renderer.chunk.SectionRenderDispatcher.RenderSection;
 import org.jspecify.annotations.Nullable;
 
 import java.util.*;
+import java.util.Arrays;
 import java.util.concurrent.atomic.LongAdder;
 
 public final class MeshTerrainRenderer {
@@ -632,66 +630,8 @@ public final class MeshTerrainRenderer {
 		RendererCoreServices.get().completeShutdown("renderer immediate shutdown complete");
 	}
 	
-	public Map<String, Object> asMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		RendererCoreServices coreServices = RendererCoreServices.get();
-		map.put("configured", coreServices.currentLifecycleState().drawable());
-		map.put("lifecycleState", coreServices.currentLifecycleState().name());
-		map.put("lifecycleReason", coreServices.lifecycleReason());
-		map.put("mode", TerrainRendererDebugConfig.rendererMode());
-		map.put("performance", TerrainPerformanceMonitor.get().asMap());
-		map.put("terrainGroupCalls", this.terrainGroupCalls.sum());
-		map.put("improvedFogTerrainGroups", this.improvedFogTerrainGroups.sum());
-		map.put("fog", TerrainFogState.asMap());
-		map.put("capturedSections", this.capturedSections.sum());
-		map.put("releasedSections", this.releasedSections.sum());
-		map.put("capturedVertexBytes", this.capturedVertexBytes.sum());
-		map.put("capturedIndexBytes", this.capturedIndexBytes.sum());
-		map.put("captureCpuMicros", this.captureCpuNanos.sum() / 1_000L);
-		map.put("estimatedMeshlets", this.estimatedMeshlets.sum());
-		map.put("meshReplacementDrawCalls", this.meshReplacementDrawCalls.sum());
-		map.put("gpuDrivenFrames", this.gpuDrivenFrames.sum());
-		map.put("gpuDrivenFrameRefusals", this.gpuDrivenFrameRefusals.sum());
-		map.put("meshReplacementTasks", this.meshReplacementTasks.sum());
-		map.put("meshReplacementVisibleListDrawCalls", this.meshReplacementVisibleListDrawCalls.sum());
-		map.put("meshReplacementWorkQueueDrawCalls", this.meshReplacementWorkQueueDrawCalls.sum());
-		map.put("meshReplacementIndirectCommandDrawCalls", this.meshReplacementIndirectCommandDrawCalls.sum());
-		map.put("meshReplacementPreparedGpuCommandDrawCalls", this.meshReplacementPreparedGpuCommandDrawCalls.sum());
-		map.put("meshReplacementPreparedGpuCommands", this.meshReplacementPreparedGpuCommands.sum());
-		map.put("meshReplacementPreparedFullLayerGpuCommands", this.meshReplacementPreparedFullLayerGpuCommands.sum());
-		map.put("meshReplacementPreparedVisibleGpuCommands", this.meshReplacementPreparedVisibleGpuCommands.sum());
-		map.put("meshReplacementPreparedGpuCommandDisabled", this.meshReplacementPreparedGpuCommandDisabled.sum());
-		map.put("meshReplacementPreparedGpuCommandRefusals", this.meshReplacementPreparedGpuCommandRefusals.sum());
-		map.put("meshReplacementPreparedDispatchQueueLeaks", this.meshReplacementPreparedDispatchQueueLeaks.sum());
-		map.put("meshReplacementVisibleMeshletFallbackRefusals", this.meshReplacementVisibleMeshletFallbackRefusals.sum());
-		map.put("meshReplacementTaskTruncations", this.meshReplacementTaskTruncations.sum());
-		map.put("meshReplacementLayerFilteredDrawCalls", this.meshReplacementLayerFilteredDrawCalls.sum());
-		map.put("meshReplacementWholeSetDrawCalls", this.meshReplacementWholeSetDrawCalls.sum());
-		map.put("meshReplacementDrawCallsByLayer", layerCounterMap(this.meshReplacementDrawCallsByLayer));
-		map.put("meshReplacementCustomIndexFallbacks", this.meshReplacementCustomIndexFallbacks.sum());
-		map.put("meshReplacementCustomIndexFallbacksByLayer", layerCounterMap(this.meshReplacementCustomIndexFallbacksByLayer));
-		map.put("meshReplacementIndexedDrawCalls", this.meshReplacementIndexedDrawCalls.sum());
-		map.put("meshReplacementIndexedDrawCallsByLayer", layerCounterMap(this.meshReplacementIndexedDrawCallsByLayer));
-		map.put("meshReplacementDuplicateCancellations", this.meshReplacementDuplicateCancellations.sum());
-		map.put("meshReplacementRefusals", this.meshReplacementRefusals.sum());
-		map.put("lastTerrainDispatch", this.lastTerrainDispatch.asMap());
-		map.put("gpuTerrainDataReady", DescriptorHeapTerrainResources.get().hasGpuTerrainData());
-		map.put("domains", RendererDomainRegistry.get().asMap());
-		map.put("meshShaderProgram", MeshShaderTerrainProgram.get().asMap());
-		map.put("sectionStore", SectionMeshletStore.asMap());
-		map.put("descriptorHeap", DescriptorHeapTerrainResources.get().asMap());
-		map.put("presentPacing", PresentPacingController.get().asMap());
-		map.put("fragmentShadingRate", FragmentShadingRateController.get().asMap());
-		return map;
-	}
-	
-	private static Map<String, Object> layerCounterMap(LongAdder[] counters) {
-		Map<String, Object> map = new LinkedHashMap<>();
-		for (ChunkSectionLayer layer : ChunkSectionLayer.values()) {
-			int ordinal = layer.ordinal();
-			map.put(layer.label(), ordinal < counters.length ? counters[ordinal].sum() : 0L);
-		}
-		return map;
+	public String describe() {
+		return "terrainGroupCalls=" + this.terrainGroupCalls.sum() + ", improvedFogTerrainGroups=" + this.improvedFogTerrainGroups.sum() + ", capturedSections=" + this.capturedSections.sum() + ", releasedSections=" + this.releasedSections.sum() + ", capturedVertexBytes=" + this.capturedVertexBytes.sum() + ", capturedIndexBytes=" + this.capturedIndexBytes.sum() + ", captureCpuMicros=" + this.captureCpuNanos.sum() / 1_000L + ", estimatedMeshlets=" + this.estimatedMeshlets.sum() + ", gpuTerrainDataReady=" + DescriptorHeapTerrainResources.get().hasGpuTerrainData() + ", meshReplacementDrawCalls=" + this.meshReplacementDrawCalls.sum() + ", gpuDrivenFrames=" + this.gpuDrivenFrames.sum() + ", gpuDrivenFrameRefusals=" + this.gpuDrivenFrameRefusals.sum() + ", meshReplacementTasks=" + this.meshReplacementTasks.sum() + ", meshReplacementVisibleListDrawCalls=" + this.meshReplacementVisibleListDrawCalls.sum() + ", meshReplacementWorkQueueDrawCalls=" + this.meshReplacementWorkQueueDrawCalls.sum() + ", meshReplacementIndirectCommandDrawCalls=" + this.meshReplacementIndirectCommandDrawCalls.sum() + ", meshReplacementPreparedGpuCommandDrawCalls=" + this.meshReplacementPreparedGpuCommandDrawCalls.sum() + ", meshReplacementPreparedGpuCommands=" + this.meshReplacementPreparedGpuCommands.sum() + ", meshReplacementPreparedFullLayerGpuCommands=" + this.meshReplacementPreparedFullLayerGpuCommands.sum() + ", meshReplacementPreparedVisibleGpuCommands=" + this.meshReplacementPreparedVisibleGpuCommands.sum() + ", meshReplacementPreparedGpuCommandDisabled=" + this.meshReplacementPreparedGpuCommandDisabled.sum() + ", meshReplacementPreparedGpuCommandRefusals=" + this.meshReplacementPreparedGpuCommandRefusals.sum() + ", meshReplacementPreparedDispatchQueueLeaks=" + this.meshReplacementPreparedDispatchQueueLeaks.sum() + ", meshReplacementVisibleMeshletFallbackRefusals=" + this.meshReplacementVisibleMeshletFallbackRefusals.sum() + ", meshReplacementTaskTruncations=" + this.meshReplacementTaskTruncations.sum() + ", meshReplacementLayerFilteredDrawCalls=" + this.meshReplacementLayerFilteredDrawCalls.sum() + ", meshReplacementWholeSetDrawCalls=" + this.meshReplacementWholeSetDrawCalls.sum() + ", meshReplacementDrawCallsByLayer=" + Arrays.toString(this.meshReplacementDrawCallsByLayer) + ", meshReplacementCustomIndexFallbacks=" + this.meshReplacementCustomIndexFallbacks.sum() + ", meshReplacementCustomIndexFallbacksByLayer=" + Arrays.toString(this.meshReplacementCustomIndexFallbacksByLayer) + ", meshReplacementIndexedDrawCalls=" + this.meshReplacementIndexedDrawCalls.sum() + ", meshReplacementIndexedDrawCallsByLayer=" + Arrays.toString(this.meshReplacementIndexedDrawCallsByLayer) + ", meshReplacementDuplicateCancellations=" + this.meshReplacementDuplicateCancellations.sum() + ", meshReplacementRefusals=" + this.meshReplacementRefusals.sum() + ", lastTerrainDispatch=" + this.lastTerrainDispatch;
 	}
 	
 }

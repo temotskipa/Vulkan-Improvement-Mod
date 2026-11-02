@@ -123,43 +123,4 @@ public record TerrainDescriptorHeapLayout(boolean configured, boolean descriptor
 		long bytesPerMeshlet = Math.max(TerrainGpuLayout.MESHLET_HEADER_STRIDE, (long) TerrainGpuLayout.VISIBLE_MESHLET_RING_MULTIPLIER * TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE);
 		return (int) Math.min(Integer.MAX_VALUE, VulkanImprovementCapabilities.maxBufferBytes() / bytesPerMeshlet);
 	}
-	
-	public Map<String, Object> asMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("configured", this.configured);
-		map.put("descriptorHeapEnabled", this.descriptorHeapEnabled);
-		map.put("descriptorBufferEnabled", this.descriptorBufferEnabled);
-		map.put("sectionCapacity", this.sectionCapacity);
-		map.put("meshletCapacity", this.meshletCapacity);
-		map.put("vertexPayloadBytes", this.vertexPayloadBytes);
-		map.put("indexPayloadBytes", this.indexPayloadBytes);
-		map.put("visibleMeshletBytes", this.visibleMeshletBytes);
-		map.put("workQueueBytes", this.workQueueBytes);
-		map.put("terrainWorkQueueRecordStride", TerrainGpuLayout.TERRAIN_WORK_QUEUE_RECORD_STRIDE);
-		map.put("terrainWorkQueueCounterBytes", TerrainGpuLayout.TERRAIN_WORK_QUEUE_COUNTER_BYTES);
-		map.put("meshTaskCommandBytes", this.meshTaskCommandBytes);
-		map.put("terrainMeshTaskCommandStride", TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_STRIDE);
-		map.put("terrainMeshTaskCommandCapacity", TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_CAPACITY);
-		map.put("materialTableBytes", this.materialTableBytes);
-		map.put("materialRecordStride", TerrainGpuLayout.MATERIAL_RECORD_STRIDE);
-		map.put("materialTableCapacity", TerrainGpuLayout.MATERIAL_TABLE_CAPACITY);
-		map.put("visibleMeshletRecordStride", TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE);
-		map.put("visibleMeshletRingMultiplier", TerrainGpuLayout.VISIBLE_MESHLET_RING_MULTIPLIER);
-		map.put("samplerHeapBytes", this.samplerHeapBytes);
-		map.put("resourceHeapBytes", this.resourceHeapBytes);
-		map.put("samplerDescriptorBufferBytes", this.samplerDescriptorBufferBytes);
-		map.put("resourceDescriptorBufferBytes", this.resourceDescriptorBufferBytes);
-		map.put("sectionMetadataBytes", this.sectionMetadataBytes);
-		map.put("meshletHeaderBytes", this.meshletHeaderBytes);
-		map.put("samplerDescriptorBytes", this.samplerDescriptorBytes);
-		map.put("imageDescriptorBytes", this.imageDescriptorBytes);
-		map.put("bufferDescriptorBytes", this.bufferDescriptorBytes);
-		map.put("descriptorBufferAlignment", this.descriptorBufferAlignment);
-		map.put("descriptorBufferSamplerDescriptorBytes", this.descriptorBufferSamplerDescriptorBytes);
-		map.put("descriptorBufferSampledImageDescriptorBytes", this.descriptorBufferSampledImageDescriptorBytes);
-		map.put("descriptorBufferUniformBufferDescriptorBytes", this.descriptorBufferUniformBufferDescriptorBytes);
-		map.put("descriptorBufferStorageBufferDescriptorBytes", this.descriptorBufferStorageBufferDescriptorBytes);
-		map.put("slots", this.slots);
-		return map;
-	}
 }

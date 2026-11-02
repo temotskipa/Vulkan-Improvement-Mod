@@ -1,8 +1,5 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
-
 record GpuResourceRetirementStats(int resourceSets, int buffers, long bytes) {
 	GpuResourceRetirementStats {
 		if (resourceSets < 0) {
@@ -39,13 +36,5 @@ record GpuResourceRetirementStats(int resourceSets, int buffers, long bytes) {
 	private static long saturatingAdd(long left, long right) {
 		long sum = left + right;
 		return sum < 0L ? Long.MAX_VALUE : sum;
-	}
-	
-	Map<String, Object> asMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("resourceSets", this.resourceSets);
-		map.put("buffers", this.buffers);
-		map.put("bytes", this.bytes);
-		return map;
 	}
 }

@@ -3,9 +3,6 @@ package com.temotskipa.vulkanimprovement.client.vulkan.gpuworld;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.GpuMaterialRecord;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
-
 record GpuWorldMaterialTableContract(int revision, int capacity, int recordStride, int defaultMaterialId) {
 	GpuWorldMaterialTableContract {
 		if (revision <= 0) {
@@ -33,14 +30,5 @@ record GpuWorldMaterialTableContract(int revision, int capacity, int recordStrid
 	
 	boolean containsMaterialId(int materialId) {
 		return materialId >= 0 && materialId < this.capacity;
-	}
-	
-	Map<String, Object> asMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("revision", this.revision);
-		map.put("capacity", this.capacity);
-		map.put("recordStride", this.recordStride);
-		map.put("defaultMaterialId", this.defaultMaterialId);
-		return map;
 	}
 }

@@ -108,19 +108,6 @@ public final class TerrainRenderContext {
 		return PREPARED_LAYER_DISPATCHES.get(layerOrdinal).pollFirst();
 	}
 	
-	public static Map<String, Object> preparedDispatchQueueDepths() {
-		List<ArrayDeque<TerrainMeshTaskDispatch>> preparedDispatches = PREPARED_LAYER_DISPATCHES;
-		Map<String, Object> depths = new LinkedHashMap<>();
-		ChunkSectionLayer[] layers = ChunkSectionLayer.values();
-		for (int layerOrdinal = 0; layerOrdinal < preparedDispatches.size() && layerOrdinal < layers.length; layerOrdinal++) {
-			int depth = preparedDispatches.get(layerOrdinal).size();
-			if (depth > 0) {
-				depths.put(layers[layerOrdinal].label(), depth);
-			}
-		}
-		return depths;
-	}
-	
 	public static boolean markDispatchRequired(int layerOrdinal) {
 		if (layerOrdinal < 0) {
 			if (DISPATCHED_WHOLE_SET.get()) {

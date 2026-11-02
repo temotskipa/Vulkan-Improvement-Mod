@@ -8,7 +8,6 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class GpuWorldDatabase {
 	static final int DIRTY_GEOMETRY = 1;
 	static final int DIRTY_MATERIALS = 1 << 1;
-	static final int DIRTY_VISIBILITY = 1 << 2;
 	static final int DIRTY_REMOVED = 1 << 3;
 	
 	private static final GpuWorldResidencyBudget DEFAULT_RESIDENCY_BUDGET = GpuWorldResidencyBudget.conservativeDefault();
@@ -113,48 +112,35 @@ public final class GpuWorldDatabase {
 		this.residentTerrain = new GpuWorldResidentTerrainUsage(livePages, usedBytes, capacityBytes, allocationRefusals);
 	}
 	
-	public synchronized Map<String, Object> asMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("authority", "cpu-chunk-state");
-		map.put("liveSections", this.sections.size());
-		map.put("updateSequence", this.updateSequence.get());
-		map.put("clearCount", this.clearCount.get());
-		map.put("lastClearReason", this.lastClearReason);
-		map.put("dirtyGeometryBit", DIRTY_GEOMETRY);
-		map.put("dirtyMaterialsBit", DIRTY_MATERIALS);
-		map.put("dirtyVisibilityBit", DIRTY_VISIBILITY);
-		map.put("dirtyRemovedBit", DIRTY_REMOVED);
-		map.put("materialTable", this.materialTable.asMap());
-		map.put("residencyBudget", DEFAULT_RESIDENCY_BUDGET.asMap());
-		map.put("residencyStats", this.residencyStats.asMap());
-		map.put("residentTerrain", this.residentTerrain.asMap());
-		map.put("visibilityCommandStats", this.visibilityCommandStats.asMap());
-		map.put("pipelineStages", GpuWorldPipelineStage.asDiagnostics());
-		map.put("terrainLayerDirectory", GpuWorldTerrainLayerDirectory.get().asMap());
-		map.put("pageKinds", pageKindsMap());
-		map.put("lastUpdate", this.lastUpdate == null ? Map.of("present", false) : this.lastUpdate.asMap());
-		map.put("sampleSections", sampleSections());
-		return map;
+	public synchronized String describe() {
+		return "liveSections=" + this.sections.size() + ", updateSequence=" + this.updateSequence.get() + ", clearCount=" + this.clearCount.get() + ", lastClearReason=" + this.lastClearReason + ", residency=[" + this.residencyStats.describe() + "], residentTerrain=" + this.residentTerrain + ", visibility=[" + this.visibilityCommandStats.describe() + "], layerDirectory=[" + GpuWorldTerrainLayerDirectory.get().describe() + "], lastUpdate=" + this.lastUpdate;
 	}
 	
-	private static Map<String, Object> pageKindsMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		for (GpuWorldPageKind kind : GpuWorldPageKind.values()) {
-			map.put(kind.diagnosticName(), kind.asMap());
-		}
-		return map;
+	synchronized int liveSections() {
+		return this.sections.size();
 	}
 	
-	private Map<String, Object> sampleSections() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		int count = 0;
-		for (GpuWorldSectionRecord section : this.sections.values()) {
-			map.put(Long.toString(section.section().sectionNode()), section.asMap());
-			count++;
-			if (count >= 8) {
-				break;
-			}
-		}
-		return map;
+	long updateSequence() {
+		return this.updateSequence.get();
+	}
+	
+	long clearCount() {
+		return this.clearCount.get();
+	}
+	
+	synchronized String lastClearReason() {
+		return this.lastClearReason;
+	}
+	
+	GpuWorldResidencyStats residencyStats() {
+		return this.residencyStats;
+	}
+	
+	GpuWorldVisibilityCommandStats visibilityCommandStats() {
+		return this.visibilityCommandStats;
+	}
+	
+	synchronized GpuWorldSectionRecord section(long sectionNode) {
+		return this.sections.get(sectionNode);
 	}
 }

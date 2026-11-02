@@ -6,7 +6,6 @@ import org.jspecify.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 
 /**
  * The section layers Minecraft collected for the frame being prepared, per layer and in its
@@ -23,7 +22,7 @@ final class MeshletVisibleFrame {
 	boolean open;
 	volatile boolean takeover;
 	boolean gpuDriven;
-	volatile Map<String, Object> published = Map.of("entries", 0, "uncaptured", 0, "belowOne", 0, "min", 1.0F, "gpuDriven", false);
+	volatile VisibleFrameSummary published = new VisibleFrameSummary(0, 0, 0, 1.0F, false);
 	private long currentSection = Long.MIN_VALUE;
 	private float currentVisibility = 1.0F;
 	private int lastLayer = -1;
@@ -74,7 +73,7 @@ final class MeshletVisibleFrame {
 	
 	void end() {
 		this.open = false;
-		this.published = Map.of("entries", sectionLayerCount(), "uncaptured", uncapturedCount(), "belowOne", belowOne(), "min", minVisibility(), "gpuDriven", this.gpuDriven);
+		this.published = new VisibleFrameSummary(sectionLayerCount(), uncapturedCount(), belowOne(), minVisibility(), this.gpuDriven);
 	}
 	
 	int sectionLayerCount() {
@@ -111,7 +110,7 @@ final class MeshletVisibleFrame {
 		return min;
 	}
 	
-	Map<String, Object> published() {
+	VisibleFrameSummary published() {
 		return this.published;
 	}
 	

@@ -11,8 +11,6 @@ import org.lwjgl.vulkan.VK10;
 import org.lwjgl.vulkan.VK12;
 
 import java.lang.foreign.MemorySegment;
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 record TerrainGpuResources(DeviceBuffer samplerHeap, DeviceBuffer resourceHeap, DeviceBuffer samplerDescriptorBuffer, DeviceBuffer resourceDescriptorBuffer, DeviceBuffer sectionMetadata, DeviceBuffer meshletHeaders, DeviceBuffer meshletVertices, DeviceBuffer meshletIndices, DeviceBuffer visibleMeshlets, DeviceBuffer workQueue, DeviceBuffer meshTaskCommands, DeviceBuffer materialTable, DeviceBuffer debugCounters) {
 	static TerrainGpuResources create(VulkanDevice device, TerrainDescriptorHeapLayout layout) {
@@ -94,19 +92,17 @@ record TerrainGpuResources(DeviceBuffer samplerHeap, DeviceBuffer resourceHeap, 
 		}
 	}
 	
-	Map<String, Object> debugCounterMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("allocated", this.debugCounters != null);
-		if (this.debugCounters != null) {
-			this.debugCounters.invalidate();
-			MemorySegment counters = this.debugCounters.mapped();
-			// Counted only where the mesh stage culls meshlets itself, on the CPU work-queue path.
-			map.put("culledMeshlets", Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, 4L)));
-			map.put("visibilityInputPages", Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET)));
-			map.put("visibilityCulledPages", Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET + Integer.BYTES)));
-			map.put("visibilityVisiblePages", Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET + 2 * Integer.BYTES)));
+	/**
+	 * What the GPU last counted. The mesh stage counts culled meshlets only where it culls them
+	 * itself, on the CPU work-queue path.
+	 */
+	String describeDebugCounters() {
+		if (this.debugCounters == null) {
+			return "none";
 		}
-		return map;
+		this.debugCounters.invalidate();
+		MemorySegment counters = this.debugCounters.mapped();
+		return "culledMeshlets=" + Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, 4L)) + ", visibilityInputPages=" + Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET)) + ", visibilityCulledPages=" + Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET + Integer.BYTES)) + ", visibilityVisiblePages=" + Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET + 2 * Integer.BYTES));
 	}
 	
 	boolean readyForDescriptorBuffer() {
@@ -155,39 +151,5 @@ record TerrainGpuResources(DeviceBuffer samplerHeap, DeviceBuffer resourceHeap, 
 		if (buffer != null) {
 			buffer.destroyNow();
 		}
-	}
-	
-	Map<String, Object> asMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("samplerHeap", bufferMap(this.samplerHeap));
-		map.put("resourceHeap", bufferMap(this.resourceHeap));
-		map.put("samplerDescriptorBuffer", bufferMap(this.samplerDescriptorBuffer));
-		map.put("resourceDescriptorBuffer", bufferMap(this.resourceDescriptorBuffer));
-		map.put("sectionMetadata", bufferMap(this.sectionMetadata));
-		map.put("meshletHeaders", bufferMap(this.meshletHeaders));
-		map.put("meshletVertices", bufferMap(this.meshletVertices));
-		map.put("meshletIndices", bufferMap(this.meshletIndices));
-		map.put("visibleMeshlets", bufferMap(this.visibleMeshlets));
-		map.put("workQueue", bufferMap(this.workQueue));
-		map.put("meshTaskCommands", bufferMap(this.meshTaskCommands));
-		map.put("materialTable", bufferMap(this.materialTable));
-		map.put("debugCounters", bufferMap(this.debugCounters));
-		return map;
-	}
-	
-	private static Map<String, Object> bufferMap(DeviceBuffer buffer) {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("allocated", buffer != null);
-		if (buffer != null) {
-			map.put("label", buffer.label());
-			map.put("vkBuffer", buffer.vkBuffer());
-			map.put("vkBufferHex", buffer.vkBufferHex());
-			map.put("size", buffer.size());
-			map.put("deviceAddress", buffer.deviceAddress());
-			map.put("hostVisible", buffer.hostVisible());
-			map.put("closed", buffer.closed());
-			map.put("destroyed", buffer.destroyed());
-		}
-		return map;
 	}
 }

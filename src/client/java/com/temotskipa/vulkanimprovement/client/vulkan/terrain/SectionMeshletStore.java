@@ -674,7 +674,7 @@ public final class SectionMeshletStore {
 		return SECTIONS.size();
 	}
 	
-	public static Map<String, Object> asMap() {
+	public static String describe() {
 		int layers = 0;
 		int meshlets = 0;
 		long stagedVertexBytes = 0L;
@@ -687,30 +687,7 @@ public final class SectionMeshletStore {
 				stagedIndexBytes += layer.buffers().indexBytes();
 			}
 		}
-		
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("liveSections", SECTIONS.size());
-		map.put("capturedLayers", layers);
-		map.put("meshletDescriptors", meshlets);
-		map.put("stagedVertexBytes", stagedVertexBytes);
-		map.put("stagedIndexBytes", stagedIndexBytes);
-		map.put("targetVerticesPerMeshlet", TerrainGpuLayout.TARGET_VERTICES_PER_MESHLET);
-		map.put("targetTrianglesPerIndexedMeshlet", TerrainGpuLayout.TARGET_TRIANGLES_PER_INDEXED_MESHLET);
-		map.put("blockVertexStride", TerrainGpuLayout.BLOCK_VERTEX_STRIDE);
-		map.put("normalizedIndexStride", TerrainGpuLayout.NORMALIZED_INDEX_STRIDE);
-		map.put("terrainMaterialClassification", TerrainMaterialClassifier.asMap());
-		Map<String, Object> frame = VISIBLE_FRAME.published();
-		map.put("visibleSectionLayers", frame.get("entries"));
-		map.put("visibleSectionLayersWithoutCapture", frame.get("uncaptured"));
-		map.put("gpuDrivenFrame", frame.get("gpuDriven"));
-		map.put("residentPages", PAGES.stats().asMap());
-		map.put("vanillaChunkVisibilityFadeEnabled", TerrainRendererDebugConfig.vanillaChunkVisibilityFadeEnabled());
-		map.put("sectionVisibility", Map.of("entries", frame.get("entries"), "belowOne", frame.get("belowOne"), "min", frame.get("min")));
-		map.put("invalidationCount", INVALIDATION_COUNT.get());
-		map.put("lastInvalidationReason", lastInvalidationReason);
-		map.put("rejectedCaptures", REJECTED_CAPTURES.get());
-		map.put("lastRejectedCapture", lastRejectedCapture);
-		return map;
+		return "liveSections=" + SECTIONS.size() + ", capturedLayers=" + layers + ", meshletDescriptors=" + meshlets + ", stagedVertexBytes=" + stagedVertexBytes + ", stagedIndexBytes=" + stagedIndexBytes + ", visibleFrame=" + VISIBLE_FRAME.published() + ", residentPages=" + PAGES.stats() + ", invalidationCount=" + INVALIDATION_COUNT.get() + ", lastInvalidationReason=" + lastInvalidationReason + ", rejectedCaptures=" + REJECTED_CAPTURES.get() + ", lastRejectedCapture=" + lastRejectedCapture;
 	}
 	
 	/**

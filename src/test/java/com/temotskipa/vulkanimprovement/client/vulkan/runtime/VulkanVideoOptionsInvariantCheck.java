@@ -10,7 +10,6 @@ import java.util.regex.Pattern;
 public final class VulkanVideoOptionsInvariantCheck {
 	private static final Path RUNTIME = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/runtime/VulkanImprovementRuntime.java");
 	private static final Path VIDEO_OPTIONS = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/runtime/VulkanImprovementVideoOptions.java");
-	private static final Path VIDEO_SETTINGS_COMPATIBILITY = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/runtime/VulkanVideoSettingsCompatibility.java");
 	private static final Path VIDEO_SETTINGS_MIXIN = Path.of("src/client/java/com/temotskipa/vulkanimprovement/mixin/client/VideoSettingsScreenMixin.java");
 	private static final Path TERRAIN_CONFIG = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/TerrainRendererDebugConfig.java");
 	private static final Path MESH_TERRAIN_RENDERER = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/MeshTerrainRenderer.java");
@@ -33,8 +32,8 @@ public final class VulkanVideoOptionsInvariantCheck {
 		checkEveryDependentOptionIsGreyedOut(read(VIDEO_OPTIONS));
 		checkOptionRules();
 		checkTerrainCaptureBootstrapIsExplicitOptIn(read(TERRAIN_CONFIG), read(VIDEO_OPTIONS), read(LANG));
-		checkStrictTerrainCancellationIsExplicitOptIn(read(TERRAIN_CONFIG), read(VIDEO_SETTINGS_COMPATIBILITY), read(LANG));
-		checkTranslucentTerrainFlagIsMetadataOnly(read(TERRAIN_CONFIG), read(VIDEO_SETTINGS_COMPATIBILITY), read(LANG));
+		checkStrictTerrainCancellationIsExplicitOptIn(read(TERRAIN_CONFIG), read(LANG));
+		checkTranslucentTerrainFlagIsMetadataOnly(read(TERRAIN_CONFIG), read(LANG));
 		checkOpenGlActiveSessionsDoNotEnterTerrainServices(read(CHUNK_SECTIONS_TO_RENDER_MIXIN), read(RENDER_SECTION_MIXIN), read(LEVEL_RENDERER_MIXIN));
 		checkTerrainMirrorHotPathsRequireCaptureOptIn(read(MESH_TERRAIN_RENDERER), read(CHUNK_SECTIONS_TO_RENDER_MIXIN), read(RENDER_SECTION_MIXIN), read(LEVEL_RENDERER_MIXIN));
 	}
@@ -53,7 +52,7 @@ public final class VulkanVideoOptionsInvariantCheck {
 		}
 		require(options > INDEPENDENT_OPTIONS.size(), "the check must find the video options");
 	}
-
+	
 	private static void checkOptionRules() {
 		VulkanVideoOptionRules none = rules();
 		require(!none.meshTerrain() && !none.captureBootstrap() && !none.capturedTerrain() && !none.drawnMeshTerrain() && !none.presentPacing() && !none.gpuTimer() && !none.worldgenProvider(), "a device without what the options need must leave them greyed out");
@@ -78,12 +77,12 @@ public final class VulkanVideoOptionsInvariantCheck {
 		require(!rules("meshTerrainSupported", "meshTerrainOn", "shadingRateSupported").shadingRateSize() && rules("meshTerrainSupported", "meshTerrainOn", "shadingRateSupported", "shadingRateOn").shadingRateSize(), "Terrain VRS Size must need Terrain VRS");
 		require(!rules("presentPacingSupported").presentPacing() && !rules("vsyncOn").presentPacing() && rules("presentPacingSupported", "vsyncOn").presentPacing(), "Present Pacing must need the device and VSync");
 	}
-
+	
 	private static VulkanVideoOptionRules rules(String... on) {
 		Set<String> set = Set.of(on);
 		return new VulkanVideoOptionRules(set.contains("meshTerrainSupported"), set.contains("meshTerrainOn"), set.contains("captureBootstrapOn"), set.contains("cancelVanillaTerrainOn"), set.contains("fullCapturedTerrainOn"), set.contains("gpuTaskCommandsOn"), set.contains("gpuDrivenTerrainOn"), set.contains("shadingRateSupported"), set.contains("shadingRateOn"), set.contains("presentPacingSupported"), set.contains("vsyncOn"), set.contains("gpuTimerSupported"), set.contains("worldgenProviderPresent"));
 	}
-
+	
 	private static void checkRuntimeKeepsOptionsVisibleForActiveVulkan(String source) {
 		String body = methodBody(source, "public static boolean shouldShowVideoOptions");
 		int activeVulkanCheck = body.indexOf("if (isVulkanBackendActive())");
@@ -114,24 +113,23 @@ public final class VulkanVideoOptionsInvariantCheck {
 		requireContains(langSource, "\"options.vulkanimprovement.terrainCaptureBootstrap.tooltip\"", "lang file must describe the terrain capture/bootstrap option");
 	}
 	
-	private static void checkStrictTerrainCancellationIsExplicitOptIn(String configSource, String compatibilitySource, String langSource) {
+	private static void checkStrictTerrainCancellationIsExplicitOptIn(String configSource, String langSource) {
 		requireContains(configSource, "strictMeshTerrainReplacement = booleanProperty(\"vim.strictMeshTerrainReplacement\", false)", "strict terrain cancellation must be disabled by default");
 		requireContains(methodBody(configSource, "public static String rendererMode"), "\"mesh-overlay-vanilla-fallback\"", "terrain renderer mode must report fallback overlay mode when strict cancellation is off");
 		requireContains(methodBody(configSource, "public static String rendererMode"), "\"mesh-strict-replacement\"", "terrain renderer mode must report strict replacement when cancellation is enabled");
-		requireContains(compatibilitySource, "strictMeshTerrainReplacement", "video diagnostics must report whether strict terrain cancellation is enabled");
+		requireContains(configSource, "strictMeshTerrainReplacement=\" + strictMeshTerrainReplacement()", "diagnostics must report whether strict terrain cancellation is enabled");
 		requireContains(langSource, "\"options.vulkanimprovement.strictMeshTerrainReplacement\": \"Cancel Vanilla Terrain\"", "Video Settings must label strict replacement as explicit vanilla cancellation");
 		requireContains(langSource, "Keep off until visible coverage is proven", "Video Settings tooltip must warn that strict terrain cancellation is unsafe before coverage validation");
 	}
 	
-	private static void checkTranslucentTerrainFlagIsMetadataOnly(String configSource, String compatibilitySource, String langSource) {
+	private static void checkTranslucentTerrainFlagIsMetadataOnly(String configSource, String langSource) {
 		requireContains(configSource, "public static String translucentLayerMode()", "terrain config must expose the visible translucent fallback mode");
 		requireContains(methodBody(configSource, "public static String translucentLayerMode"), "\"metadata-capture-vanilla-visible\"", "translucent flag must report metadata capture with vanilla visible rendering");
-		requireContains(compatibilitySource, "TerrainRendererDebugConfig.translucentLayerMode()", "video diagnostics must use the shared translucent-layer mode");
+		requireContains(configSource, "defaultTranslucentLayerMode=\" + translucentLayerMode()", "diagnostics must report the shared translucent-layer mode");
 		requireContains(langSource, "Captures translucent terrain metadata", "Video Settings tooltip must describe the translucent flag as metadata capture");
 		requireContains(langSource, "Visible water and translucency remain vanilla", "Video Settings tooltip must say visible translucent rendering remains vanilla");
 		require(!langSource.contains("Routes translucent terrain through the mesh-shader path"), "Video Settings tooltip must not claim visible translucent mesh replacement is active");
 		require(!configSource.contains("mesh-experimental-translucent"), "terrain diagnostics must not claim visible translucent mesh replacement is active");
-		require(!compatibilitySource.contains("\"mesh-experimental\""), "video diagnostics must not claim visible translucent mesh replacement is active");
 	}
 	
 	private static void checkOpenGlActiveSessionsDoNotEnterTerrainServices(String chunkSectionsSource, String renderSectionSource, String levelRendererSource) {

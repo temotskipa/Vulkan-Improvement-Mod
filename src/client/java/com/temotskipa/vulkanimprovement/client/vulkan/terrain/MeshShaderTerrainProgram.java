@@ -3,7 +3,6 @@ package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 import com.mojang.renderpearl.api.pipeline.BlendFunction;
 import com.mojang.renderpearl.api.pipeline.ColorTargetState;
 import com.mojang.renderpearl.api.pipeline.DepthStencilState;
-import com.mojang.renderpearl.api.pipeline.RenderPassLayout;
 import com.mojang.renderpearl.api.pipeline.RenderPassLayout.Subpass;
 import com.mojang.renderpearl.backend.vulkan.VulkanCommandEncoder;
 import com.mojang.renderpearl.backend.vulkan.VulkanConst;
@@ -27,7 +26,6 @@ import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.LongAdder;
@@ -565,47 +563,7 @@ public final class MeshShaderTerrainProgram {
 		target.putInt(SectionPos.blockToSectionCoord(position.z()));
 	}
 	
-	public Map<String, Object> asMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("ready", ready());
-		map.put("taskModule", this.taskModule);
-		map.put("meshModule", this.meshModule);
-		map.put("fragmentModule", this.fragmentModule);
-		map.put("commandModule", this.commandModule);
-		map.put("taskStage", EXTMeshShader.VK_SHADER_STAGE_TASK_BIT_EXT);
-		map.put("meshStage", EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT);
-		map.put("commandStage", VK10.VK_SHADER_STAGE_COMPUTE_BIT);
-		map.put("taskShaderResource", TerrainShaderSource.TASK_SHADER);
-		map.put("meshShaderResource", TerrainShaderSource.MESH_SHADER);
-		map.put("fragmentShaderResource", TerrainShaderSource.FRAGMENT_SHADER);
-		map.put("meshTaskCommandShaderResource", TerrainShaderSource.MESH_TASK_COMMAND_SHADER);
-		map.put("taskShaderCompileSource", this.taskShaderCompileSource);
-		map.put("meshShaderCompileSource", this.meshShaderCompileSource);
-		map.put("fragmentShaderCompileSource", this.fragmentShaderCompileSource);
-		map.put("commandShaderCompileSource", this.commandShaderCompileSource);
-		map.put("visibleSectionPagesShaderCompileSource", this.sectionPagesShaderCompileSource);
-		map.put("enableMeshletFrustumCulling", meshletFrustumCullingPushConstant() != 0);
-		map.put("pipelineCacheSize", this.pipelineCache.size());
-		map.put("commandPipelineReady", this.commandPipeline != null);
-		map.put("visibleSectionPagesPipelineReady", this.sectionPagesPipeline != null);
-		map.put("pipelineCompiles", this.pipelineCompiles.sum());
-		map.put("meshTaskDispatches", this.meshTaskDispatches.sum());
-		map.put("meshTaskDirectDispatches", this.meshTaskDirectDispatches.sum());
-		map.put("meshTaskIndirectDispatches", this.meshTaskIndirectDispatches.sum());
-		map.put("meshTaskGpuCommandPreparations", this.meshTaskGpuCommandPreparations.sum());
-		map.put("gpuDrivenPagePreparations", this.gpuDrivenPagePreparations.sum());
-		map.put("meshTaskGpuCommandPreparationsInsideRenderPass", this.meshTaskGpuCommandPreparationsInsideRenderPass.sum());
-		map.put("meshTasksDispatched", this.meshTasksDispatched.sum());
-		map.put("improvedFogDispatches", this.improvedFogDispatches.sum());
-		map.put("textureDescriptorBufferBinds", this.textureDescriptorBufferBinds.sum());
-		map.put("textureDescriptorBufferMissing", this.textureDescriptorBufferMissing.sum());
-		TerrainTextureDescriptorLayout descriptorLayout = null;
-		for (TerrainMeshPipeline pipeline : this.pipelineCache.values()) {
-			descriptorLayout = pipeline.textureDescriptorLayout();
-			break;
-		}
-		map.put("textureDescriptorLayout", descriptorLayout == null ? Map.of() : descriptorLayout.asMap());
-		map.put("lastError", this.lastError);
-		return map;
+	public String describe() {
+		return "ready=" + ready() + ", lastError=" + this.lastError + ", taskShaderCompileSource=" + this.taskShaderCompileSource + ", meshShaderCompileSource=" + this.meshShaderCompileSource + ", fragmentShaderCompileSource=" + this.fragmentShaderCompileSource + ", commandShaderCompileSource=" + this.commandShaderCompileSource + ", visibleSectionPagesShaderCompileSource=" + this.sectionPagesShaderCompileSource + ", pipelineCacheSize=" + this.pipelineCache.size() + ", commandPipelineReady=" + (this.commandPipeline != null) + ", visibleSectionPagesPipelineReady=" + (this.sectionPagesPipeline != null) + ", pipelineCompiles=" + this.pipelineCompiles.sum() + ", meshTaskDispatches=" + this.meshTaskDispatches.sum() + ", meshTaskDirectDispatches=" + this.meshTaskDirectDispatches.sum() + ", meshTaskIndirectDispatches=" + this.meshTaskIndirectDispatches.sum() + ", meshTaskGpuCommandPreparations=" + this.meshTaskGpuCommandPreparations.sum() + ", gpuDrivenPagePreparations=" + this.gpuDrivenPagePreparations.sum() + ", meshTaskGpuCommandPreparationsInsideRenderPass=" + this.meshTaskGpuCommandPreparationsInsideRenderPass.sum() + ", meshTasksDispatched=" + this.meshTasksDispatched.sum() + ", improvedFogDispatches=" + this.improvedFogDispatches.sum() + ", textureDescriptorBufferBinds=" + this.textureDescriptorBufferBinds.sum() + ", textureDescriptorBufferMissing=" + this.textureDescriptorBufferMissing.sum();
 	}
 }

@@ -16,7 +16,7 @@ import org.lwjgl.vulkan.VkBufferCopy.Buffer;
 import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
 import java.util.*;
-import java.util.Map.Entry;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.LongAdder;
@@ -889,64 +889,8 @@ public final class DescriptorHeapTerrainResources {
 		return this.layout;
 	}
 	
-	public Map<String, Object> asMap() {
-		Map<String, Object> map = this.layout.asMap();
-		map.put("resources", this.resources.asMap());
-		map.put("retiredResources", retiredResourceStats().asMap());
-		map.put("uploadStats", this.uploadStats.asMap());
-		map.put("terrainDataDirty", this.terrainDataDirty.get());
-		map.put("sectionMetadataAddress", sectionMetadataAddress());
-		map.put("meshletHeaderAddress", meshletHeaderAddress());
-		map.put("meshletVertexPayloadAddress", meshletVertexPayloadAddress());
-		map.put("meshletIndexPayloadAddress", meshletIndexPayloadAddress());
-		map.put("visibleMeshletListAddress", visibleMeshletListAddress());
-		map.put("terrainWorkQueueAddress", terrainWorkQueueAddress());
-		map.put("terrainMeshTaskCommandAddress", terrainMeshTaskCommandAddress());
-		map.put("terrainDescriptorBufferAddress", terrainDescriptorBufferAddress());
-		map.put("materialTableAddress", materialTableAddress());
-		map.put("materialRecordLayout", GpuMaterialRecord.layoutMap());
-		map.put("terrainMaterialClassification", TerrainMaterialClassifier.asMap());
-		map.put("terrainDebugCounterAddress", terrainDebugCounterAddress());
-		map.put("descriptorBufferWrites", this.descriptorBufferWrites.sum());
-		map.put("descriptorBufferMissing", this.descriptorBufferMissing.sum());
-		map.put("materialTableWrites", this.materialTableWrites.sum());
-		map.put("materialTableMissing", this.materialTableMissing.sum());
-		map.put("terrainCapacityGrowths", this.terrainCapacityGrowths.sum());
-		map.put("waitIdleBeforeTerrainUpload", TerrainRendererDebugConfig.waitIdleBeforeTerrainUpload());
-		map.put("terrainUploadDeviceIdleWaits", this.terrainUploadDeviceIdleWaits.sum());
-		map.put("terrainUploadFenceWaits", this.terrainUploadFenceWaits.sum());
-		map.put("terrainUploadFenceDeferrals", this.terrainUploadFenceDeferrals.sum());
-		map.put("terrainUploadFenceFailures", this.terrainUploadFenceFailures.sum());
-		map.put("ringLapFences", Arrays.stream(this.ringLaps).filter(Objects::nonNull).count());
-		map.put("visibleMeshletListUploads", this.visibleMeshletListUploads.sum());
-		map.put("visibleMeshletRecordsUploaded", this.visibleMeshletRecordsUploaded.sum());
-		map.put("visibleMeshletRecordsDropped", this.visibleMeshletRecordsDropped.sum());
-		map.put("visibleMeshletListDeferrals", this.visibleMeshletListDeferrals.sum());
-		map.put("visibleMeshletRingWraps", this.visibleMeshletRingWraps.sum());
-		map.put("lastVisibleMeshletUpload", this.lastVisibleMeshletUpload.asMap());
-		map.put("terrainWorkQueueUploads", this.terrainWorkQueueUploads.sum());
-		map.put("terrainWorkQueueRecordsUploaded", this.terrainWorkQueueRecordsUploaded.sum());
-		map.put("terrainWorkQueueRecordsDropped", this.terrainWorkQueueRecordsDropped.sum());
-		map.put("terrainWorkQueueDeferrals", this.terrainWorkQueueDeferrals.sum());
-		map.put("terrainWorkQueueRingWraps", this.terrainWorkQueueRingWraps.sum());
-		map.put("lastTerrainWorkQueueUpload", this.lastWorkQueueUpload.asMap());
-		map.put("terrainWorkQueueLayout", TerrainWorkQueueLayout.asMap(this.layout.meshletCapacity()));
-		map.put("terrainMeshTaskCommandUploads", this.terrainMeshTaskCommandUploads.sum());
-		map.put("terrainMeshTaskCommandReservations", this.terrainMeshTaskCommandReservations.sum());
-		map.put("terrainMeshTaskCommandDrops", this.terrainMeshTaskCommandDrops.sum());
-		map.put("terrainMeshTaskCommandDeferrals", this.terrainMeshTaskCommandDeferrals.sum());
-		map.put("terrainMeshTaskCommandRingWraps", this.terrainMeshTaskCommandRingWraps.sum());
-		map.put("lastTerrainMeshTaskCommandUpload", this.lastMeshTaskCommandUpload.asMap());
-		map.put("terrainMeshTaskCommandLayout", TerrainMeshTaskCommandLayout.asMap());
-		map.put("lastCapacityGrowthReason", this.lastCapacityGrowthReason);
-		map.put("debugCounters", this.resources.debugCounterMap());
-		map.put("pageUploads", this.pageUploads.sum());
-		map.put("pageUploadBytes", this.pageUploadBytes.sum());
-		map.put("visiblePageListUploads", this.visiblePageListUploads.sum());
-		map.put("gpuDrivenFrameUploads", this.gpuDrivenFrameUploads.sum());
-		map.put("visiblePageRecordsUploaded", this.visiblePageRecordsUploaded.sum());
-		map.put("textureBindings", textureBindingMap());
-		return map;
+	public String describe() {
+		return "sectionCapacity=" + this.layout.sectionCapacity() + ", meshletCapacity=" + this.layout.meshletCapacity() + ", vertexPayloadBytes=" + this.layout.vertexPayloadBytes() + ", indexPayloadBytes=" + this.layout.indexPayloadBytes() + ", retiredResources=" + retiredResourceStats() + ", uploads=[" + this.uploadStats.describe() + "], terrainDataDirty=" + this.terrainDataDirty.get() + ", descriptorBufferWrites=" + this.descriptorBufferWrites.sum() + ", descriptorBufferMissing=" + this.descriptorBufferMissing.sum() + ", materialTableWrites=" + this.materialTableWrites.sum() + ", materialTableMissing=" + this.materialTableMissing.sum() + ", terrainCapacityGrowths=" + this.terrainCapacityGrowths.sum() + ", lastCapacityGrowthReason=" + this.lastCapacityGrowthReason + ", terrainUploadDeviceIdleWaits=" + this.terrainUploadDeviceIdleWaits.sum() + ", terrainUploadFenceWaits=" + this.terrainUploadFenceWaits.sum() + ", terrainUploadFenceDeferrals=" + this.terrainUploadFenceDeferrals.sum() + ", terrainUploadFenceFailures=" + this.terrainUploadFenceFailures.sum() + ", ringLapFences=" + Arrays.stream(this.ringLaps).filter(Objects::nonNull).count() + ", visibleMeshletListUploads=" + this.visibleMeshletListUploads.sum() + ", visibleMeshletRecordsUploaded=" + this.visibleMeshletRecordsUploaded.sum() + ", visibleMeshletRecordsDropped=" + this.visibleMeshletRecordsDropped.sum() + ", visibleMeshletListDeferrals=" + this.visibleMeshletListDeferrals.sum() + ", visibleMeshletRingWraps=" + this.visibleMeshletRingWraps.sum() + ", lastVisibleMeshletUpload=" + this.lastVisibleMeshletUpload + ", terrainWorkQueueUploads=" + this.terrainWorkQueueUploads.sum() + ", terrainWorkQueueRecordsUploaded=" + this.terrainWorkQueueRecordsUploaded.sum() + ", terrainWorkQueueRecordsDropped=" + this.terrainWorkQueueRecordsDropped.sum() + ", terrainWorkQueueDeferrals=" + this.terrainWorkQueueDeferrals.sum() + ", terrainWorkQueueRingWraps=" + this.terrainWorkQueueRingWraps.sum() + ", lastTerrainWorkQueueUpload=" + this.lastWorkQueueUpload + ", terrainMeshTaskCommandUploads=" + this.terrainMeshTaskCommandUploads.sum() + ", terrainMeshTaskCommandReservations=" + this.terrainMeshTaskCommandReservations.sum() + ", terrainMeshTaskCommandDrops=" + this.terrainMeshTaskCommandDrops.sum() + ", terrainMeshTaskCommandDeferrals=" + this.terrainMeshTaskCommandDeferrals.sum() + ", terrainMeshTaskCommandRingWraps=" + this.terrainMeshTaskCommandRingWraps.sum() + ", lastTerrainMeshTaskCommandUpload=" + this.lastMeshTaskCommandUpload + ", debugCounters=[" + this.resources.describeDebugCounters() + "], pageUploads=" + this.pageUploads.sum() + ", pageUploadBytes=" + this.pageUploadBytes.sum() + ", visiblePageListUploads=" + this.visiblePageListUploads.sum() + ", gpuDrivenFrameUploads=" + this.gpuDrivenFrameUploads.sum() + ", visiblePageRecordsUploaded=" + this.visiblePageRecordsUploaded.sum() + ", textureBindings=" + new TreeMap<>(this.textureBindings);
 	}
 	
 	private synchronized GpuResourceRetirementStats retiredResourceStats() {
@@ -982,11 +926,6 @@ public final class DescriptorHeapTerrainResources {
 		return buffer == null ? 0L : buffer.deviceAddress();
 	}
 	
-	public long terrainWorkQueueAddress() {
-		DeviceBuffer buffer = this.resources.workQueue();
-		return buffer == null ? 0L : buffer.deviceAddress();
-	}
-	
 	public long terrainMeshTaskCommandAddress() {
 		DeviceBuffer buffer = this.resources.meshTaskCommands();
 		return buffer == null ? 0L : buffer.deviceAddress();
@@ -1005,11 +944,5 @@ public final class DescriptorHeapTerrainResources {
 	public long terrainDebugCounterAddress() {
 		DeviceBuffer buffer = this.resources.debugCounters();
 		return buffer == null ? 0L : buffer.deviceAddress();
-	}
-	
-	private Map<String, Object> textureBindingMap() {
-		Map<String, Object> map = new LinkedHashMap<>();
-		this.textureBindings.entrySet().stream().sorted(Entry.comparingByKey()).forEach(entry -> map.put(entry.getKey(), entry.getValue().asMap()));
-		return map;
 	}
 }

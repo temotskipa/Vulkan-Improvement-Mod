@@ -107,7 +107,7 @@ the mod is idle (see `LevelRendererMixin` in
 - `client.vulkan.device`: Owns Vulkan feature requirements, capability
   snapshots, runtime profile grouping, and requirement scope metadata.
 - `client.vulkan.runtime`: Owns renderer lifecycle services, domain registry
-  diagnostics, bug-report serialization, backend-active checks, and Video
+  diagnostics, the bug report, backend-active checks, and Video
   Settings option construction.
 - `client.vulkan.terrain`: Owns terrain meshlet storage, GPU buffer layout,
   mesh shader dispatch, descriptor resources, terrain material records,

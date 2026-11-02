@@ -2,9 +2,6 @@ package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
-
 final class TerrainWorkQueueLayout {
 	private TerrainWorkQueueLayout() {
 	}
@@ -18,17 +15,6 @@ final class TerrainWorkQueueLayout {
 	
 	static long recordsOffset() {
 		return TerrainGpuLayout.TERRAIN_WORK_QUEUE_COUNTER_BYTES;
-	}
-	
-	static Map<String, Object> asMap(int recordCapacity) {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("counterBytes", TerrainGpuLayout.TERRAIN_WORK_QUEUE_COUNTER_BYTES);
-		map.put("recordStride", TerrainGpuLayout.TERRAIN_WORK_QUEUE_RECORD_STRIDE);
-		map.put("recordCapacity", recordCapacity);
-		map.put("recordsOffset", recordsOffset());
-		map.put("bytes", bytesForCapacity(recordCapacity));
-		map.put("recordFields", Map.of("meshletIndex", 0, "layerOrdinal", 4, "lodLevel", 8, "visibility", 12));
-		return map;
 	}
 	
 	static long bytesForCapacity(int recordCapacity) {

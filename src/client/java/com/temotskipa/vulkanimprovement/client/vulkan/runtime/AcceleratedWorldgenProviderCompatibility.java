@@ -4,9 +4,7 @@ import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDeb
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.util.Arrays;
-import java.util.LinkedHashMap;
 import java.util.Locale;
-import java.util.Map;
 
 public final class AcceleratedWorldgenProviderCompatibility {
 	private static final String PROVIDER_IDS_PROPERTY = "vim.acceleratedWorldgenProviderIds";
@@ -17,7 +15,7 @@ public final class AcceleratedWorldgenProviderCompatibility {
 	private AcceleratedWorldgenProviderCompatibility() {
 	}
 	
-	public static Map<String, Object> snapshot() {
+	public static AcceleratedWorldgenProviderState snapshot() {
 		String[] providerIds = configuredProviderIds();
 		return forDiagnostics(providerPresent(providerIds), TerrainRendererDebugConfig.acceleratedWorldgenProviderIntegrationEnabled(), providerIds.length);
 	}
@@ -28,7 +26,7 @@ public final class AcceleratedWorldgenProviderCompatibility {
 	static boolean providerPresent() {
 		return providerPresent(configuredProviderIds());
 	}
-
+	
 	private static String[] configuredProviderIds() {
 		String configuredIds = System.getProperty(PROVIDER_IDS_PROPERTY, "");
 		if (configuredIds.isBlank()) {
@@ -37,16 +35,8 @@ public final class AcceleratedWorldgenProviderCompatibility {
 		return configuredIds.lines().flatMap(line -> Arrays.stream(line.split(","))).map(id -> id.trim().toLowerCase(Locale.ROOT)).filter(id -> !id.isBlank()).distinct().toArray(String[]::new);
 	}
 	
-	static Map<String, Object> forDiagnostics(boolean providerPresent, boolean integrationEnabled, int configuredProviderCount) {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("present", providerPresent);
-		map.put("integrationEnabled", integrationEnabled);
-		map.put("rendererAuthority", RENDERER_AUTHORITY);
-		map.put("worldgenAuthority", WORLDGEN_AUTHORITY);
-		map.put("fallbackReason", fallbackReason(providerPresent, integrationEnabled, configuredProviderCount));
-		map.put("metadataRelationship", METADATA_RELATIONSHIP);
-		map.put("configuredProviderCount", configuredProviderCount);
-		return map;
+	static AcceleratedWorldgenProviderState forDiagnostics(boolean providerPresent, boolean integrationEnabled, int configuredProviderCount) {
+		return new AcceleratedWorldgenProviderState(providerPresent, integrationEnabled, RENDERER_AUTHORITY, WORLDGEN_AUTHORITY, fallbackReason(providerPresent, integrationEnabled, configuredProviderCount), METADATA_RELATIONSHIP, configuredProviderCount);
 	}
 	
 	private static boolean providerPresent(String[] providerIds) {
