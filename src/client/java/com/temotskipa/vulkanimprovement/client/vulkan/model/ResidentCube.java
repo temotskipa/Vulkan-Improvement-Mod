@@ -1,18 +1,17 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.model;
 
-import net.minecraft.client.model.geom.ModelPart.Cube;
-
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
 
 /**
- * A cube whose faces are in a {@link ModelCubeStore}, held weakly, and how many faces it has.
+ * What holds polygons in a {@link ModelCubeStore}, a cube or the first quad of an item's list, held
+ * weakly, and how many polygons it holds.
  */
-final class ResidentCube extends WeakReference<Cube> {
+final class ResidentCube extends WeakReference<Object> {
     private final int polygons;
     
-    ResidentCube(Cube cube, int polygons, ReferenceQueue<Cube> queue) {
-        super(cube, queue);
+    ResidentCube(Object owner, int polygons, ReferenceQueue<Object> queue) {
+        super(owner, queue);
         this.polygons = polygons;
     }
     

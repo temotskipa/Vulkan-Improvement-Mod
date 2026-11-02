@@ -7,6 +7,7 @@ import org.spongepowered.asm.mixin.transformer.meta.MixinMerged;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * What other mods' mixins change in the Minecraft classes a replacement stands in for. A
@@ -25,12 +26,12 @@ final class OtherModMixins {
     }
 
     /**
-     * The methods other mods' mixins merged into the classes the path replaces, each with its
-     * mixin. A class that cannot be found is reported too, as nothing can be said about it.
+     * The methods other mods' mixins merged into the given classes, each with its mixin. A class
+     * that cannot be found is reported too, as nothing can be said about it.
      */
-    static List<String> changing() {
+    static List<String> changing(Set<String> classNames) {
         List<String> changes = new ArrayList<>();
-        for (String className : ModelGpuVertices.REPLACED_CLASSES) {
+        for (String className : classNames) {
             try {
                 for (Method method : Class.forName(className, false, OtherModMixins.class.getClassLoader()).getDeclaredMethods()) {
                     MixinMerged merged = method.getAnnotation(MixinMerged.class);

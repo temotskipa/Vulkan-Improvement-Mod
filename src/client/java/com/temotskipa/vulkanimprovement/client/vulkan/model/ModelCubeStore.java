@@ -7,6 +7,8 @@ import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ShaderStorage;
 import net.minecraft.client.model.geom.ModelPart.Cube;
 import net.minecraft.client.model.geom.ModelPart.Polygon;
 import net.minecraft.client.model.geom.ModelPart.Vertex;
+import net.minecraft.client.model.geom.builders.UVPair;
+import net.minecraft.client.resources.model.geometry.BakedQuad;
 import net.minecraft.core.Direction;
 import org.joml.Vector3fc;
 import org.jspecify.annotations.Nullable;
@@ -14,7 +16,9 @@ import org.jspecify.annotations.Nullable;
 import java.lang.foreign.MemorySegment;
 import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -46,10 +50,11 @@ final class ModelCubeStore {
      * up in {@link #collected} once it is collected.
      */
     private final Set<ResidentCube> residentCubes = new HashSet<>();
-    private final ReferenceQueue<Cube> collected = new ReferenceQueue<>();
+    private final ReferenceQueue<Object> collected = new ReferenceQueue<>();
     private int polygonCount;
     private int collectedPolygons;
     private int cpuOnlyCubes;
+    private int residentItemLists;
     private @Nullable GpuBuffer buffer;
     private @Nullable MappedView mapping;
     private @Nullable MemorySegment mapped;
@@ -60,6 +65,13 @@ final class ModelCubeStore {
      */
     private static ModelCubeResidency residency(Object cube) {
         return (ModelCubeResidency) cube;
+    }
+    
+    /**
+     * What a mixin adds to every quad.
+     */
+    private static ModelQuadResidency quadResidency(Object quad) {
+        return (ModelQuadResidency) quad;
     }
     
     /**
@@ -144,6 +156,66 @@ final class ModelCubeStore {
     }
     
     /**
+     * The layout of an item's quad list, uploaded first if it is not there yet, or null when
+     * another list starts with the same quad, which stays on Minecraft's path.
+     */
+    @Nullable ItemQuadLayout itemLayout(List<BakedQuad> quads) {
+        ModelQuadResidency residency = quadResidency(quads.getFirst());
+        ItemQuadLayout layout = residency.vim$itemLayout();
+        if (layout != null && layout.store() == this.id) {
+            return layout.quads() == quads ? layout : null;
+        }
+        layout = layOut(quads);
+        residency.vim$setItemLayout(layout);
+        return layout;
+    }
+
+    private ItemQuadLayout layOut(List<BakedQuad> quads) {
+        int first = this.polygonCount;
+        int count = quads.size();
+        long start = first * ModelPolygonRecord.BYTES;
+        long end = (long) (first + count) * ModelPolygonRecord.BYTES;
+        ensureCapacity(first + count);
+        MemorySegment records = this.copy.reserve(start, end);
+        List<ItemQuadRun> runs = new ArrayList<>();
+        int directionMask = 0;
+        int runStart = 0;
+        for (int i = 0; i < count; i++) {
+            BakedQuad quad = quads.get(i);
+            writeQuad(records, start + i * ModelPolygonRecord.BYTES, quad);
+            directionMask |= 1 << quad.direction().ordinal();
+            if (i + 1 == count || !sameRun(quad.materialInfo(), quads.get(i + 1).materialInfo())) {
+                BakedQuad.MaterialInfo material = quad.materialInfo();
+                runs.add(new ItemQuadRun(material.itemRenderType(), material.itemGlintRenderType(), material.tintIndex(), material.lightEmission(), first + runStart, i + 1 - runStart));
+                runStart = i + 1;
+            }
+        }
+        MemorySegment.copy(records, start, Objects.requireNonNull(this.mapped), start, end - start);
+        this.polygonCount += count;
+        this.residentCubes.add(new ResidentCube(quads.getFirst(), count, this.collected));
+        this.residentItemLists++;
+        return new ItemQuadLayout(this.id, quads, runs.toArray(ItemQuadRun[]::new), directionMask);
+    }
+
+    private static boolean sameRun(BakedQuad.MaterialInfo a, BakedQuad.MaterialInfo b) {
+        return a.itemRenderType() == b.itemRenderType() && a.itemGlintRenderType() == b.itemGlintRenderType() && a.tintIndex() == b.tintIndex() && a.lightEmission() == b.lightEmission();
+    }
+
+    static void writeQuad(MemorySegment records, long offset, BakedQuad quad) {
+        for (int corner = 0; corner < ModelGpuRecords.POLYGON_VERTICES; corner++) {
+            Vector3fc position = quad.position(corner);
+            long uv = quad.packedUV(corner);
+            long base = offset + ModelPolygonRecord.CORNERS + corner * ModelPolygonRecord.CORNER_BYTES;
+            records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_X, position.x());
+            records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_Y, position.y());
+            records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_Z, position.z());
+            records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_U, UVPair.unpackU(uv));
+            records.set(ModelGpuRecords.FLOAT, base + ModelPolygonRecord.CORNER_V, UVPair.unpackV(uv));
+        }
+        records.set(ModelGpuRecords.INT, offset + ModelPolygonRecord.DIRECTION, quad.direction().ordinal());
+    }
+
+    /**
      * What tells this store from the ones before and after it.
      */
     int id() {
@@ -163,7 +235,7 @@ final class ModelCubeStore {
      * hold only the faces still drawn.
      */
     boolean mostlyCollected() {
-        for (Reference<? extends Cube> reference = this.collected.poll(); reference != null; reference = this.collected.poll()) {
+        for (Reference<?> reference = this.collected.poll(); reference != null; reference = this.collected.poll()) {
             if (reference instanceof ResidentCube cube && this.residentCubes.remove(cube)) {
                 this.collectedPolygons += cube.polygons();
             }
@@ -181,6 +253,10 @@ final class ModelCubeStore {
     
     int cpuOnlyCubes() {
         return this.cpuOnlyCubes;
+    }
+
+    int residentItemLists() {
+        return this.residentItemLists;
     }
     
     long residentBytes() {

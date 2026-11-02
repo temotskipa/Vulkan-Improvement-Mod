@@ -4,7 +4,10 @@ import com.mojang.blaze3d.vertex.*;
 import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ShaderCompileChecks;
 import net.minecraft.client.model.geom.ModelPart;
+import net.minecraft.client.model.geom.builders.UVPair;
+import net.minecraft.client.resources.model.geometry.BakedQuad;
 import net.minecraft.core.Direction;
+import net.minecraft.util.LightCoordsUtil;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
@@ -46,6 +49,7 @@ public final class ModelVertexInvariantCheck {
         checkEntityFormat();
         checkPrecompiledShaderName();
         checkVerticesAreMinecrafts(constants);
+        checkItemQuadsAreMinecrafts(constants);
     }
     
     private static Map<String, Integer> shaderConstants(String shader) {
@@ -164,6 +168,106 @@ public final class ModelVertexInvariantCheck {
         }
         require(checked > 0, "the vertex check must compare vertices");
         System.out.println("Model vertex invariant check passed: " + checked + " vertices of " + cubes.size() + " cubes in " + poses.size() + " poses, recorded cube by cube and from part layouts, match Minecraft's.");
+    }
+    
+    /**
+     * Item quads go through the same pass from the same records, so what is checked here is what
+     * differs from a cube: {@code VertexConsumer.putBakedQuad} instead of {@code Cube.compile}, a
+     * colour and light that come from the quad's material, and a run longer than a job.
+     */
+    private static void checkItemQuadsAreMinecrafts(Map<String, Integer> constants) {
+        Random random = new Random(0xBA4EDL);
+        List<PoseStack.Pose> poses = new ArrayList<>(fixedPoses());
+        for (int i = 0; i < RANDOM_POSES; i++) {
+            poses.add(randomPose(random));
+        }
+        int checked = 0;
+        for (int poseIndex = 0; poseIndex < poses.size(); poseIndex++) {
+            PoseStack.Pose pose = poses.get(poseIndex);
+            int emission = poseIndex % 3 == 0 ? 0 : random.nextInt(16);
+            List<BakedQuad> quads = quads(random, 1 + random.nextInt(ModelGpuRecords.MAX_CUBE_POLYGONS * 4), emission);
+            int color = random.nextInt();
+            int overlay = random.nextInt(16) | random.nextInt(16) << 16;
+            int light = random.nextInt(256) | random.nextInt(256) << 16;
+            byte[] minecraft = minecraftQuadVertices(quads, pose, light, overlay, color);
+            byte[] pass = passQuadVertices(constants, quads, pose, LightCoordsUtil.lightCoordsWithEmission(light, emission), overlay, color);
+            require(minecraft.length == pass.length, "pose " + poseIndex + ": the model vertex pass must write as many item vertices as Minecraft, " + pass.length + " bytes against " + minecraft.length);
+            for (int vertex = 0; vertex < minecraft.length / ModelEntityVertexRecord.BYTES; vertex++) {
+                for (int b = 0; b < WRITTEN_VERTEX_BYTES; b++) {
+                    int at = vertex * (int) ModelEntityVertexRecord.BYTES + b;
+                    require(minecraft[at] == pass[at], "pose " + poseIndex + ", item vertex " + vertex + ", byte " + b + ": the model vertex pass writes " + pass[at] + ", Minecraft " + minecraft[at]);
+                }
+                checked++;
+            }
+        }
+        require(checked > 0, "the item check must compare vertices");
+        System.out.println("Item quad invariant check passed: " + checked + " vertices in " + poses.size() + " poses, match Minecraft's.");
+    }
+    
+    private static List<BakedQuad> quads(Random random, int count, int emission) {
+        Direction[] directions = Direction.values();
+        BakedQuad.MaterialInfo material = new BakedQuad.MaterialInfo(null, null, null, null, null, -1, null, emission);
+        List<BakedQuad> quads = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            quads.add(new BakedQuad(corner(random), corner(random), corner(random), corner(random), uv(random), uv(random), uv(random), uv(random), directions[i % directions.length], material));
+        }
+        return quads;
+    }
+    
+    private static Vector3f corner(Random random) {
+        return new Vector3f(range(random, 1.5F), range(random, 1.5F), range(random, 1.5F));
+    }
+    
+    private static long uv(Random random) {
+        return UVPair.pack(random.nextFloat(), random.nextFloat());
+    }
+    
+    private static byte[] minecraftQuadVertices(List<BakedQuad> quads, PoseStack.Pose pose, int light, int overlay, int color) {
+        QuadInstance instance = new QuadInstance();
+        instance.setColor(color);
+        instance.setLightCoords(light);
+        instance.setOverlayCoords(overlay);
+        try (ByteBufferBuilder bytes = new ByteBufferBuilder(4096)) {
+            BufferBuilder builder = new BufferBuilder(bytes, PrimitiveTopology.QUADS, DefaultVertexFormat.ENTITY);
+            for (BakedQuad quad : quads) {
+                builder.putBakedQuad(pose, quad, instance);
+            }
+            try (MeshData mesh = builder.buildOrThrow()) {
+                byte[] vertices = new byte[mesh.vertexBuffer().remaining()];
+                mesh.vertexBuffer().get(vertices);
+                return vertices;
+            }
+        }
+    }
+    
+    /**
+     * The quads' vertices as the pass writes them, from the records an item's run makes.
+     */
+    private static byte[] passQuadVertices(Map<String, Integer> constants, List<BakedQuad> quads, PoseStack.Pose pose, int light, int overlay, int color) {
+        ModelVertexFrame frame = new ModelVertexFrame();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment polygons = arena.allocate(quads.size() * ModelPolygonRecord.BYTES, 16L);
+            int directions = 0;
+            for (int i = 0; i < quads.size(); i++) {
+                ModelCubeStore.writeQuad(polygons, i * ModelPolygonRecord.BYTES, quads.get(i));
+                directions |= 1 << quads.get(i).direction().ordinal();
+            }
+            ModelVertexDraw draw = frame.addDraw(new Object(), null);
+            int part = frame.addPart(pose, color, overlay, light);
+            frame.writeNormals(part, pose, directions, new Vector3f());
+            frame.addQuadRun(part, 0, quads.size(), draw);
+            require(frame.jobCount() == Math.ceilDiv(quads.size(), ModelGpuRecords.MAX_CUBE_POLYGONS), "a run must take as many jobs as it needs and no more");
+            MemorySegment vertices = arena.allocate(frame.vertexCount() * ModelEntityVertexRecord.BYTES, 16L);
+            int[] drawBases = {0};
+            for (int job = 0; job < frame.jobCount(); job++) {
+                for (int polygonInCube = 0; polygonInCube < constant(constants, "MAX_CUBE_POLYGONS"); polygonInCube++) {
+                    writePolygonVertices(constants, polygons, frame.partRecords(), frame.jobRecords(), drawBases, vertices, job, polygonInCube);
+                }
+            }
+            return vertices.toArray(ValueLayout.JAVA_BYTE);
+        } finally {
+            frame.close();
+        }
     }
     
     /**

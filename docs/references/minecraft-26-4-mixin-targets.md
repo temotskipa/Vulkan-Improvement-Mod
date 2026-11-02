@@ -477,6 +477,29 @@ pipelines.
   vertex consumer; the path takes only submits whose vertices it writes
   exactly as Minecraft would.
 
+### ItemFeatureRendererMixin
+
+- Target: `net.minecraft.client.renderer.feature.ItemFeatureRenderer`.
+- mcdev 26.4 surface: private `prepareMainSubmit(Submit)`, which picks each
+  quad's render type from its material and the submit's foil type, its colour
+  from the submit's tint layers, and writes it with
+  `VertexConsumer.putBakedQuad`. `Submit.quads()` is a list of the baked
+  model's `ItemQuads`, the same list every frame.
+- Source tokens: `method = "prepareMainSubmit"`.
+- Purpose: offer the item to the GPU model path. With `vim.gpuItemVertices` on,
+  the path records the item's quads from their layout in place of writing them;
+  an item it does not take runs Minecraft's method whole, so that its quads
+  keep their order. Outlines and special foil never reach the path.
+
+### BakedQuadMixin
+
+- Target: `net.minecraft.client.resources.model.geometry.BakedQuad`.
+- mcdev 26.4 surface: a record of four positions, four packed texture
+  coordinates, a direction and a `MaterialInfo`, fixed once baked.
+- Source tokens: none; the mixin only adds a field.
+- Purpose: remember, on the first quad of a list, where the GPU model path
+  keeps the list, so a list is looked at once.
+
 ### RenderTypeFeatureRendererGroupMixin
 
 - Target: `net.minecraft.client.renderer.feature.RenderTypeFeatureRenderer.Group`.

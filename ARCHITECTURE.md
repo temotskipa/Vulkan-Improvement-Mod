@@ -75,6 +75,11 @@ the mod is idle (see `LevelRendererMixin` in
    part records, and the mesh pipeline shares the pipeline's layout, fragment
    module and state. Where Minecraft records a GPU model draw whose pipelines
    all have one, the mesh pipeline draws it, and no vertices are written.
+9. Unless `vim.gpuItemVertices` is off, `ItemFeatureRendererMixin` offers each
+   item to the same path. A `BakedQuad` is a face with four corners, so a baked
+   model's quad list goes into the same store once, and a frame records a part
+   and jobs for each run of quads that share a render type, tint and light
+   emission, for the same compute pass and the same draws.
 
 ## Source Sets
 

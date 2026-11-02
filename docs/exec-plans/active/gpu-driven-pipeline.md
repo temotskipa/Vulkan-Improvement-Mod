@@ -344,6 +344,46 @@ the 400 mobs, a resource reload, a window resize, a dimension change, leaving
 the world and joining it again, reports no error and leaks nothing, with
 `framesLeftOut` at 0 throughout.
 
+2026-11-02, step 5, what each part costs. Render-thread time above an empty
+frame's 0.27 ms, with the GPU model path on, and where a profile puts the frame:
+
+| Scene                       | Added   | Where it goes                                                      |
+|-----------------------------|---------|--------------------------------------------------------------------|
+| 576 signs, four lines each  | 2.86 ms | `TextFeatureRenderer.buildGroup` 70 %: glyph vertices 38 %, laying out the same strings again 28 % |
+| 900 dropped items           | 1.95 ms | writing quads 45 %, `getModelBoundingBox` 13 %, extraction 16 %    |
+| 14,243 particles            | 0.83 ms | writing vertices 38 %, extraction 38 %, a map lookup per particle in that 11 % |
+| 400 block displays          | 0.13 ms | not worth a path of its own yet                                    |
+
+So the four are three different problems. Items repeat what models were: a
+`BakedQuad` is a face with four corners that never changes, and `ItemQuads`
+hands the same list every frame. Particles change every frame but already sit
+in Minecraft's flat arrays. Text spends as long on laying out strings that have
+not changed as on writing their vertices.
+
+2026-11-02, items on the GPU (`vim.gpuItemVertices`, on by default). A baked
+model's quad list goes into the cube store once, its layout kept on the list's
+first quad, and an item records a part and jobs for each run of quads that share
+a render type, tint and light emission. 900 dropped items, five runs of each in
+turn: 421 to 731 FPS, 2.165 to 1.168 ms of render thread, no run overlapping.
+What stays on Minecraft's path, whole, so that its quads keep their order:
+special foil, outlines, render types in another format, and translucent items
+Minecraft sorts on upload when improved transparency is off.
+
+Parity with PNGs taken off, on, off, on, off: all 1,671 items in the game and 38
+variants (enchanted, dyed, potions, translucent and emissive blocks, banners,
+shields, maps, stacks of 64), 12 views each with improved transparency, without
+it and at midnight, 36 views with no differing pixel. The 202 subjects of the
+model check, items held, framed and displayed among them, 16 views: 13 with no
+stable difference, 3 with 1 to 1,171 pixels of 1 of 255, on the translucent
+beams as before. `checkModelVertexInvariants` compares the pass with
+`VertexConsumer.putBakedQuad` byte for byte on every build.
+
+The validation layer reports no error from the first frame through items and
+mobs in one draw, reloads, the mesh stage beside the vertex pass, and leaving
+and joining the world again. A reload bakes new lists: the store's old quads are
+counted as collected as a cube's are, and the next reload renews it to the same
+size. Fabric API changes none of the classes the path stands in for.
+
 ## Decisions
 
 - The mod extends Minecraft's renderer instead of running its own beside it

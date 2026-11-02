@@ -247,6 +247,30 @@ final class ModelVertexFrame {
      * Records the cubes of a part laid out in the store, which the GPU writes into the draw after
      * the draw's vertices so far.
      */
+    /**
+     * Adds a run of an item's quads, in jobs of as many quads as a job holds.
+     */
+    void addQuadRun(int part, int firstPolygon, int polygons, ModelVertexDraw draw) {
+        int count = Math.ceilDiv(polygons, ModelGpuRecords.MAX_CUBE_POLYGONS);
+        int offset = this.jobCount * ModelJobRecord.WORDS;
+        int[] records = this.jobs = reserve(this.jobs, offset + count * ModelJobRecord.WORDS);
+        int firstVertex = draw.vertexCount;
+        for (int job = 0; job < count; job++) {
+            int first = job * ModelGpuRecords.MAX_CUBE_POLYGONS;
+            int held = Math.min(ModelGpuRecords.MAX_CUBE_POLYGONS, polygons - first);
+            records[offset + ModelJobRecord.PART_WORD] = part;
+            records[offset + ModelJobRecord.FIRST_POLYGON_WORD] = firstPolygon + first;
+            records[offset + ModelJobRecord.DRAW_AND_POLYGONS_WORD] = draw.index | held << ModelJobRecord.DRAW_BITS;
+            records[offset + ModelJobRecord.FIRST_VERTEX_WORD] = firstVertex;
+            firstVertex += held * ModelGpuRecords.POLYGON_VERTICES;
+            offset += ModelJobRecord.WORDS;
+        }
+        draw.jobCount += count;
+        this.vertexCount += firstVertex - draw.vertexCount;
+        draw.vertexCount = firstVertex;
+        this.jobCount += count;
+    }
+
     void addJobs(int part, ModelPartCubes cubes, ModelVertexDraw draw) {
         int count = cubes.count();
         int offset = this.jobCount * ModelJobRecord.WORDS;

@@ -21,7 +21,9 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.geom.ModelPart.Cube;
 import net.minecraft.client.renderer.StagedVertexBuffer;
 import net.minecraft.client.renderer.StagedVertexBuffer.Draw;
+import net.minecraft.client.renderer.feature.ItemFeatureRenderer;
 import net.minecraft.client.renderer.feature.ModelFeatureRenderer.Submit;
+import net.minecraft.client.renderer.item.ItemStackRenderState.FoilType;
 import net.minecraft.client.renderer.rendertype.PreparedRenderType;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import org.jspecify.annotations.Nullable;
@@ -58,6 +60,10 @@ public final class ModelGpuVertices {
      * what a model looks like in a way the GPU path would not reproduce.
      */
     static final Set<String> REPLACED_CLASSES = Set.of("net.minecraft.client.model.geom.ModelPart", "net.minecraft.client.model.geom.ModelPart$Cube", "net.minecraft.client.model.geom.ModelPart$Polygon", "net.minecraft.client.model.geom.ModelPart$Vertex", "net.minecraft.client.renderer.feature.ModelFeatureRenderer", "net.minecraft.client.renderer.feature.RenderTypeFeatureRenderer$Group", "com.mojang.blaze3d.vertex.BufferBuilder");
+    /**
+     * What the path also stands in for when it takes items.
+     */
+    static final Set<String> REPLACED_ITEM_CLASSES = Set.of("net.minecraft.client.renderer.feature.ItemFeatureRenderer", "net.minecraft.client.resources.model.geometry.BakedQuad", "com.mojang.blaze3d.vertex.VertexConsumer");
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final ModelGpuVertices INSTANCE = new ModelGpuVertices();
     
@@ -79,12 +85,16 @@ public final class ModelGpuVertices {
     private @Nullable GpuBuffer meshMarker;
     private @Nullable GpuBuffer meshConversions;
     private @Nullable List<String> otherModMixins;
+    private @Nullable List<String> otherItemMixins;
     private @Nullable RenderType offeredRenderType;
+    private @Nullable ItemQuadLayout offeredItem;
     private @Nullable Object stagedBufferUsed;
     private boolean preparingLevel;
     private boolean frameWritten;
     private long gpuSubmits;
     private long cpuSubmits;
+    private long gpuItemSubmits;
+    private long cpuItemSubmits;
     private long writtenFrames;
     private long lastFrameParts;
     private long lastFrameCubes;
@@ -119,10 +129,10 @@ public final class ModelGpuVertices {
      * does not sort them as it uploads them.
      */
     private static boolean writesExactly(Submit<?> submit) {
-        if (submit.sheetedDecalPose() != null || submit.uvMapping() != null) {
-            return false;
-        }
-        RenderType renderType = submit.renderType();
+        return submit.sheetedDecalPose() == null && submit.uvMapping() == null && writesExactly(submit.renderType());
+    }
+    
+    private static boolean writesExactly(RenderType renderType) {
         if (renderType.format() != DefaultVertexFormat.ENTITY || renderType.primitiveTopology() != PrimitiveTopology.QUADS) {
             return false;
         }
@@ -259,11 +269,22 @@ public final class ModelGpuVertices {
     public void endLevelPrepare() {
         this.preparingLevel = false;
         this.offeredRenderType = null;
+        this.offeredItem = null;
+    }
+    
+    private boolean itemsUntouchedByOtherMods() {
+        if (this.otherItemMixins == null) {
+            this.otherItemMixins = OtherModMixins.changing(REPLACED_ITEM_CLASSES);
+            if (!this.otherItemMixins.isEmpty()) {
+                LOGGER.warn("[Vulkan Improvement] GPU item vertices stay off: other mods change what they replace: {}", this.otherItemMixins);
+            }
+        }
+        return this.otherItemMixins.isEmpty();
     }
     
     private boolean untouchedByOtherMods() {
         if (this.otherModMixins == null) {
-            this.otherModMixins = OtherModMixins.changing();
+            this.otherModMixins = OtherModMixins.changing(REPLACED_CLASSES);
             if (!this.otherModMixins.isEmpty()) {
                 LOGGER.warn("[Vulkan Improvement] GPU model vertices stay off: other mods change what they replace: {}", this.otherModMixins);
             }
@@ -289,6 +310,43 @@ public final class ModelGpuVertices {
     
     public void clearOffer() {
         this.offeredRenderType = null;
+    }
+    
+    /**
+     * Offers an item Minecraft is about to write. Returns the render type of its first quads when
+     * the GPU path takes it, which the caller asks Minecraft's draw group for, and null when it
+     * stays on Minecraft's path whole, so that its quads keep their order.
+     */
+    public @Nullable RenderType offerItem(ItemFeatureRenderer.Submit submit) {
+        if (!this.preparingLevel || !TerrainRendererDebugConfig.gpuItemVerticesEnabled() || submit.quads().isEmpty() || !itemsUntouchedByOtherMods()) {
+            return null;
+        }
+        ItemQuadLayout layout = submit.foilType() == FoilType.SPECIAL ? null : store().itemLayout(submit.quads());
+        if (layout == null) {
+            this.cpuItemSubmits++;
+            return null;
+        }
+        boolean glint = submit.foilType() == FoilType.STANDARD;
+        for (ItemQuadRun run : layout.runs()) {
+            if (!writesExactly(glint ? run.glintRenderType() : run.renderType())) {
+                this.cpuItemSubmits++;
+                return null;
+            }
+        }
+        ItemQuadRun first = layout.runs()[0];
+        this.offeredItem = layout;
+        this.offeredRenderType = glint ? first.glintRenderType() : first.renderType();
+        return this.offeredRenderType;
+    }
+    
+    /**
+     * Records the item just offered, whose draw group has taken the offer.
+     */
+    public void recordItem(ItemFeatureRenderer.Submit submit) {
+        ItemQuadLayout layout = Objects.requireNonNull(this.offeredItem, "no item was offered");
+        this.offeredItem = null;
+        this.gpuItemSubmits++;
+        this.sink.item(layout, submit);
     }
     
     /**
@@ -442,6 +500,10 @@ public final class ModelGpuVertices {
         map.put("otherModMixins", this.otherModMixins == null ? List.of() : this.otherModMixins);
         map.put("gpuSubmits", this.gpuSubmits);
         map.put("cpuSubmits", this.cpuSubmits);
+        map.put("itemVertices", TerrainRendererDebugConfig.gpuItemVerticesEnabled());
+        map.put("otherItemMixins", this.otherItemMixins == null ? List.of() : this.otherItemMixins);
+        map.put("gpuItemSubmits", this.gpuItemSubmits);
+        map.put("cpuItemSubmits", this.cpuItemSubmits);
         map.put("writtenFrames", this.writtenFrames);
         map.put("lastFrameParts", this.lastFrameParts);
         map.put("lastFrameCubes", this.lastFrameCubes);
@@ -457,6 +519,7 @@ public final class ModelGpuVertices {
         map.put("meshPipelines", ModelMeshPipelines.asMap());
         if (this.store != null) {
             map.put("residentCubes", this.store.residentCubes());
+            map.put("residentItemLists", this.store.residentItemLists());
             map.put("cpuOnlyCubes", this.store.cpuOnlyCubes());
             map.put("residentPolygonBytes", this.store.residentBytes());
             map.put("collectedPolygons", this.store.collectedPolygons());

@@ -4,7 +4,10 @@ import com.mojang.blaze3d.vertex.PoseStack.Pose;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.model.geom.ModelPart.Cube;
 import net.minecraft.client.renderer.StagedVertexBuffer;
+import net.minecraft.client.renderer.feature.ItemFeatureRenderer;
+import net.minecraft.client.renderer.item.ItemStackRenderState.FoilType;
 import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.util.LightCoordsUtil;
 import org.joml.Vector3f;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
@@ -64,6 +67,36 @@ final class ModelVertexSink implements VertexConsumer {
         ((ModelVertexDrawHolder) draw).vim$addQuadVertices(resident.vertices);
     }
     
+    /**
+     * Records an item's quads from their layout. A quad's colour and light come from Minecraft's
+     * tint layers and the quad's own light emission, as {@code ItemFeatureRenderer} works them
+     * out, so a run that changes either gets a part of its own.
+     */
+    void item(ItemQuadLayout layout, ItemFeatureRenderer.Submit submit) {
+        ModelVertexFrame frame = this.owner.frame();
+        ModelDrawGroup drawGroup = Objects.requireNonNull(this.group);
+        boolean glint = submit.foilType() == FoilType.STANDARD;
+        int[] tintLayers = submit.tintLayers();
+        int part = -1;
+        int partColor = 0;
+        int partLight = 0;
+        for (ItemQuadRun run : layout.runs()) {
+            int tint = run.tintIndex();
+            int color = tint >= 0 && tint < tintLayers.length ? tintLayers[tint] : -1;
+            int light = LightCoordsUtil.lightCoordsWithEmission(submit.lightCoords(), run.lightEmission());
+            if (part < 0 || color != partColor || light != partLight) {
+                part = frame.addPart(submit.pose(), color, submit.overlayCoords(), light);
+                frame.writeNormals(part, submit.pose(), layout.directionMask(), this.scratch);
+                partColor = color;
+                partLight = light;
+            }
+            StagedVertexBuffer.Draw draw = drawGroup.vim$modelDraw(glint ? run.glintRenderType() : run.renderType());
+            frame.addQuadRun(part, run.firstPolygon(), run.polygons(), Objects.requireNonNull(((ModelVertexDrawHolder) draw).vim$modelDraw()));
+            ((ModelVertexDrawHolder) draw).vim$addQuadVertices(run.polygons() * ModelGpuRecords.POLYGON_VERTICES);
+        }
+        this.cpu = null;
+    }
+
     /**
      * Takes the cubes of a part that has one the GPU path leaves to Minecraft, one by one. Such a
      * cube is compiled into Minecraft's builder here, between the GPU draws before and after it, so
