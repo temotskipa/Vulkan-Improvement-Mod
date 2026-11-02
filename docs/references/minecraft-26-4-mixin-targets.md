@@ -427,8 +427,9 @@ inside a render pass the level renderer has already opened.
 
 These hooks let the GPU write the vertices of Minecraft's entity models into
 Minecraft's own draws (see `client.vulkan.model.ModelGpuVertices`). They change
-nothing unless `vim.gpuModelVertices` is on, and nothing while another
-mod's mixins target one of the classes below. The mesh-stage hooks
+nothing with `vim.gpuModelVertices` off, and nothing while another mod's mixin
+has merged a method other than an accessor or invoker into one of the classes
+below. The mesh-stage hooks
 (`PipelineBuilderMixin` to `VulkanRenderPassModelMeshMixin`) change nothing
 unless `vim.gpuModelMeshShaders` was on as well when Minecraft built its
 pipelines.

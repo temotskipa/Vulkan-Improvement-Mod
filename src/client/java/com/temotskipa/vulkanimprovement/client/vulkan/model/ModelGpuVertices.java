@@ -7,6 +7,7 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.logging.LogUtils;
 import com.mojang.renderpearl.api.buffers.GpuBuffer;
 import com.mojang.renderpearl.api.buffers.GpuBufferSlice.MappedView;
+import com.mojang.renderpearl.api.device.GpuOutOfMemoryException;
 import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
 import com.mojang.renderpearl.backend.vulkan.VulkanRenderPipeline;
@@ -129,19 +130,18 @@ public final class ModelGpuVertices {
     }
     
     /**
-     * Takes Minecraft's new device, and builds the vertex pass for it at once when the path is on.
+     * Takes Minecraft's new device. It is still being made here, so the vertex pass is built when
+     * the path first takes a frame.
      */
     public synchronized void configure(VulkanDevice vulkanDevice) {
         shutdownNow();
         this.device = vulkanDevice;
         this.meshShadersAvailable = VulkanImprovementCapabilities.snapshot().meshShaderExtension();
-        if (TerrainRendererDebugConfig.gpuModelVerticesEnabled()) {
-            ready();
-        }
     }
     
     /**
-     * Whether the vertex pass is built, building it the first time the path is on.
+     * Whether the vertex pass is built, building it the first time the path is on. A device that
+     * cannot build it leaves every model on Minecraft's path until Minecraft makes a new device.
      */
     private synchronized boolean ready() {
         if (this.pipeline != null) {
@@ -151,6 +151,17 @@ public final class ModelGpuVertices {
         if (vulkanDevice == null) {
             return false;
         }
+        try {
+            build(vulkanDevice);
+            return true;
+        } catch (IllegalStateException | GpuOutOfMemoryException ex) {
+            LOGGER.error("[Vulkan Improvement] GPU model vertices stay off: the vertex pass could not be built", ex);
+            shutdownNow();
+            return false;
+        }
+    }
+    
+    private void build(VulkanDevice vulkanDevice) {
         try (ShaderCompiler compiler = new ShaderCompiler()) {
             long module = compiler.compile(vulkanDevice, SHADER, SHADER_SPIRV, Shaderc.shaderc_compute_shader);
             try {
@@ -168,7 +179,6 @@ public final class ModelGpuVertices {
             this.meshMarker = RenderSystem.getDevice().createBuffer(() -> "VIM Model Mesh Marker", GpuBuffer.USAGE_VERTEX, 16L);
             this.meshConversions = createConversionTable();
         }
-        return true;
     }
     
     /**
@@ -224,11 +234,11 @@ public final class ModelGpuVertices {
     
     /**
      * Minecraft is about to prepare the level's features, outside any render pass. The path takes
-     * submits until {@link #endLevelPrepare}, if it is on, no other mod changes what it replaces,
-     * and its vertex pass is built.
+     * submits until {@link #endLevelPrepare}, if Minecraft draws with Vulkan, the path is on, no
+     * other mod changes what it replaces, and its vertex pass is built.
      */
     public void beginLevelPrepare() {
-        this.preparingLevel = TerrainRendererDebugConfig.gpuModelVerticesEnabled() && !insideRenderPass() && untouchedByOtherMods() && ready();
+        this.preparingLevel = this.device != null && TerrainRendererDebugConfig.gpuModelVerticesEnabled() && !insideRenderPass() && untouchedByOtherMods() && ready();
         if (this.preparingLevel && frame().isEmpty() && store().mostlyCollected()) {
             renewStore();
         }
@@ -253,7 +263,7 @@ public final class ModelGpuVertices {
     
     private boolean untouchedByOtherMods() {
         if (this.otherModMixins == null) {
-            this.otherModMixins = OtherModMixins.targeting();
+            this.otherModMixins = OtherModMixins.changing();
             if (!this.otherModMixins.isEmpty()) {
                 LOGGER.warn("[Vulkan Improvement] GPU model vertices stay off: other mods change what they replace: {}", this.otherModMixins);
             }
