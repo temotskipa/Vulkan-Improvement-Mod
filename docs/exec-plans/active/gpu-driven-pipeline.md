@@ -293,6 +293,57 @@ thread sets the pace at the first and the GPU at the second, where the saving
 is 2 % of its time. It stays off by default until it buys something, such as
 the task stage under Follow-Up.
 
+2026-11-02, GPU model vertices on by default. A fresh render-thread profile,
+the path off and on in one session, 1920x1080, ticks frozen, medians of five
+runs:
+
+| Scene                      | FPS off | FPS on | Render thread off | Render thread on | `Cube.compile`, off / on |
+|----------------------------|---------|--------|-------------------|------------------|--------------------------|
+| Ground, no entities        | 1729    | 1721   | 0.267 ms          | 0.269 ms         | none                     |
+| Ground, 24 mobs            | 1633    | 1654   | 0.373 ms          | 0.354 ms         | 15 % / 0.2 %             |
+| Entity scene, 400 mobs     | 436     | 912    | 2.115 ms          | 0.920 ms         | 58 % / 0 %               |
+
+The opt-in flag had only ever been switched on at runtime, and a default met
+three things that never had:
+
+- `configure` built the vertex pass inside `VulkanDevice`'s constructor, before
+  `RenderSystem` has a device, which would have stopped every client at startup.
+  It is built on the first frame the path takes.
+- `OtherModMixins` never saw another mod. It read `Mixins.getConfigs()`, which
+  holds only configurations Mixin has yet to prepare, so it was empty by the
+  first frame. `Mixins.getMixinsForClass` is no help: it is empty for a target
+  class. The check now reads the classes as loaded, where Mixin marks what it
+  merged with `MixinMerged`. A method another mod merged counts unless it is an
+  accessor or invoker: Fabric API puts an invoker on `ModelPart`, so counting
+  every target would have turned the path off for nearly every client.
+- A vertex pass that cannot be built crashed the game. It now leaves every
+  model on Minecraft's path, with the reason in the log.
+
+Each was exercised for real: a throwaway mixin with an `@Inject` on `ModelPart`
+turns the path off and names the method and mixin, a forced build failure is
+logged once and the client plays on, and an OpenGL session never takes the path.
+
+Parity covers 202 subjects in the sky: the entity types that stay where they
+are put, 43 variants (armour with trims, glint and dye, elytra, shields and
+tridents in hand, babies, saddles, charged creepers, slimes, glowing and
+invisible mobs, dropped items, displays, item frames) and 32 block entities.
+47 views, as under Vanilla Parity Check: both sides of each page, midnight,
+render distance 32, improved transparency off, strict mesh terrain, the player
+in third person and first, and the inventory. 37 have no stable difference.
+The other 10 have from 1 to 572 pixels, at most 3 of 255. The large clusters are
+on the translucent beams in the scene; of the small ones, not all were traced,
+and one, 3 pixels of 1 of 255, is on a mob. The cause is most likely the order
+of summing: the path accepts translucent models unsorted under improved
+transparency, so the accumulation adds the same layers in another order. That
+fits the views with it off, where Minecraft's sorted models stay on its path
+and a view differs by 1 pixel at most, but it was reasoned from the code, not
+measured directly.
+
+A run with the Vulkan validation layer, the path on from the first frame through
+the 400 mobs, a resource reload, a window resize, a dimension change, leaving
+the world and joining it again, reports no error and leaks nothing, with
+`framesLeftOut` at 0 throughout.
+
 ## Decisions
 
 - The mod extends Minecraft's renderer instead of running its own beside it

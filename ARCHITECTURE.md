@@ -60,7 +60,7 @@ the mod is idle (see `LevelRendererMixin` in
    draw strategies call `MeshTerrainRenderer` once the layer's pipeline is
    bound, to draw mesh terrain when configured and safe; Minecraft's own draws
    for the layer then run, holding whatever the mesh path did not take.
-8. With `vim.gpuModelVertices`, while Minecraft prepares the level's features,
+8. Unless `vim.gpuModelVertices` is off, while Minecraft prepares the level's features,
    `ModelFeatureRendererMixin` offers each model submit to `ModelGpuVertices`,
    which takes those whose vertices it writes exactly as Minecraft would. The
    model's parts then hand their cubes to it instead of `Cube.compile`. A

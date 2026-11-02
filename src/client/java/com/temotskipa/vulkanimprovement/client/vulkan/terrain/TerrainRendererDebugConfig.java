@@ -38,7 +38,7 @@ public final class TerrainRendererDebugConfig {
     private static volatile boolean cullMeshlets = booleanProperty("vim.cullMeshlets", true);
     private static volatile boolean taskStagePageCulling = booleanProperty("vim.taskStagePageCulling", true);
     private static volatile boolean gpuDrivenTerrain = booleanProperty("vim.gpuDrivenTerrain", true);
-    private static volatile boolean gpuModelVertices = booleanProperty("vim.gpuModelVertices", false);
+    private static volatile boolean gpuModelVertices = booleanProperty("vim.gpuModelVertices", true);
     private static volatile boolean keepFramebuffers = booleanProperty("vim.keepFramebuffers", true);
     private static volatile boolean barriersByResource = booleanProperty("vim.barriersByResource", true);
     private static volatile boolean gpuModelMeshShaders = booleanProperty("vim.gpuModelMeshShaders", false);
