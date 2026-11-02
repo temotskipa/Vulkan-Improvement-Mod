@@ -477,6 +477,25 @@ pipelines.
   vertex consumer; the path takes only submits whose vertices it writes
   exactly as Minecraft would.
 
+### TextFeatureRendererMixin
+
+- Target: `net.minecraft.client.renderer.feature.TextFeatureRenderer`.
+- mcdev 26.4 surface: `buildGroup(FeatureFrameContext, List<Submit>)` reads each
+  submit's `content()`; for text it calls `Font.prepareText` and has the
+  result visit a renderer that writes each glyph through `TextRenderable.render`.
+- Source tokens: `method = "buildGroup"`, `TextFeatureRenderer$Submit;content()`.
+- Purpose: with `vim.gpuTextVertices` on, offer the text to the GPU path; for a
+  text it takes, Minecraft is handed an empty text and lays out nothing.
+
+### FontManagerMixin
+
+- Target: `net.minecraft.client.gui.font.FontManager`.
+- mcdev 26.4 surface: private `apply(Preparation, ProfilerFiller)`, at the end of
+  a resource reload, and `updateOptions(Options)`, on a change of font options,
+  both of which replace glyphs and their textures.
+- Source tokens: `method = {"apply", "updateOptions"}`.
+- Purpose: tell the GPU text path that what it keeps has gone.
+
 ### QuadParticleFeatureRendererMixin
 
 - Target: `net.minecraft.client.renderer.feature.QuadParticleFeatureRenderer`.

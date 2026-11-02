@@ -10,14 +10,20 @@ import net.minecraft.client.renderer.rendertype.RenderType;
  * came, so the group executes them in Minecraft's order with Minecraft's render types.
  */
 public interface ModelDrawGroup {
-    /**
-     * The draw the next GPU-written cubes of the render type go into, chosen and consolidated as
-     * Minecraft chooses its own draws.
-     */
-    Draw vim$modelDraw(RenderType renderType);
-    
-    /**
-     * Minecraft's own vertex builder for the render type, for geometry the GPU path does not write.
-     */
-    VertexConsumer vim$cpuVertexBuilder(RenderType renderType);
+	/**
+	 * The draw the next GPU-written cubes of the render type go into, chosen and consolidated as
+	 * Minecraft chooses its own draws.
+	 */
+	Draw vim$modelDraw(RenderType renderType);
+	
+	/**
+	 * Minecraft's own vertex builder for the render type, for geometry the GPU path does not write.
+	 */
+	VertexConsumer vim$cpuVertexBuilder(RenderType renderType);
+	
+	/**
+	 * The GPU text draw that takes the render type's next geometry, as {@link #vim$modelDraw} does
+	 * for models.
+	 */
+	Draw vim$textDraw(RenderType renderType);
 }

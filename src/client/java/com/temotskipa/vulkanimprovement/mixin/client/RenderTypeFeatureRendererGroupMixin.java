@@ -7,6 +7,7 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelDrawGroup;
 import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelGpuVertices;
 import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelVertexDrawHolder;
+import com.temotskipa.vulkanimprovement.client.vulkan.model.TextGpuVertices;
 import net.minecraft.client.renderer.StagedVertexBuffer;
 import net.minecraft.client.renderer.StagedVertexBuffer.Draw;
 import net.minecraft.client.renderer.rendertype.PreparedRenderType;
@@ -28,97 +29,128 @@ import java.util.List;
  */
 @Mixin(targets = "net.minecraft.client.renderer.feature.RenderTypeFeatureRenderer$Group")
 public abstract class RenderTypeFeatureRendererGroupMixin implements ModelDrawGroup {
-    @Shadow
-    @Final
-    private StagedVertexBuffer stagedBuffer;
-    @Shadow
-    @Final
-    private boolean canReorder;
-    @Shadow
-    @Final
-    private List<Draw> draws;
-    @Shadow
-    @Final
-    private List<PreparedRenderType> drawRenderTypes;
-    @Shadow
-    private @Nullable Draw lastDraw;
-    @Unique
-    private @Nullable Draw vim$lastModelDraw;
-    @Unique
-    private @Nullable RenderType vim$lastModelRenderType;
-    
-    @Shadow
-    public abstract VertexConsumer getVertexBuilder(RenderType renderType);
-    
-    /**
-     * Hands out the GPU model path's builder for the submit it just took, and Minecraft's own
-     * otherwise. Asking for Minecraft's ends the GPU draw that was being filled, as a change of
-     * render type ends Minecraft's.
-     */
-    @WrapMethod(method = "getVertexBuilder")
-    private VertexConsumer vim$handOutModelBuilder(RenderType renderType, Operation<VertexConsumer> original) {
-        VertexConsumer gpuBuilder = ModelGpuVertices.get().takeOffer(this, renderType);
-        if (gpuBuilder != null) {
-            return gpuBuilder;
-        }
-        this.vim$lastModelDraw = null;
-        return original.call(renderType);
-    }
-    
-    /**
-     * Minecraft looks for a draw of the same render type to consolidate into; GPU draws are not
-     * such draws for its geometry.
-     */
-    @WrapOperation(method = "getOrAddDraw", at = @At(value = "INVOKE", target = "Ljava/util/List;indexOf(Ljava/lang/Object;)I"))
-    private int vim$skipModelDraws(List<?> renderTypes, Object preparedRenderType, Operation<Integer> original) {
-        int index = original.call(renderTypes, preparedRenderType);
-        if (index < 0 || !vim$isModelDraw(index)) {
-            return index;
-        }
-        for (int i = index + 1; i < this.drawRenderTypes.size(); i++) {
-            if (!vim$isModelDraw(i) && this.drawRenderTypes.get(i).equals(preparedRenderType)) {
-                return i;
-            }
-        }
-        return -1;
-    }
-    
-    @Override
-    public StagedVertexBuffer.Draw vim$modelDraw(RenderType renderType) {
-        if (this.vim$lastModelDraw == null || this.vim$lastModelRenderType != renderType || !renderType.canConsolidateConsecutiveGeometry()) {
-            this.vim$lastModelDraw = vim$getOrAddModelDraw(renderType);
-            this.vim$lastModelRenderType = renderType;
-        }
-        // Minecraft's next geometry starts a draw after this one, or finds its own to consolidate into.
-        this.lastDraw = null;
-        return this.vim$lastModelDraw;
-    }
-    
-    @Override
-    public VertexConsumer vim$cpuVertexBuilder(RenderType renderType) {
-        // Through the wrapper above, which hands out Minecraft's builder once the offer is taken.
-        return getVertexBuilder(renderType);
-    }
-    
-    @Unique
-    private StagedVertexBuffer.Draw vim$getOrAddModelDraw(RenderType renderType) {
-        PreparedRenderType preparedRenderType = renderType.prepare();
-        if (this.canReorder && renderType.canConsolidateConsecutiveGeometry()) {
-            for (int i = 0; i < this.draws.size(); i++) {
-                if (vim$isModelDraw(i) && this.drawRenderTypes.get(i).equals(preparedRenderType)) {
-                    return this.draws.get(i);
-                }
-            }
-        }
-        StagedVertexBuffer.Draw draw = this.stagedBuffer.appendDraw(renderType.format(), renderType.primitiveTopology());
-        ModelGpuVertices.get().adopt(this.stagedBuffer, draw, preparedRenderType);
-        this.draws.add(draw);
-        this.drawRenderTypes.add(preparedRenderType);
-        return draw;
-    }
-    
-    @Unique
-    private boolean vim$isModelDraw(int index) {
-        return ((ModelVertexDrawHolder) this.draws.get(index)).vim$modelDraw() != null;
-    }
+	@Shadow
+	@Final
+	private StagedVertexBuffer stagedBuffer;
+	@Shadow
+	@Final
+	private boolean canReorder;
+	@Shadow
+	@Final
+	private List<Draw> draws;
+	@Shadow
+	@Final
+	private List<PreparedRenderType> drawRenderTypes;
+	@Shadow
+	private @Nullable Draw lastDraw;
+	@Unique
+	private @Nullable Draw vim$lastModelDraw;
+	@Unique
+	private @Nullable RenderType vim$lastModelRenderType;
+	
+	/**
+	 * Hands out the GPU model path's builder for the submit it just took, and Minecraft's own
+	 * otherwise. Asking for Minecraft's ends the GPU draw that was being filled, as a change of
+	 * render type ends Minecraft's.
+	 */
+	@WrapMethod(method = "getVertexBuilder")
+	private VertexConsumer vim$handOutModelBuilder(RenderType renderType, Operation<VertexConsumer> original) {
+		VertexConsumer gpuBuilder = ModelGpuVertices.get().takeOffer(this, renderType);
+		if (gpuBuilder == null) {
+			gpuBuilder = TextGpuVertices.get().takeOffer(this, renderType);
+		}
+		if (gpuBuilder != null) {
+			return gpuBuilder;
+		}
+		this.vim$lastModelDraw = null;
+		return original.call(renderType);
+	}
+	
+	/**
+	 * Minecraft looks for a draw of the same render type to consolidate into; GPU draws are not
+	 * such draws for its geometry.
+	 */
+	@WrapOperation(method = "getOrAddDraw", at = @At(value = "INVOKE", target = "Ljava/util/List;indexOf(Ljava/lang/Object;)I"))
+	private int vim$skipModelDraws(List<?> renderTypes, Object preparedRenderType, Operation<Integer> original) {
+		int index = original.call(renderTypes, preparedRenderType);
+		if (index < 0 || !vim$isModelDraw(index)) {
+			return index;
+		}
+		for (int i = index + 1; i < this.drawRenderTypes.size(); i++) {
+			if (!vim$isModelDraw(i) && this.drawRenderTypes.get(i).equals(preparedRenderType)) {
+				return i;
+			}
+		}
+		return -1;
+	}
+	
+	@Unique
+	private boolean vim$isModelDraw(int index) {
+		ModelVertexDrawHolder holder = (ModelVertexDrawHolder) this.draws.get(index);
+		return holder.vim$modelDraw() != null || holder.vim$textDraw() != null;
+	}
+	
+	@Override
+	public Draw vim$modelDraw(RenderType renderType) {
+		if (this.vim$lastModelDraw == null || this.vim$lastModelRenderType != renderType || !renderType.canConsolidateConsecutiveGeometry()) {
+			this.vim$lastModelDraw = vim$getOrAddModelDraw(renderType);
+			this.vim$lastModelRenderType = renderType;
+		}
+		// Minecraft's next geometry starts a draw after this one, or finds its own to consolidate into.
+		this.lastDraw = null;
+		return this.vim$lastModelDraw;
+	}
+	
+	@Override
+	public VertexConsumer vim$cpuVertexBuilder(RenderType renderType) {
+		// Through the wrapper above, which hands out Minecraft's builder once the offer is taken.
+		return getVertexBuilder(renderType);
+	}
+	
+	@Shadow
+	public abstract VertexConsumer getVertexBuilder(RenderType renderType);
+	
+	@Override
+	public Draw vim$textDraw(RenderType renderType) {
+		if (this.vim$lastModelDraw == null || this.vim$lastModelRenderType != renderType || !renderType.canConsolidateConsecutiveGeometry()) {
+			this.vim$lastModelDraw = vim$getOrAddTextDraw(renderType);
+			this.vim$lastModelRenderType = renderType;
+		}
+		this.lastDraw = null;
+		return this.vim$lastModelDraw;
+	}
+	
+	@Unique
+	private Draw vim$getOrAddTextDraw(RenderType renderType) {
+		PreparedRenderType preparedRenderType = renderType.prepare();
+		if (this.canReorder && renderType.canConsolidateConsecutiveGeometry()) {
+			for (int i = 0; i < this.draws.size(); i++) {
+				if (vim$isModelDraw(i) && this.drawRenderTypes.get(i).equals(preparedRenderType)) {
+					return this.draws.get(i);
+				}
+			}
+		}
+		Draw draw = this.stagedBuffer.appendDraw(renderType.format(), renderType.primitiveTopology());
+		TextGpuVertices.get().adopt(this.stagedBuffer, draw);
+		this.draws.add(draw);
+		this.drawRenderTypes.add(preparedRenderType);
+		return draw;
+	}
+	
+	@Unique
+	private Draw vim$getOrAddModelDraw(RenderType renderType) {
+		PreparedRenderType preparedRenderType = renderType.prepare();
+		if (this.canReorder && renderType.canConsolidateConsecutiveGeometry()) {
+			for (int i = 0; i < this.draws.size(); i++) {
+				if (vim$isModelDraw(i) && this.drawRenderTypes.get(i).equals(preparedRenderType)) {
+					return this.draws.get(i);
+				}
+			}
+		}
+		Draw draw = this.stagedBuffer.appendDraw(renderType.format(), renderType.primitiveTopology());
+		ModelGpuVertices.get().adopt(this.stagedBuffer, draw, preparedRenderType);
+		this.draws.add(draw);
+		this.drawRenderTypes.add(preparedRenderType);
+		return draw;
+	}
 }

@@ -409,6 +409,39 @@ The validation layer reports no error with particles, items and mobs together
 from the first frame through a resize, a reload, and leaving and joining the
 world, with the vertex passes' SPIR-V from the Vulkan SDK.
 
+2026-11-02, text on the GPU (`vim.gpuTextVertices`, on by default). Minecraft lays
+every text out again every frame, glyph by glyph. The path keeps the quads
+Minecraft's own glyphs write under no pose, per string object, in a store of its
+own, and a compute pass writes them through each text's pose in Minecraft's text
+format, into Minecraft's draws. 576 signs with improved transparency: 341 to 812
+FPS, 2.718 to 1.035 ms of render thread.
+
+A string counts from the second frame it is drawn in. Counting from its second
+draw filled the store: a name tag makes its string anew every frame and draws it
+twice within one, so four name tags laid out thousands of strings a second and
+started the store over several times a second. Text that stays on Minecraft's
+path: see-through text, whose format has no light; outlined text; obfuscated
+text, whose glyphs are drawn at random; and text made anew every frame.
+
+Signs and text displays draw with a render type Minecraft sorts on upload unless
+improved transparency is on, so with it off, as under the Fast and Fancy presets,
+they stay on Minecraft's path. A sweep with it off is clean with `gpuTexts` not
+moving at all, which shows the path steps aside and nothing more.
+
+Parity with PNGs taken off, on, off, on, off: 19 styles of text in bold, italic,
+underlined, struck, colours, Japanese, Arabic, four fonts and shadow colours, in 9
+display styles, beside styled and glowing signs and name tags. No stable
+difference in 9 views at noon or 9 at midnight, or after a resource reload or the
+Unicode font option, each of which starts the store over. The one difference the
+sweep ever showed was an obfuscated text's random glyphs, gone with that text
+taken out. `checkTextVertexInvariants` compares the shader's arithmetic with
+Minecraft's glyphs byte for byte on every build.
+
+The validation layer reports no error with signs, text displays and name tags from
+the first frame through a reload, with the pass's SPIR-V from the Vulkan SDK.
+
+Step 5 ends here. Block models stay on Minecraft's path: 400 of them cost 0.13 ms.
+
 ## Decisions
 
 - The mod extends Minecraft's renderer instead of running its own beside it

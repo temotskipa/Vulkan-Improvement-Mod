@@ -7,16 +7,20 @@ import org.jspecify.annotations.Nullable;
  * is, if any, and the vertex count Minecraft sizes its index buffer and draw by.
  */
 public interface ModelVertexDrawHolder {
-    @Nullable ModelVertexDraw vim$modelDraw();
-    
-    void vim$setModelDraw(ModelVertexDraw draw);
-    
-    @Nullable ParticleVertexDraw vim$particleDraw();
-    
-    void vim$setParticleDraw(ParticleVertexDraw draw);
-    
-    /**
-     * Counts vertices the GPU writes into the draw, and the indices Minecraft draws them with.
-     */
-    void vim$addQuadVertices(int vertices);
+	@Nullable ModelVertexDraw vim$modelDraw();
+	
+	void vim$setModelDraw(ModelVertexDraw draw);
+	
+	@Nullable TextVertexDraw vim$textDraw();
+	
+	void vim$setTextDraw(TextVertexDraw draw);
+	
+	@Nullable ParticleVertexDraw vim$particleDraw();
+	
+	void vim$setParticleDraw(ParticleVertexDraw draw);
+	
+	/**
+	 * Counts vertices the GPU writes into the draw, and the indices Minecraft draws them with.
+	 */
+	void vim$addQuadVertices(int vertices);
 }

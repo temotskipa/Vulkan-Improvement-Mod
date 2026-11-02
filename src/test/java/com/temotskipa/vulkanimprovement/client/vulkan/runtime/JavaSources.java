@@ -13,23 +13,23 @@ import java.util.regex.Pattern;
  * A check then holds however the source imports the class.
  */
 final class JavaSources {
-    // An import of a nested class: its outer classes, each with its dot, and its own name.
-    private static final Pattern NESTED_IMPORT = Pattern.compile("^import (?:[a-z_]\\w*\\.)+((?:[A-Z]\\w*\\.)+)([A-Z]\\w*);", Pattern.MULTILINE);
-    
-    private JavaSources() {
-    }
-    
-    static String read(Path path) throws IOException {
-        return qualifyImportedNestedClasses(Files.readString(path));
-    }
-    
-    static String qualifyImportedNestedClasses(String source) {
-        String qualified = source;
-        Matcher nestedImport = NESTED_IMPORT.matcher(source);
-        while (nestedImport.find()) {
-            String nested = nestedImport.group(2);
-            qualified = qualified.replaceAll("(?<![\\w.])" + nested + "(?!\\w)", Matcher.quoteReplacement(nestedImport.group(1) + nested));
-        }
-        return qualified;
-    }
+	// An import of a nested class: its outer classes, each with its dot, and its own name.
+	private static final Pattern NESTED_IMPORT = Pattern.compile("^import (?:[a-z_]\\w*\\.)+((?:[A-Z]\\w*\\.)+)([A-Z]\\w*);", Pattern.MULTILINE);
+	
+	private JavaSources() {
+	}
+	
+	static String read(Path path) throws IOException {
+		return qualifyImportedNestedClasses(Files.readString(path));
+	}
+	
+	static String qualifyImportedNestedClasses(String source) {
+		String qualified = source;
+		Matcher nestedImport = NESTED_IMPORT.matcher(source);
+		while (nestedImport.find()) {
+			String nested = nestedImport.group(2);
+			qualified = qualified.replaceAll("(?<![\\w.$])" + nested + "(?!\\w)", Matcher.quoteReplacement(nestedImport.group(1) + nested));
+		}
+		return qualified;
+	}
 }

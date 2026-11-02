@@ -84,6 +84,13 @@ the mod is idle (see `LevelRendererMixin` in
     gives `ParticleGpuVertices` each layer of particles in place of writing its
     vertices. Minecraft's flat particle arrays are copied to the GPU whole, and a
     compute pass of its own writes the vertices its pipelines draw.
+11. Unless `vim.gpuTextVertices` is off, `TextFeatureRendererMixin` offers each
+    text to `TextGpuVertices`. The quads Minecraft's glyphs write under no pose
+    are kept per string object in `TextGlyphStore`, from the second frame a string
+    is drawn in, and a compute pass writes them through each text's pose. Text
+    Minecraft sorts on upload stays on its path until improved transparency is
+    on, which is all sign and display text under the Fast and Fancy presets;
+    see-through, outlined, obfuscated and new text stay on it in any case.
 
 ## Source Sets
 

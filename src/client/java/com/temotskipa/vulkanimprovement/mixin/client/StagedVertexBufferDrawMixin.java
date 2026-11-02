@@ -4,6 +4,7 @@ import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelVertexDraw;
 import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelVertexDrawHolder;
 import com.temotskipa.vulkanimprovement.client.vulkan.model.ParticleVertexDraw;
+import com.temotskipa.vulkanimprovement.client.vulkan.model.TextVertexDraw;
 import net.minecraft.client.renderer.StagedVertexBuffer.Draw;
 import org.jspecify.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
@@ -17,38 +18,50 @@ import org.spongepowered.asm.mixin.Unique;
  */
 @Mixin(Draw.class)
 public abstract class StagedVertexBufferDrawMixin implements ModelVertexDrawHolder {
-    @Shadow
-    private int vertexCount;
-    @Shadow
-    private int indexCount;
-    @Unique
-    private @Nullable ModelVertexDraw vim$modelDraw;
-    @Unique
-    private @Nullable ParticleVertexDraw vim$particleDraw;
-    
-    @Override
-    public @Nullable ModelVertexDraw vim$modelDraw() {
-        return this.vim$modelDraw;
-    }
-    
-    @Override
-    public void vim$setModelDraw(ModelVertexDraw draw) {
-        this.vim$modelDraw = draw;
-    }
-    
-    @Override
-    public @Nullable ParticleVertexDraw vim$particleDraw() {
-        return this.vim$particleDraw;
-    }
-    
-    @Override
-    public void vim$setParticleDraw(ParticleVertexDraw draw) {
-        this.vim$particleDraw = draw;
-    }
-    
-    @Override
-    public void vim$addQuadVertices(int vertices) {
-        this.vertexCount += vertices;
-        this.indexCount += PrimitiveTopology.QUADS.indexCount(vertices);
-    }
+	@Shadow
+	private int vertexCount;
+	@Shadow
+	private int indexCount;
+	@Unique
+	private @Nullable ModelVertexDraw vim$modelDraw;
+	@Unique
+	private @Nullable ParticleVertexDraw vim$particleDraw;
+	@Unique
+	private @Nullable TextVertexDraw vim$textDraw;
+	
+	@Override
+	public @Nullable ModelVertexDraw vim$modelDraw() {
+		return this.vim$modelDraw;
+	}
+	
+	@Override
+	public void vim$setModelDraw(ModelVertexDraw draw) {
+		this.vim$modelDraw = draw;
+	}
+	
+	@Override
+	public @Nullable TextVertexDraw vim$textDraw() {
+		return this.vim$textDraw;
+	}
+	
+	@Override
+	public void vim$setTextDraw(TextVertexDraw draw) {
+		this.vim$textDraw = draw;
+	}
+	
+	@Override
+	public @Nullable ParticleVertexDraw vim$particleDraw() {
+		return this.vim$particleDraw;
+	}
+	
+	@Override
+	public void vim$setParticleDraw(ParticleVertexDraw draw) {
+		this.vim$particleDraw = draw;
+	}
+	
+	@Override
+	public void vim$addQuadVertices(int vertices) {
+		this.vertexCount += vertices;
+		this.indexCount += PrimitiveTopology.QUADS.indexCount(vertices);
+	}
 }

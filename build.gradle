@@ -883,6 +883,16 @@ tasks.register("checkParticleVertexInvariants", JavaExec) {
     inputs.dir(modelShaderSourceDir)
 }
 
+tasks.register("checkTextVertexInvariants", JavaExec) {
+    group = "verification"
+    description = "Checks that the text vertex pass reads its records as laid out and writes what Minecraft's glyphs write."
+
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.temotskipa.vulkanimprovement.client.vulkan.model.TextVertexInvariantCheck"
+    inputs.dir(modelShaderSourceDir)
+}
+
 tasks.register("checkTerrainRenderPassStateInvariants", JavaExec) {
     group = "verification"
     description = "Runs pure Java terrain render-pass state restoration invariant checks."
@@ -976,6 +986,7 @@ tasks.named("check") {
     dependsOn tasks.named("checkModelShadersCompile")
     dependsOn tasks.named("checkModelVertexInvariants")
     dependsOn tasks.named("checkParticleVertexInvariants")
+    dependsOn tasks.named("checkTextVertexInvariants")
     dependsOn tasks.named("checkModelMeshShader")
     dependsOn tasks.named("checkTerrainRenderPassStateInvariants")
     dependsOn tasks.named("checkVulkanVideoOptionsInvariants")
