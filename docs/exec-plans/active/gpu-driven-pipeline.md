@@ -237,6 +237,46 @@ the render thread in this scene. Frames on Minecraft's path, the vertex pass
 and the mesh stage are identical. What is left of the frame is mostly
 Minecraft's: posing parts, setting up animations and extracting entities.
 
+2026-11-02, barriers by resource on by default, after a run with the Vulkan
+validation layer (SDK 1.4.363) on 26.4-snapshot-6. Core and synchronization
+validation, with barriers by resource on: Minecraft's terrain, strict mesh
+replacement in the three scenes, the listed path, render distance 32, block
+edits, streaming, a window resize, a dimension change, the entity scene on the
+vertex pass and the mesh stage, resource reloads and shutdown. No error; one
+warning, on Minecraft's own `oit_water_mask`, which writes a colour its subpass
+has no attachment for. Setting it up took more care than running it:
+
+- A first run was as clean with the held barriers dropped outright, because
+  synchronization validation leaves out what shaders read and write unless
+  `syncval_shader_accesses_heuristic` is on. With it on, dropping them reports
+  a draw reading `Camera projection matrix UBO level` after `vkCmdCopyBuffer`,
+  and dropping the barrier before a conflicting transfer reports two clears of
+  `Main / Depth`. With the barriers held the same session reports neither.
+- The layer stops reporting a message after a limit per id for the session, so
+  those drops used up the messages the real run was looking for. The run above
+  is a new session of the committed code, with a limit of 200.
+
+The run covers what the flag changes: Minecraft's transfers and the reads that
+follow them. The setting warns that it can ignore accesses and does not support
+`VK_EXT_descriptor_buffer`; mesh terrain reaches its buffers through the
+descriptor heap and device addresses, so ordering inside the terrain passes is
+not taken as checked.
+
+On snapshot-6 it saves less than on snapshot-4. Five runs of each in turn at
+1920x1080, four while sections reload, medians, GPU time from Minecraft's timer
+query:
+
+| Scene                                | FPS on | FPS off | GPU on   | GPU off  |
+|--------------------------------------|--------|---------|----------|----------|
+| Overlook, render distance 16         | 1041   | 1052    | 0.858 ms | 0.867 ms |
+| Entity scene, render distance 12     | 446    | 453     | 0.678 ms | 0.699 ms |
+| Overlook while every section reloads | 1014   | 999     | 0.884 ms | 0.894 ms |
+
+All three are inside the run-to-run spread: it spends no time and saves about
+57 % of the barriers after transfers, which now come to little on this GPU.
+Frames are identical, a mean difference of 0.00 of 255 where two frames with it
+off differ by 0.07.
+
 ## Decisions
 
 - The mod extends Minecraft's renderer instead of running its own beside it
