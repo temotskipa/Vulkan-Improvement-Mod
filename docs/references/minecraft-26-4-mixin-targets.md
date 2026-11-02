@@ -477,6 +477,36 @@ pipelines.
   vertex consumer; the path takes only submits whose vertices it writes
   exactly as Minecraft would.
 
+### QuadParticleFeatureRendererMixin
+
+- Target: `net.minecraft.client.renderer.feature.QuadParticleFeatureRenderer`.
+- mcdev 26.4 surface: `prepareGroup(FeatureFrameContext, List<Submit>, boolean)`
+  appends a `StagedVertexBuffer.Draw` per layer in `DefaultVertexFormat.PARTICLE`
+  and has `QuadParticleRenderState.buildLayer(Layer, VertexConsumer)` write
+  its vertices.
+- Source tokens: `method = "prepareGroup"`, `QuadParticleRenderState;buildLayer(`.
+- Purpose: with `vim.gpuParticleVertices` on, the GPU path takes the layer in
+  place of `buildLayer`; Minecraft draws the draw with its own pipelines.
+
+### QuadParticleRenderStateMixin
+
+- Target: `net.minecraft.client.renderer.state.level.QuadParticleRenderState`.
+- mcdev 26.4 surface: final field `particles`, a `Storage` per layer;
+  `add(...)` looks the layer up with `computeIfAbsent` for every particle.
+- Source tokens: `private Map<SingleQuadParticle.Layer, ?> particles`,
+  `method = "add"`, `Ljava/util/Map;computeIfAbsent(`.
+- Purpose: reach a layer's storage, and keep the last layer's storage so a run
+  of particles does not look it up each time.
+
+### QuadParticleStorageMixin
+
+- Target: `net.minecraft.client.renderer.state.level.QuadParticleRenderState.Storage`.
+- mcdev 26.4 surface: private fields `floatValues` (twelve per particle),
+  `intValues` (two per particle) and `currentParticleIndex`.
+- Source tokens: `private float[] floatValues`, `private int[] intValues`,
+  `private int currentParticleIndex`.
+- Purpose: let the GPU path copy the arrays whole.
+
 ### ItemFeatureRendererMixin
 
 - Target: `net.minecraft.client.renderer.feature.ItemFeatureRenderer`.

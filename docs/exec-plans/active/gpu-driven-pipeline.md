@@ -384,6 +384,31 @@ and joining the world again. A reload bakes new lists: the store's old quads are
 counted as collected as a cube's are, and the next reload renews it to the same
 size. Fabric API changes none of the classes the path stands in for.
 
+2026-11-02, particles on the GPU (`vim.gpuParticleVertices`, on by default).
+Minecraft extracts its particles into flat arrays every frame, twelve floats and
+two ints each, then allocates a quaternion and four vectors per particle to write
+their vertices. The path copies the arrays to the GPU whole, and a compute pass
+of its own writes the vertices in Minecraft's particle format, where Minecraft
+draws them with its own pipelines, so the render thread does nothing per particle
+past extraction. Extraction looked its layer up in a map for every particle; the
+last layer's storage is now kept. 10,558 particles in view, five runs of each in
+turn with that fix in both: 900 to 1,293 FPS, 0.889 to 0.535 ms of render thread,
+no run overlapping.
+
+Parity with PNGs taken off, on, off, on, off: 44 kinds across the opaque and
+translucent sheets and the block and item atlases, tinted, emissive and scaling,
+in 9 views with improved transparency, without it and at midnight. None has a
+stable difference; a few hundred pixels differ between shots of either path at
+midnight, where the particles themselves change. `checkParticleVertexInvariants`
+reads Minecraft's own arrays and compares the shader's arithmetic with
+`buildLayer` byte for byte on every build. One thing that check cannot see: GPU
+division is not correctly rounded, so a quaternion's normalizing factor may differ
+in its last bit on some GPU, which would move a corner by less than a pixel.
+
+The validation layer reports no error with particles, items and mobs together
+from the first frame through a resize, a reload, and leaving and joining the
+world, with the vertex passes' SPIR-V from the Vulkan SDK.
+
 ## Decisions
 
 - The mod extends Minecraft's renderer instead of running its own beside it
@@ -419,3 +444,6 @@ size. Fabric API changes none of the classes the path stands in for.
 ## Follow-Up
 
 - A task stage for step 3, to cull models outside the view on the GPU.
+- `ItemStackRenderState.getModelBoundingBox` recomputes every item's box every
+  frame from the same extents and transform: 29 % of the render thread with 900
+  dropped items once the vertices are on the GPU. It could be kept per model.

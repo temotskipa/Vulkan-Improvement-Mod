@@ -3,6 +3,8 @@ package com.temotskipa.vulkanimprovement.mixin.client;
 import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelGpuVertices;
 import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelVertexDraw;
 import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelVertexDrawHolder;
+import com.temotskipa.vulkanimprovement.client.vulkan.model.ParticleGpuVertices;
+import com.temotskipa.vulkanimprovement.client.vulkan.model.ParticleVertexDraw;
 import net.minecraft.client.renderer.StagedVertexBuffer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -21,6 +23,7 @@ public class StagedVertexBufferMixin {
     @Inject(method = "upload", at = @At("RETURN"))
     private void vim$writeModelVertices(CallbackInfo ci) {
         ModelGpuVertices.get().upload(this);
+        ParticleGpuVertices.get().upload(this);
     }
     
     @Inject(method = "getExecuteInfo", at = @At("HEAD"), cancellable = true)
@@ -28,16 +31,23 @@ public class StagedVertexBufferMixin {
         ModelVertexDraw modelDraw = ((ModelVertexDrawHolder) draw).vim$modelDraw();
         if (modelDraw != null) {
             cir.setReturnValue(ModelGpuVertices.get().executeInfo(modelDraw));
+            return;
+        }
+        ParticleVertexDraw particleDraw = ((ModelVertexDrawHolder) draw).vim$particleDraw();
+        if (particleDraw != null) {
+            cir.setReturnValue(ParticleGpuVertices.get().executeInfo(particleDraw));
         }
     }
     
     @Inject(method = "endDraw", at = @At("HEAD"))
     private void vim$forgetModelDraws(CallbackInfo ci) {
         ModelGpuVertices.get().endDraw(this);
+        ParticleGpuVertices.get().endDraw(this);
     }
     
     @Inject(method = "endFrame", at = @At("HEAD"))
     private void vim$recycleModelBuffers(CallbackInfo ci) {
         ModelGpuVertices.get().endFrame(this);
+        ParticleGpuVertices.get().endFrame(this);
     }
 }

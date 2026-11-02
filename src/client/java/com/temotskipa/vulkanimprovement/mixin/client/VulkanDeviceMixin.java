@@ -9,6 +9,7 @@ import com.mojang.renderpearl.backend.vulkan.checkpoints.CheckpointExtension;
 import com.mojang.renderpearl.backend.vulkan.init.FeatureSet;
 import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanImprovementCapabilities;
 import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelGpuVertices;
+import com.temotskipa.vulkanimprovement.client.vulkan.model.ParticleGpuVertices;
 import com.temotskipa.vulkanimprovement.client.vulkan.presentation.PresentPacingController;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.MeshTerrainRenderer;
 import org.lwjgl.vulkan.VK12;
@@ -34,6 +35,7 @@ public final class VulkanDeviceMixin {
         VulkanDevice device = (VulkanDevice) (Object) this;
         MeshTerrainRenderer.get().configure(device, VulkanImprovementCapabilities.capture(physicalDevice, enabledFeatureSet.extensions()));
         ModelGpuVertices.get().configure(device);
+        ParticleGpuVertices.get().configure(device);
     }
     
     /**
@@ -50,5 +52,6 @@ public final class VulkanDeviceMixin {
         VK12.vkDeviceWaitIdle(this.vkDevice);
         MeshTerrainRenderer.get().shutdownNow();
         ModelGpuVertices.get().shutdownNow();
+        ParticleGpuVertices.get().shutdownNow();
     }
 }

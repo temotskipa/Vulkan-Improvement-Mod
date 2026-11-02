@@ -11,6 +11,10 @@ public interface ModelVertexDrawHolder {
     
     void vim$setModelDraw(ModelVertexDraw draw);
     
+    @Nullable ParticleVertexDraw vim$particleDraw();
+    
+    void vim$setParticleDraw(ParticleVertexDraw draw);
+    
     /**
      * Counts vertices the GPU writes into the draw, and the indices Minecraft draws them with.
      */

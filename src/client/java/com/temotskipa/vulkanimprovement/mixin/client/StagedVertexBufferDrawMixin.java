@@ -3,6 +3,7 @@ package com.temotskipa.vulkanimprovement.mixin.client;
 import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelVertexDraw;
 import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelVertexDrawHolder;
+import com.temotskipa.vulkanimprovement.client.vulkan.model.ParticleVertexDraw;
 import net.minecraft.client.renderer.StagedVertexBuffer.Draw;
 import org.jspecify.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
@@ -22,6 +23,8 @@ public abstract class StagedVertexBufferDrawMixin implements ModelVertexDrawHold
     private int indexCount;
     @Unique
     private @Nullable ModelVertexDraw vim$modelDraw;
+    @Unique
+    private @Nullable ParticleVertexDraw vim$particleDraw;
     
     @Override
     public @Nullable ModelVertexDraw vim$modelDraw() {
@@ -31,6 +34,16 @@ public abstract class StagedVertexBufferDrawMixin implements ModelVertexDrawHold
     @Override
     public void vim$setModelDraw(ModelVertexDraw draw) {
         this.vim$modelDraw = draw;
+    }
+    
+    @Override
+    public @Nullable ParticleVertexDraw vim$particleDraw() {
+        return this.vim$particleDraw;
+    }
+    
+    @Override
+    public void vim$setParticleDraw(ParticleVertexDraw draw) {
+        this.vim$particleDraw = draw;
     }
     
     @Override

@@ -4,6 +4,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.sugar.Local;
 import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelGpuVertices;
+import com.temotskipa.vulkanimprovement.client.vulkan.model.ParticleGpuVertices;
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.VulkanImprovementRuntime;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.MeshTerrainRenderer;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.SectionMeshletStore;
@@ -127,11 +128,14 @@ public final class LevelRendererMixin {
     @WrapOperation(method = "render", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher;prepareFrame(Lnet/minecraft/client/renderer/SubmitNodeStorage;)Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher$PreparedFrame;"))
     private FeatureRenderDispatcher.PreparedFrame vim$prepareLevelFeatures(FeatureRenderDispatcher dispatcher, SubmitNodeStorage submitNodeStorage, Operation<FeatureRenderDispatcher.PreparedFrame> original) {
         ModelGpuVertices models = ModelGpuVertices.get();
+        ParticleGpuVertices particles = ParticleGpuVertices.get();
         models.beginLevelPrepare();
+        particles.beginLevelPrepare();
         try {
             return original.call(dispatcher, submitNodeStorage);
         } finally {
             models.endLevelPrepare();
+            particles.endLevelPrepare();
         }
     }
     

@@ -80,6 +80,10 @@ the mod is idle (see `LevelRendererMixin` in
    model's quad list goes into the same store once, and a frame records a part
    and jobs for each run of quads that share a render type, tint and light
    emission, for the same compute pass and the same draws.
+10. Unless `vim.gpuParticleVertices` is off, `QuadParticleFeatureRendererMixin`
+    gives `ParticleGpuVertices` each layer of particles in place of writing its
+    vertices. Minecraft's flat particle arrays are copied to the GPU whole, and a
+    compute pass of its own writes the vertices its pipelines draw.
 
 ## Source Sets
 
