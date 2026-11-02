@@ -364,7 +364,7 @@ inside a render pass the level renderer has already opened.
   terrain fades into when improved transparency is on (otherwise `null`), and
   whether terrain is drawn as wireframe.
 - Source tokens: `method = "renderGroup"`,
-  `ImprovedFogTextures improvedFogTextures`, `boolean renderWireframeTerrain`.
+  `ImprovedFogTextures improvedFogTextures`, `boolean wireframe`.
 - Purpose: bracket vanilla terrain group rendering, record the textures
   Minecraft binds for it, the sky and cloud images of improved fog among them,
   and leave wireframe terrain to Minecraft.
@@ -489,7 +489,7 @@ pipelines.
 - Source tokens: `private StagedVertexBuffer stagedBuffer`,
   `private boolean canReorder`, `private List<StagedVertexBuffer.Draw> draws`,
   `private List<PreparedRenderType> drawRenderTypes`,
-  `private StagedVertexBuffer.@Nullable Draw lastDraw`,
+  `private @Nullable StagedVertexBuffer.Draw lastDraw`,
   `method = "getVertexBuilder"`, `method = "getOrAddDraw"`, `List;indexOf(`.
 - Purpose: make GPU model draws draws of the group, in its lists, so Minecraft
   executes them in order with its render types, and keep Minecraft's own
