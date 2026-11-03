@@ -17,6 +17,7 @@
     "FrontendCommandEncoderMixin",
     "FrontendRenderPassMixin",
     "GlBackendMixin",
+    "GlobalSettingsUniformMixin",
     "GlslCompilerMixin",
     "ItemFeatureRendererMixin",
     "LevelRendererMixin",

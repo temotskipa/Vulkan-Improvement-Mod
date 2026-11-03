@@ -165,7 +165,7 @@ public final class MeshShaderTerrainProgram {
 			pushConstants.flip();
 			VK12.vkCmdPushConstants(commandBuffer, meshPipeline.layout(), EXTMeshShader.VK_SHADER_STAGE_TASK_BIT_EXT | EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT, 0, pushConstants);
 			ByteBuffer fogConstants = stack.malloc(TerrainGpuLayout.TERRAIN_FOG_PUSH_CONSTANT_BYTES);
-			TerrainFogState.write(fogConstants, improvedFog);
+			TerrainFogState.write(fogConstants, improvedFog, TerrainSamplingState.rotatedGridSampling());
 			fogConstants.flip();
 			VK12.vkCmdPushConstants(commandBuffer, meshPipeline.layout(), VK10.VK_SHADER_STAGE_FRAGMENT_BIT, TerrainGpuLayout.TERRAIN_FOG_PUSH_CONSTANT_OFFSET, fogConstants);
 		}

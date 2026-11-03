@@ -13,6 +13,8 @@ public final class TerrainFragmentShaderSamplingInvariantCheck {
 	private static final Path MESH_SHADER_PROGRAM = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/MeshShaderTerrainProgram.java");
 	private static final Path DESCRIPTOR_RESOURCES = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/DescriptorHeapTerrainResources.java");
 	private static final Path TERRAIN_GROUP_MIXIN = Path.of("src/client/java/com/temotskipa/vulkanimprovement/mixin/client/ChunkSectionsToRenderMixin.java");
+	private static final Path FOG_STATE = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/TerrainFogState.java");
+	private static final Path GLOBAL_SETTINGS_MIXIN = Path.of("src/client/java/com/temotskipa/vulkanimprovement/mixin/client/GlobalSettingsUniformMixin.java");
 	
 	private TerrainFragmentShaderSamplingInvariantCheck() {
 	}
@@ -21,6 +23,7 @@ public final class TerrainFragmentShaderSamplingInvariantCheck {
 	static void main() throws IOException {
 		String shader = Files.readString(FRAGMENT_SHADER);
 		checkBlockAtlasSamplingIsCrispAndMipAware(shader);
+		checkRotatedGridSamplingFollowsMinecraft(shader, Files.readString(MESH_SHADER_PROGRAM), Files.readString(FOG_STATE), Files.readString(GLOBAL_SETTINGS_MIXIN));
 		checkCutoutAlphaUsesVanillaMask(shader);
 		checkOpaqueMaskedAlphaOutput(shader);
 		String meshShader = Files.readString(MESH_SHADER);
@@ -40,9 +43,22 @@ public final class TerrainFragmentShaderSamplingInvariantCheck {
 	private static void checkBlockAtlasSamplingIsCrispAndMipAware(String shader) {
 		require(shader.contains("textureSize(sampler2D(blockAtlasTexture, blockAtlasSampler), 0)"), "terrain block atlas sampling must inspect the atlas size");
 		require(shader.contains("textureGrad(sampler2D(blockAtlasTexture, blockAtlasSampler)") && shader.contains("dFdx(uv), dFdy(uv)"), "terrain block atlas sampling must go through the sampler with the gradients of the unmodified coordinate");
-		require(shader.contains("fwidth(texel)") && shader.contains("clamp((texel - nearestEdge) / texelsPerPixel, -0.5, 0.5)"), "terrain block atlas sampling must keep magnified texels hard-edged");
+		require(shader.contains("clamp((texel - nearestEdge) / texelsPerPixel, -0.5, 0.5)"), "terrain block atlas sampling must keep magnified texels hard-edged");
+		require(shader.contains("max(sqrt(stepX * stepX + stepY * stepY), vec2(0.00001))") && !shader.contains("fwidth("), "a texel's size on screen must be the length of a pixel's step, as Minecraft measures it, not fwidth's sum of the steps");
 		require(!shader.contains("texelFetch(blockAtlasTexture") && !shader.contains("texelFetch(sampler2D(blockAtlasTexture"), "terrain block atlas sampling must not fetch a fixed mip level");
-		require(shader.contains("vec4 atlas = sampleBlockAtlas(meshUv0);"), "the fragment colour must come from the shared atlas sampling function");
+		require(shader.contains("vec4 atlas = fog.fogMode.y != 0 ? sampleBlockAtlasRotatedGrid(meshUv0) : sampleBlockAtlas(meshUv0);"), "the fragment colour must come from the shared atlas sampling functions");
+	}
+
+	/**
+	 * With Minecraft's RGSS texture filtering its terrain supersamples the atlas once texels are
+	 * smaller than about two pixels, and mesh terrain has to as well. Minecraft tells its shaders in
+	 * the global settings it uploads each frame.
+	 */
+	private static void checkRotatedGridSamplingFollowsMinecraft(String shader, String program, String fogState, String settingsMixin) {
+		require(settingsMixin.contains("TerrainSamplingState.record(useRgss);"), "the frame's texture filtering must be taken from the global settings Minecraft uploads");
+		require(program.contains("TerrainFogState.write(fogConstants, improvedFog, TerrainSamplingState.rotatedGridSampling());") && fogState.contains(".putInt(rotatedGridSampling ? 1 : 0)"), "each terrain draw must tell the fragment stage whether the frame uses RGSS");
+		require(shader.contains("smoothstep(smallerTexel, 2.0 * smallerTexel, max(footprint.x, footprint.y))"), "RGSS must give way to the hard-edged sample while texels cover two pixels or more");
+		require(shader.contains("textureLod(sampler2D(blockAtlasTexture, blockAtlasSampler), at, finerLod)") && shader.contains("textureLod(sampler2D(blockAtlasTexture, blockAtlasSampler), at, finerLod + 1.0)") && shader.contains("mix(finer, coarser, fract(lod)) * 0.25"), "RGSS must average four samples from each of the two mip levels around the footprint");
 	}
 	
 	private static void checkCutoutAlphaUsesVanillaMask(String shader) {
@@ -91,7 +107,7 @@ public final class TerrainFragmentShaderSamplingInvariantCheck {
 		require(shader.contains("gl_FragCoord.z >= texelFetch(cloudsDepthTexture, pixel, 0).r"), "clouds must only show through terrain they are behind");
 		require(shader.contains("max(smoothstep(0.9, 1.0, environmentalFog), renderDistanceFog)"), "environmental fog must give way to the background only at its far end");
 		require(program.contains("VkDescriptorSetLayoutBinding.calloc(7, stack)"), "the mesh pipeline must declare the three improved-fog images");
-		require(program.contains("boolean improvedFog = TerrainRenderContext.improvedFog();") && program.contains("TerrainFogState.write(fogConstants, improvedFog);"), "each terrain draw must tell the fragment stage which kind of fog its group uses");
+		require(program.contains("boolean improvedFog = TerrainRenderContext.improvedFog();") && program.contains("TerrainFogState.write(fogConstants, improvedFog, "), "each terrain draw must tell the fragment stage which kind of fog its group uses");
 		require(resources.contains("if (improvedFog && !(imageBindingReady(SKY_IMAGE) && imageBindingReady(CLOUDS_IMAGE) && imageBindingReady(CLOUDS_DEPTH_IMAGE)))"), "a draw with improved fog must be refused while its images are unknown");
 		require(groupMixin.contains("resources.recordImageBinding(DescriptorHeapTerrainResources.SKY_IMAGE, improvedFogTextures.skyView());"), "the improved-fog images must be the ones Minecraft binds for the group");
 	}

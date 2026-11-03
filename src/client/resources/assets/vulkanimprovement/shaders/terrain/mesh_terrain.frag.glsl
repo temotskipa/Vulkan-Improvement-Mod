@@ -24,7 +24,8 @@ layout(push_constant, std430) uniform TerrainFogConstants {
 // Where environmental fog starts and ends, then where render-distance fog starts and ends.
     layout(offset = 192) vec4 fogRange;
 // x: whether terrain fades into the sky and clouds behind it instead of the fog colour, which
-// is what Minecraft's improved transparency setting asks for.
+// is what Minecraft's improved transparency setting asks for. y: whether the atlas is sampled
+// with Minecraft's RGSS texture filtering.
     layout(offset = 208) ivec4 fogMode;
 } fog;
 
@@ -40,12 +41,43 @@ layout(constant_id = 0) const bool ALPHA_TEST = true;
 vec4 sampleBlockAtlas(vec2 uv) {
     vec2 atlasSize = vec2(textureSize(sampler2D(blockAtlasTexture, blockAtlasSampler), 0));
     vec2 texel = uv * atlasSize;
-    vec2 texelsPerPixel = max(fwidth(texel), vec2(0.00001));
+    // How many texels one pixel spans along each atlas axis: the length of the step a pixel makes,
+    // as Minecraft measures it. The sum of the two steps' lengths, which fwidth gives, is up to a
+    // root of two larger and blurs a slanted texel's edge over more of a pixel than Minecraft does.
+    vec2 stepX = dFdx(texel);
+    vec2 stepY = dFdy(texel);
+    vec2 texelsPerPixel = max(sqrt(stepX * stepX + stepY * stepY), vec2(0.00001));
     // Move the sample point towards the centre of its texel, leaving one pixel of blend at the
     // texel's edge. When texels are smaller than pixels the point does not move at all.
     vec2 nearestEdge = floor(texel + 0.5);
     vec2 crisp = nearestEdge + clamp((texel - nearestEdge) / texelsPerPixel, -0.5, 0.5);
     return textureGrad(sampler2D(blockAtlasTexture, blockAtlasSampler), crisp / atlasSize, dFdx(uv), dFdy(uv));
+}
+
+// Minecraft's RGSS texture filtering. Up close it is the hard-edged sample above; once a texel
+// covers less than about two pixels it gives way to four samples on a rotated grid within the
+// texel, each read from the two mip levels either side of the pixel's footprint and blended
+// between them, which keeps distant terrain from shimmering without blurring near terrain.
+vec4 sampleBlockAtlasRotatedGrid(vec2 uv) {
+    vec2 texelUv = 1.0 / vec2(textureSize(sampler2D(blockAtlasTexture, blockAtlasSampler), 0));
+    vec2 stepX = dFdx(uv);
+    vec2 stepY = dFdy(uv);
+    float smallerTexel = min(texelUv.x, texelUv.y);
+    vec2 footprint = sqrt(stepX * stepX + stepY * stepY);
+    float supersampled = smoothstep(smallerTexel, 2.0 * smallerTexel, max(footprint.x, footprint.y));
+    // The footprint's size is the geometric mean of the two steps' lengths, in texels.
+    float lod = max(0.0, log2(sqrt(length(stepX) * length(stepY)) / smallerTexel));
+    float finerLod = floor(lod);
+    const vec2 GRID[4] = vec2[](vec2(0.125, 0.375), vec2(-0.125, -0.375), vec2(0.375, -0.125), vec2(-0.375, 0.125));
+    vec4 finer = vec4(0.0);
+    vec4 coarser = vec4(0.0);
+    for (int i = 0; i < 4; i++) {
+        vec2 at = uv + GRID[i] * texelUv;
+        finer += textureLod(sampler2D(blockAtlasTexture, blockAtlasSampler), at, finerLod);
+        coarser += textureLod(sampler2D(blockAtlasTexture, blockAtlasSampler), at, finerLod + 1.0);
+    }
+    vec4 grid = mix(finer, coarser, fract(lod)) * 0.25;
+    return mix(sampleBlockAtlas(uv), grid, supersampled);
 }
 
 // How much of a fog that starts and ends at the given distances lies in front of a fragment.
@@ -67,7 +99,7 @@ vec3 behindTerrain() {
 }
 
 void main() {
-    vec4 atlas = sampleBlockAtlas(meshUv0);
+    vec4 atlas = fog.fogMode.y != 0 ? sampleBlockAtlasRotatedGrid(meshUv0) : sampleBlockAtlas(meshUv0);
     vec4 lit = atlas * meshColor;
     bool alphaBlended = (meshMaterialFlags & 8u) != 0u;
     if (ALPHA_TEST) {

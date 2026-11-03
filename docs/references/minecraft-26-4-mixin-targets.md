@@ -430,6 +430,19 @@ inside a render pass the level renderer has already opened.
 - Purpose: remember the frame's fog so mesh terrain fades into it as
   Minecraft's terrain does.
 
+### GlobalSettingsUniformMixin
+
+- Target: `net.minecraft.client.renderer.GlobalSettingsUniform`.
+- mcdev 26.4 surface: public `update(int width, int height, double glintAlpha,
+  long gameTime, float worldPartialTicks, int menuBlurRadius, Vec3 cameraPos,
+  boolean useRgss)`, which only `GameRenderer.render` calls, once a frame, with
+  whether the options' texture filtering is `TextureFilteringMethod.RGSS`. It
+  writes the flag as the last `int` of the global settings uniform buffer,
+  which Minecraft's terrain shader reads as `UseRgss`.
+- Source tokens: `method = "update"`, `boolean useRgss`.
+- Purpose: remember whether the frame uses RGSS texture filtering, so mesh
+  terrain samples the block atlas as Minecraft's terrain does.
+
 ### ChunkSectionsToRenderDrawIndirectMixin
 
 - Target:

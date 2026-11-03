@@ -31,13 +31,17 @@ public final class TerrainFogState {
 	}
 	
 	/**
-	 * @param improvedFog whether the terrain being drawn fades into the sky and cloud images
-	 *                    behind it instead of the fog colour
+	 * Writes the fog, then the modes the fragment stage draws in.
+	 *
+	 * @param improvedFog         whether the terrain being drawn fades into the sky and cloud images
+	 *                            behind it instead of the fog colour
+	 * @param rotatedGridSampling whether the block atlas is sampled with Minecraft's RGSS texture
+	 *                            filtering
 	 */
-	static void write(ByteBuffer target, boolean improvedFog) {
+	static void write(ByteBuffer target, boolean improvedFog, boolean rotatedGridSampling) {
 		TerrainFog fog = current;
 		target.putFloat(fog.red()).putFloat(fog.green()).putFloat(fog.blue()).putFloat(fog.alpha());
 		target.putFloat(fog.environmentalStart()).putFloat(fog.environmentalEnd()).putFloat(fog.renderDistanceStart()).putFloat(fog.renderDistanceEnd());
-		target.putInt(improvedFog ? 1 : 0).putInt(0).putInt(0).putInt(0);
+		target.putInt(improvedFog ? 1 : 0).putInt(rotatedGridSampling ? 1 : 0).putInt(0).putInt(0);
 	}
 }
