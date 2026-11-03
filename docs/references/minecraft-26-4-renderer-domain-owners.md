@@ -1,7 +1,8 @@
 # Minecraft 26.4 Renderer Domain Owners
 
-Verified with mcdev static analysis for Minecraft `26.4-snapshot-6` on
-2026-10-28.
+Verified with mcdev static analysis for Minecraft `26.4-snapshot-7` on
+2026-11-03. From `26.4-snapshot-6` only a field of `ParticleEngine` changed
+type; the counts below still hold.
 
 Each renderer domain in `RendererDomainContract` names the Mojang class that
 owns the vanilla path for it. This file records what mcdev shows for those

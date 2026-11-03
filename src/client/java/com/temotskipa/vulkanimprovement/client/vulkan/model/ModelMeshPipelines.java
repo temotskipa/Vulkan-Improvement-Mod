@@ -16,6 +16,7 @@ import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
 import com.mojang.renderpearl.backend.vulkan.VulkanUtils;
 import com.mojang.renderpearl.frontend.FrontendRenderPipeline;
 import com.mojang.renderpearl.util.ShaderCompileException;
+import com.temotskipa.vulkanimprovement.client.vulkan.gpu.PipelineDepthStencil;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.VulkanObjectNames;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
 import net.minecraft.client.renderer.RenderPassLayouts;
@@ -218,12 +219,7 @@ public final class ModelMeshPipelines {
 			stages.apply(1, stage -> stage.sType$Default().stage(VK10.VK_SHADER_STAGE_FRAGMENT_BIT).module(fragmentModule).pName(entryPoint));
 			
 			VkPipelineRasterizationStateCreateInfo rasterizationState = VkPipelineRasterizationStateCreateInfo.calloc(stack).sType$Default().polygonMode(VulkanConst.toVk(createInfo.polygonMode())).cullMode(createInfo.cull() ? VK10.VK_CULL_MODE_BACK_BIT : VK10.VK_CULL_MODE_NONE).frontFace(VK10.VK_FRONT_FACE_CLOCKWISE).lineWidth(1.0F);
-			VkPipelineDepthStencilStateCreateInfo depthStencilState = VkPipelineDepthStencilStateCreateInfo.calloc(stack).sType$Default();
-			DepthStencilState depthStencil = createInfo.depthStencilState();
-			if (depthStencil != null) {
-				rasterizationState.depthBiasEnable(depthStencil.depthBiasConstant() != 0.0F || depthStencil.depthBiasScaleFactor() != 0.0F).depthBiasConstantFactor(depthStencil.depthBiasConstant()).depthBiasSlopeFactor(depthStencil.depthBiasScaleFactor());
-				depthStencilState.depthTestEnable(true).depthWriteEnable(depthStencil.writeDepth()).depthCompareOp(VulkanConst.toVk(depthStencil.depthTest()));
-			}
+			VkPipelineDepthStencilStateCreateInfo depthStencilState = PipelineDepthStencil.create(createInfo.depthStencilState(), rasterizationState, stack);
 			
 			// One blend state for each color attachment of the subpass, as Minecraft gives the
 			// pipeline; an attachment the pipeline has no target for is not written.

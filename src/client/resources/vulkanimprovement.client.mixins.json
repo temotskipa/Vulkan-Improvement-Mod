@@ -34,7 +34,6 @@
     "VideoSettingsScreenMixin",
     "VulkanBackendMixin",
     "VulkanCommandEncoderBarrierMixin",
-    "VulkanCommandEncoderClearValuesMixin",
     "VulkanCommandEncoderFramebufferMixin",
     "VulkanCommandEncoderMixin",
     "VulkanConstMixin",

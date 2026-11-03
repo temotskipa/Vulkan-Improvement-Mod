@@ -2,13 +2,13 @@ package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
 import com.mojang.renderpearl.api.pipeline.BlendFunction;
 import com.mojang.renderpearl.api.pipeline.ColorTargetState;
-import com.mojang.renderpearl.api.pipeline.DepthStencilState;
 import com.mojang.renderpearl.api.pipeline.RenderPassLayout.Subpass;
 import com.mojang.renderpearl.backend.vulkan.VulkanCommandEncoder;
 import com.mojang.renderpearl.backend.vulkan.VulkanConst;
 import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
 import com.mojang.renderpearl.backend.vulkan.VulkanUtils;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ComputePipeline;
+import com.temotskipa.vulkanimprovement.client.vulkan.gpu.PipelineDepthStencil;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ShaderCompiler;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.VulkanObjectNames;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
@@ -245,12 +245,7 @@ public final class MeshShaderTerrainProgram {
 			
 			VkPipelineRasterizationStateCreateInfo rasterizationState = VkPipelineRasterizationStateCreateInfo.calloc(stack).sType$Default().polygonMode(VulkanConst.toVk(pipelineInfo.polygonMode())).cullMode(pipelineInfo.cull() ? VK10.VK_CULL_MODE_BACK_BIT : VK10.VK_CULL_MODE_NONE).frontFace(VK10.VK_FRONT_FACE_CLOCKWISE).lineWidth(1.0F);
 			
-			DepthStencilState depthStencilStateInfo = pipelineInfo.depthStencilState();
-			VkPipelineDepthStencilStateCreateInfo depthStencilState = VkPipelineDepthStencilStateCreateInfo.calloc(stack).sType$Default();
-			if (depthStencilStateInfo != null) {
-				rasterizationState.depthBiasEnable(depthStencilStateInfo.depthBiasConstant() != 0.0F && depthStencilStateInfo.depthBiasScaleFactor() != 0.0F).depthBiasConstantFactor(depthStencilStateInfo.depthBiasConstant()).depthBiasSlopeFactor(depthStencilStateInfo.depthBiasScaleFactor());
-				depthStencilState.depthTestEnable(true).depthWriteEnable(depthStencilStateInfo.writeDepth()).depthCompareOp(VulkanConst.toVk(depthStencilStateInfo.depthTest()));
-			}
+			VkPipelineDepthStencilStateCreateInfo depthStencilState = PipelineDepthStencil.create(pipelineInfo.depthStencilState(), rasterizationState, stack);
 			
 			// One blend state for each color attachment of the subpass, as Minecraft gives its own
 			// pipeline; an attachment the pipeline has no target for is not written.

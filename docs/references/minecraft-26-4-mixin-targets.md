@@ -1,19 +1,16 @@
 # Minecraft 26.4 Mixin Targets
 
-Verified with mcdev static analysis for Minecraft `26.4-snapshot-6` on
-2026-10-28, and at runtime by starting the client with every mixin applied.
-From `26.4-snapshot-5` twelve of the target classes changed. Snapshot-6
-describes a render pass by a `RenderPassLayout` of attachment formats and
-subpasses, and compiles a pipeline once for each subpass it draws in:
-`PipelineBuilder.generateBackendCreateInfo` takes the subpass, the create info
-carries it in place of a depth format, and `VulkanRenderPipeline.compile`
-builds the pipeline for the layout's render pass and the subpass's index.
-`VulkanRenderPipeline.compile` sets a descriptor's stages in two calls, and
-`VulkanCommandEncoder.createRenderPass` takes its clear values from the native
-heap and never frees them. In `VulkanConst`, `VulkanDevice`, `VulkanRenderPass`,
-`FrontendCommandEncoder`, `FrontendRenderPass`, `SPIRVModule`, `LevelRenderer`
-and `ChunkSectionsToRender.DrawIndirect` and `DrawSeparate` none of the members
-or invocation points below changed.
+Verified with mcdev static analysis for Minecraft `26.4-snapshot-7` on
+2026-11-03, and at runtime by starting the client with every mixin applied.
+From `26.4-snapshot-6` nine of the target classes changed. A pipeline's
+`DepthStencilState` can carry a stencil test, which
+`VulkanRenderPipeline.compile` sets up and `VulkanConst.toVk` translates; both
+command encoders gain `clearStencilTexture` and both render passes
+`setViewport`; `VulkanCommandEncoder.createRenderPass` takes its clear values
+from the memory stack again (MC-312962), so the mod no longer redirects them.
+`VulkanBackend` skips CPU devices, `GlBackend` loads the OpenGL library itself,
+and `VulkanGpuTextureView` takes a view's aspects from its format. None of the
+members or invocation points below changed.
 
 This manifest records the Mojang classes, fields, methods, and invocation
 points touched by the client mixins.
@@ -162,24 +159,12 @@ inside a render pass the level renderer has already opened.
 - Purpose: keep framebuffers across frames (`FramebufferCache`), behind
   `vim.keepFramebuffers`.
 
-### VulkanCommandEncoderClearValuesMixin
-
-- Target: `com.mojang.renderpearl.backend.vulkan.VulkanCommandEncoder`.
-- mcdev 26.4 surface: `createRenderPass(RenderPassDescriptor)` opens a
-  `MemoryStack` named `stack` for the whole pass setup, but takes the clear
-  value of each attachment from `VkClearValue.calloc(int)`, the native heap,
-  and never frees the buffer after `vkCmdBeginRenderPass2` reads it. Its only
-  call of that method.
-- Source tokens: `method = "createRenderPass"`, `VkClearValue;calloc(I)`,
-  `MemoryStack stack`.
-- Purpose: take the clear values from that memory stack, where snapshot-5 took
-  them, so a render pass leaks no memory.
-
 ### VulkanCommandEncoderBarrierMixin
 
 - Target: `com.mojang.renderpearl.backend.vulkan.VulkanCommandEncoder`.
 - mcdev 26.4 surface: the transfers `clearColorTexture`,
-  `clearColorAndDepthTextures`, `clearDepthTexture`, `writeToBuffer`,
+  `clearColorAndDepthTextures`, `clearDepthTexture`, `clearStencilTexture`,
+  `writeToBuffer`,
   `copyToBuffer`, `writeToTexture`, `copyBufferToTexture`,
   `copyTextureToBuffer` and `copyTextureToTexture` each record one copy or
   clear into the command buffer the private `commandBuffer()` returns, then
@@ -197,7 +182,7 @@ inside a render pass the level renderer has already opened.
   `method = "memoryBarrier(Lorg/lwjgl/system/MemoryStack;)V"`,
   `VkCommandBuffer currentCommandBuffer`, `method = "clearColorTexture"`,
   `method = "clearColorAndDepthTextures"`, `method = "clearDepthTexture"`,
-  `method = "writeToBuffer"`, `method = "copyToBuffer"`,
+  `method = "clearStencilTexture"`, `method = "writeToBuffer"`, `method = "copyToBuffer"`,
   `method = "writeToTexture"`, `method = "copyBufferToTexture"`,
   `method = "copyTextureToBuffer"`, `method = "copyTextureToTexture"`,
   `VulkanCommandEncoder.memoryBarrier(`.

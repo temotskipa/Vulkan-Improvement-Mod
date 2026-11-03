@@ -127,6 +127,11 @@ public final class VulkanCommandEncoderBarrierMixin {
 		vim$transfer(() -> original.call(depthTexture, clearDepth), TransferAccess.writeImage(vim$image(depthTexture)));
 	}
 	
+	@WrapMethod(method = "clearStencilTexture")
+	private void vim$clearStencilTexture(GpuTexture stencilTexture, byte clearStencil, Operation<Void> original) {
+		vim$transfer(() -> original.call(stencilTexture, clearStencil), TransferAccess.writeImage(vim$image(stencilTexture)));
+	}
+
 	@WrapMethod(method = "writeToBuffer")
 	private void vim$writeToBuffer(GpuBufferSlice destination, ByteBuffer data, Operation<Void> original) {
 		vim$transfer(() -> original.call(destination, data), TransferAccess.writeBuffer(vim$buffer(destination.buffer()), destination.offset(), destination.offset() + data.remaining()));

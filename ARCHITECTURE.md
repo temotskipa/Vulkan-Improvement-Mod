@@ -18,9 +18,8 @@ the mod keeps its work inside them.
 2. Where Minecraft's Vulkan backend is slow or lacks a feature, the mod
    improves the backend in place, so vanilla rendering and other mods gain
    too: barriers that wait only for what a resource needs, framebuffers kept
-   across frames, compute dispatch on the command encoder, more buffer usages,
-   and render pass clear values on the memory stack, which 26.4-snapshot-6
-   takes from the native heap and never frees.
+   across frames, compute dispatch on the command encoder and more buffer
+   usages.
 3. GPU-driven execution (compute passes, mesh shading, visibility on the GPU)
    is the mod's own code, built on Minecraft's objects: its buffers come from
    `GpuDevice.createBuffer`, its commands go into Minecraft's command buffer,
@@ -183,10 +182,12 @@ renderer code does not drift back into a catch-all root package.
 - Nothing is uploaded and no compute work is recorded while Minecraft's
   terrain render pass is open. Minecraft's command encoder fails the frame
   otherwise.
-- `TerrainPipelineState` is the rasterization, depth and blend state Minecraft
-  compiled a pipeline with, remembered at compile time because the Vulkan
-  pipeline no longer keeps it. A mesh pipeline is built from it, for the
+- `TerrainPipelineState` is the rasterization, depth, stencil and blend state
+  Minecraft compiled a pipeline with, remembered at compile time because the
+  Vulkan pipeline no longer keeps it. A mesh pipeline is built from it, for the
   render pass Minecraft's pipeline uses, and cached by it.
+  `PipelineDepthStencil` turns the depth, depth bias and stencil state into
+  Vulkan's for the terrain and model mesh pipelines alike.
 - `TerrainDrawContext` snapshots one terrain layer about to be drawn inside
   Minecraft's render pass: command buffer, vanilla pipeline state, layer
   ordinal, and debug draw-all mode.
@@ -297,9 +298,9 @@ renderer code does not drift back into a catch-all root package.
 - The mesh terrain pipeline stands in for a vanilla terrain pipeline and is
   meant to be indistinguishable from it. As in Minecraft's terrain shader, the
   lightmap is sampled per vertex, in the mesh stage, and the fragment stage
-  gets the lit colour. `TerrainPipelineState` carries the
-  vanilla pipeline's polygon mode, culling, depth and blend state; the fragment
-  stage samples the atlas and the lightmap as vanilla terrain does, applies the
+  gets the lit colour. `TerrainPipelineState` carries the vanilla pipeline's
+  polygon mode, culling, depth, stencil and blend state; the fragment stage
+  samples the atlas and the lightmap as vanilla terrain does, applies the
   frame's fog from `TerrainFogState`, and with improved transparency fades into
   the sky and cloud images Minecraft binds for the group. A change to any of
   these is checked against same-camera vanilla screenshots, as described under
