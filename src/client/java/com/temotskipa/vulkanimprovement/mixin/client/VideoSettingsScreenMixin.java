@@ -8,6 +8,7 @@ import net.minecraft.client.OptionInstance;
 import net.minecraft.client.Options;
 import net.minecraft.client.gui.components.OptionsList;
 import net.minecraft.client.gui.components.StringWidget;
+import net.minecraft.client.gui.layouts.LayoutElement;
 import net.minecraft.client.gui.layouts.LinearLayout;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.options.OptionsSubScreen;
@@ -21,6 +22,9 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+import java.util.ArrayList;
+import java.util.List;
 
 @Mixin(VideoSettingsScreen.class)
 public abstract class VideoSettingsScreenMixin extends OptionsSubScreen {
@@ -72,6 +76,33 @@ public abstract class VideoSettingsScreenMixin extends OptionsSubScreen {
 	private void vim$updateRendererOptions(CallbackInfo ci) {
 		VulkanImprovementVideoOptions.updateWidgetState(this.list);
 		vim$updateBackendNotice();
+		if (vim$keepBackendNoticeLast()) {
+			this.repositionElements();
+		}
+	}
+
+	/**
+	 * Moves the line below Minecraft's restart warning when Minecraft adds the warning after it, so
+	 * the header reads the same whichever appeared first.
+	 *
+	 * @return whether the line moved
+	 */
+	@Unique
+	private boolean vim$keepBackendNoticeLast() {
+		StringWidget notice = this.vim$backendNotice;
+		if (notice == null) {
+			return false;
+		}
+		List<LayoutElement> children = new ArrayList<>();
+		this.header.visitChildren(children::add);
+		if (children.isEmpty() || children.getLast() == notice) {
+			return false;
+		}
+		children.remove(notice);
+		children.add(notice);
+		this.header.removeChildren();
+		children.forEach(this.header::addChild);
+		return true;
 	}
 
 	/**
