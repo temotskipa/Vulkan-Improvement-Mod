@@ -19,6 +19,8 @@ public final class VulkanVideoOptionsInvariantCheck {
 	private static final Path DRAW_SEPARATE_MIXIN = Path.of("src/client/java/com/temotskipa/vulkanimprovement/mixin/client/ChunkSectionsToRenderDrawSeparateMixin.java");
 	private static final Path LEVEL_RENDERER_MIXIN = Path.of("src/client/java/com/temotskipa/vulkanimprovement/mixin/client/LevelRendererMixin.java");
 	private static final Path LANG = Path.of("src/client/resources/assets/vulkanimprovement/lang/en_us.json");
+	private static final Path BACKEND_NOTICE = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/runtime/VulkanBackendNotice.java");
+	private static final Pattern NOTICE_KEY = Pattern.compile("\"(vulkanimprovement\\.notice\\.[\\w.]+)\"");
 	private static final Pattern OPTION_FIELD = Pattern.compile("private static @Nullable OptionInstance<\\w+> (\\w+);");
 	private static final Set<String> INDEPENDENT_OPTIONS = Set.of("dumpCapabilities", "requireVulkanBackend", "validationDescriptorBufferOnly");
 	
@@ -36,6 +38,28 @@ public final class VulkanVideoOptionsInvariantCheck {
 		checkTranslucentTerrainFlagIsMetadataOnly(read(TERRAIN_CONFIG), read(LANG));
 		checkOpenGlActiveSessionsDoNotEnterTerrainServices(read(CHUNK_SECTIONS_TO_RENDER_MIXIN), read(RENDER_SECTION_MIXIN), read(LEVEL_RENDERER_MIXIN));
 		checkTerrainMirrorHotPathsRequireCaptureOptIn(read(MESH_TERRAIN_RENDERER), read(CHUNK_SECTIONS_TO_RENDER_MIXIN), read(RENDER_SECTION_MIXIN), read(LEVEL_RENDERER_MIXIN));
+		checkBackendNotice(read(BACKEND_NOTICE), read(LANG));
+	}
+	
+	/**
+	 * The toast may say that Minecraft would use Vulkan without the mod only when the mod alone
+	 * turned the device down, and every line the notice shows must have its text.
+	 */
+	private static void checkBackendNotice(String noticeSource, String langSource) {
+		Set<String> mod = Set.of("VK_EXT_mesh_shader", "meshShader", "VULKAN_CORE_1_4");
+		Set<String> minecraft = Set.of("VK_KHR_swapchain", "samplerAnisotropy", "meshShader");
+		require(VulkanBackendNotice.onlyTheModRequires(List.of("VK_EXT_mesh_shader", "VULKAN_CORE_1_4"), mod, minecraft), "a device that lacks only what the mod requires is turned down by the mod");
+		require(!VulkanBackendNotice.onlyTheModRequires(List.of("VK_EXT_mesh_shader", "VK_KHR_swapchain"), mod, minecraft), "a device Minecraft turns down as well is not the mod's doing");
+		require(!VulkanBackendNotice.onlyTheModRequires(List.of("meshShader"), mod, minecraft), "what Minecraft requires too is not the mod's doing");
+		require(!VulkanBackendNotice.onlyTheModRequires(List.of("VULKAN_CORE_1_2"), mod, minecraft), "what neither requires of a feature set is not the mod's doing");
+		require(!VulkanBackendNotice.onlyTheModRequires(List.of(), mod, minecraft), "a failure that names nothing missing is not the mod's doing");
+		Matcher key = NOTICE_KEY.matcher(noticeSource);
+		int keys = 0;
+		while (key.find()) {
+			keys++;
+			require(langSource.contains("\"" + key.group(1) + "\":"), "the lang file must give the text of " + key.group(1));
+		}
+		require(keys >= 8, "the check must find the notice's lines");
 	}
 	
 	/**

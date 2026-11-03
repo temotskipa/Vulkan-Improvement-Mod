@@ -2,6 +2,7 @@ package com.temotskipa.vulkanimprovement.client.vulkan.runtime;
 
 import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanCapabilitySnapshot;
 import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanImprovementCapabilities;
+import com.temotskipa.vulkanimprovement.client.vulkan.presentation.PresentPacingController;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainPerformanceMonitor;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
 import net.minecraft.client.Minecraft;
@@ -182,7 +183,7 @@ public final class VulkanImprovementVideoOptions {
 	private static VulkanVideoOptionRules currentRules() {
 		VulkanCapabilitySnapshot capabilities = VulkanImprovementCapabilities.snapshot();
 		boolean meshTerrainSupported = capabilities.meshShaderExtension() && capabilities.descriptorBufferExtension();
-		return new VulkanVideoOptionRules(meshTerrainSupported, TerrainRendererDebugConfig.replaceVanillaTerrain(), TerrainRendererDebugConfig.terrainCaptureBootstrapEnabled(), TerrainRendererDebugConfig.strictMeshTerrainReplacement(), TerrainRendererDebugConfig.drawAllCapturedTerrainLayers(), TerrainRendererDebugConfig.enableGpuGeneratedMeshTaskCommands(), TerrainRendererDebugConfig.gpuDrivenTerrainEnabled(), capabilities.fragmentShadingRateExtension(), TerrainRendererDebugConfig.fragmentShadingRateEnabled(), capabilities.presentIdExtension() && capabilities.presentWaitExtension(), Minecraft.getInstance().options.enableVsync().get(), TerrainPerformanceMonitor.get().gpuTimerAvailable(), AcceleratedWorldgenProviderCompatibility.providerPresent());
+		return new VulkanVideoOptionRules(meshTerrainSupported, TerrainRendererDebugConfig.replaceVanillaTerrain(), TerrainRendererDebugConfig.terrainCaptureBootstrapEnabled(), TerrainRendererDebugConfig.strictMeshTerrainReplacement(), TerrainRendererDebugConfig.drawAllCapturedTerrainLayers(), TerrainRendererDebugConfig.enableGpuGeneratedMeshTaskCommands(), TerrainRendererDebugConfig.gpuDrivenTerrainEnabled(), capabilities.fragmentShadingRateExtension(), TerrainRendererDebugConfig.fragmentShadingRateEnabled(), capabilities.presentIdExtension() && capabilities.presentWaitExtension() || PresentPacingController.get().presentsThroughDxgi(), Minecraft.getInstance().options.enableVsync().get(), TerrainPerformanceMonitor.get().gpuTimerAvailable(), AcceleratedWorldgenProviderCompatibility.providerPresent());
 	}
 	
 	private static void setWidgetActive(OptionsList optionsList, OptionInstance<?> option, boolean active) {

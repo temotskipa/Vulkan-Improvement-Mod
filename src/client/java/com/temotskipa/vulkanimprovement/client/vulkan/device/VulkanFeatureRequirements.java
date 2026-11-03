@@ -15,6 +15,11 @@ import java.util.Set;
 public final class VulkanFeatureRequirements {
 	public static final String VULKAN_14_CAPABILITY = "Vulkan Improvement Mod requires VULKAN_CORE_1_4; remove the mod to use vanilla renderer";
 	/**
+	 * How a device that lacks the Vulkan 1.4 API reports it, in Minecraft's style for its own API
+	 * versions.
+	 */
+	public static final String VULKAN_14_CAPABILITY_NAME = "VULKAN_CORE_1_4";
+	/**
 	 * The name under which Minecraft logs and reports each of the mod's feature sets.
 	 */
 	public static final String FEATURE_SET_PREFIX = "Vulkan Improvement ";

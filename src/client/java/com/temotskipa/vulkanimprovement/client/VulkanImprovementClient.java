@@ -4,6 +4,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.InputConstants.Type;
 import com.mojang.logging.LogUtils;
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.RendererDiagnostics;
+import com.temotskipa.vulkanimprovement.client.vulkan.runtime.VulkanBackendNotice;
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.VulkanImprovementRuntime;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -20,7 +21,8 @@ public class VulkanImprovementClient implements ClientModInitializer {
 	public void onInitializeClient() {
 		LOGGER.info("[Vulkan Improvement] Client entrypoint loaded; renderer services initialize only for an active Vulkan backend.");
 		dumpDiagnosticsKey = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.vulkanimprovement.dump_diagnostics", Type.KEYBOARD, InputConstants.KEY_K, Category.DEBUG));
-		ClientTickEvents.END_CLIENT_TICK.register(_ -> {
+		ClientTickEvents.END_CLIENT_TICK.register(client -> {
+			VulkanBackendNotice.showToastOnce(client);
 			while (dumpDiagnosticsKey.consumeClick()) {
 				if (VulkanImprovementRuntime.isVulkanBackendActive()) {
 					RendererDiagnostics.logBugReport();

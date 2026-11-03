@@ -107,7 +107,13 @@ the mod is idle (see `LevelRendererMixin` in
   snapshots, runtime profile grouping, and requirement scope metadata.
 - `client.vulkan.runtime`: Owns renderer lifecycle services, domain registry
   diagnostics, the bug report, backend-active checks, and Video
-  Settings option construction.
+  Settings option construction. `VulkanBackendNotice` tells the player when
+  the mod is off: a toast once Minecraft has loaded on OpenGL, saying why
+  (OpenGL chosen, a launch option, or a GPU that lacks what the mod requires,
+  which leaves Minecraft no Vulkan device), and a line under the title of Video
+  Settings while OpenGL runs or is chosen. With Graphics API at Default,
+  Minecraft tries Vulkan first (it picks the order at random since
+  26.4-snapshot-7).
 - `client.vulkan.terrain`: Owns terrain meshlet storage, GPU buffer layout,
   mesh shader dispatch, descriptor resources, terrain material records,
   fragment shading rate, and renderer debug flags.
@@ -134,7 +140,13 @@ the mod is idle (see `LevelRendererMixin` in
   it is on the screen, so Minecraft runs at most that many frames ahead of the
   display and still builds a frame while the GPU draws the last. With vsync
   off it waits for nothing: a composed window shows a present at its next
-  refresh, so any wait would hold the frame rate near the refresh rate.
+  refresh, so any wait would hold the frame rate near the refresh rate. With
+  Prefer DXGI Present, Minecraft presents through a DXGI swapchain instead,
+  and pacing gives it a frame latency object when it is created, with a
+  maximum latency of `vim.presentPacingFrameLatency` plus one, and waits on the
+  object after every present. Such a swapchain no longer waits in its present,
+  so the wait cannot be left out, and its latency is never changed while in
+  use; a change of either applies from the next swapchain.
 - `mixin.client`: Owns integration points into Minecraft and Mojang's Vulkan
   classes. Keep mixin classes thin; move reusable behavior into the
   `client.vulkan.*` packages.

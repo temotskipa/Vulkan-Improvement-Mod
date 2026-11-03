@@ -43,7 +43,7 @@ public final class VulkanBackendMixin {
 	private static void vim$requireVulkan14(VkPhysicalDevice vkPhysicalDevice, Set<FeatureSet> requiredFeatureSets, Set<FeatureSet> requiredIfExtensionsAvailable, CallbackInfoReturnable<BackendCreationException> cir) {
 		if (cir.getReturnValue() == null && !VulkanFeatureRequirements.supportsRequiredApi(vkPhysicalDevice)) {
 			VIM_LOGGER.warn("Device [{}] does not support {}", vkPhysicalDevice, VulkanFeatureRequirements.VULKAN_14_CAPABILITY);
-			cir.setReturnValue(new BackendCreationException("Device missing capabilities", Reason.VULKAN_DEVICE_VERSION_TOO_LOW, List.of("VULKAN_CORE_1_4")));
+			cir.setReturnValue(new BackendCreationException("Device missing capabilities", Reason.VULKAN_DEVICE_VERSION_TOO_LOW, List.of(VulkanFeatureRequirements.VULKAN_14_CAPABILITY_NAME)));
 		}
 	}
 }

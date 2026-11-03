@@ -41,8 +41,8 @@ public final class VulkanDeviceMixin {
 	}
 	
 	/**
-	 * Tells present pacing which surface Minecraft presents through: pacing acts on the Vulkan
-	 * swapchain only.
+	 * Tells present pacing which surface Minecraft presents through: the Vulkan swapchain, or DXGI,
+	 * which pacing waits on in its own way.
 	 */
 	@Inject(method = "createSurface", at = @At("RETURN"))
 	private void vim$notePresentSurface(long windowHandle, BooleanSupplier isIconified, boolean dxgi, CallbackInfoReturnable<GpuSurfaceBackend> cir) {

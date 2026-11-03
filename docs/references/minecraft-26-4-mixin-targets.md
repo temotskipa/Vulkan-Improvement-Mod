@@ -92,6 +92,29 @@ inside a render pass the level renderer has already opened.
   `PresentPacingController` while keeping vanilla swapchain ownership, and
   tell it the swapchain's present mode, as it paces only in vsync order.
 
+### D3D12GpuSurfaceMixin
+
+- Target: `com.mojang.renderpearl.backend.vulkan.D3D12GpuSurface`.
+- mcdev 26.4 surface: `configure` (re)creates the flip-model swapchain from a `DXGISwapchainDesc1` whose
+  `flags(int)` it sets to the tearing flag or none, then calls
+  `DXGISwapchain3.setMaximumLatency(2)`, which DXGI accepts only from a
+  swapchain created with `DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT`;
+  `DXGISwapchain3.waitHandle()` returns the swapchain's frame latency object,
+  which Minecraft never asks for, and `Win32Handle.waitSingleObject` waits on
+  it. `present()` presents with sync interval 1 for FIFO; the private
+  `destroySwapchain()` runs before a new swapchain and from `close()`.
+- Source tokens: `method = "configure"`, `DXGISwapchainDesc1;flags(I)V`,
+  `DXGISwapchain3;setMaximumLatency(I)I`, `method = "present"`,
+  `method = "destroySwapchain"`.
+- Purpose: present pacing with Prefer DXGI Present on. With pacing on when the
+  swapchain is created, create it with a frame latency object whose maximum
+  latency is `vim.presentPacingFrameLatency` plus one and wait on the object
+  after every present; with pacing off, leave the swapchain as Minecraft makes
+  it. Pacing is decided once for each swapchain: a swapchain with the object
+  no longer waits in its present, so it must be waited on, and lowering its
+  latency while it is in use left it presenting at about 200 of 240 frames a
+  second.
+
 ### VulkanRenderPassMixin
 
 - Target: `com.mojang.renderpearl.backend.vulkan.VulkanRenderPass`.
@@ -256,13 +279,53 @@ inside a render pass the level renderer has already opened.
 - Purpose: when the developer-only `vim.requireVulkanBackend` flag is enabled,
   reject OpenGL fallback after Vulkan selection or creation fails.
 
+### PreferredGraphicsApiMixin
+
+- Target: `net.minecraft.client.PreferredGraphicsApi`.
+- mcdev 26.4 surface: public `getBackendsToTry()` returns a new `GlBackend` and
+  `VulkanBackend` in the order Minecraft tries them: Vulkan first for `VULKAN`,
+  OpenGL first for `OPENGL`, and for `DEFAULT` either order, by
+  `new Random().nextBoolean()`. `Minecraft.<init>` is its only caller.
+- Source tokens: `method = "getBackendsToTry"`.
+- Purpose: try Vulkan first when the setting is left at Default, since the
+  mod does nothing on OpenGL.
+
+### MinecraftMixin
+
+- Target: `net.minecraft.client.Minecraft`.
+- mcdev 26.4 surface: private field `backendCreationException`, which
+  `Minecraft.<init>` sets when a backend it tries cannot be created (an
+  `OPENGL_MISSING` failure does not replace an earlier one) and which only the
+  crash report reads.
+- Source tokens: `private @Nullable BackendCreationException backendCreationException`.
+- Purpose: tell the player why Minecraft runs on OpenGL (`VulkanBackendNotice`).
+
+### FramerateLimitTrackerMixin
+
+- Target: `com.mojang.blaze3d.platform.FramerateLimitTracker`.
+- mcdev 26.4 surface: public `getThrottleReason()` returns
+  `OUT_OF_LEVEL_MENU` while no level is loaded and a screen or overlay is
+  open, unless the window is iconified or the player is away;
+  `getFramerateLimit()` then returns a fixed 60 instead of the Max Framerate
+  setting. Its only other caller, `isHeavilyThrottled()`, looks for the
+  iconified and long-away reasons alone. `Minecraft.renderFrame` limits the
+  frame rate to the result below 260, the setting's Unlimited.
+- Source tokens: `method = "getThrottleReason"`.
+- Purpose: let the title screen and other menus outside a world follow Max
+  Framerate, as a world does.
+
 ### VideoSettingsScreenMixin
 
 - Target: `net.minecraft.client.gui.screens.options.VideoSettingsScreen`.
-- mcdev 26.4 surface: protected `addOptions` and public `tick`.
-- Source tokens: `method = "addOptions"`, `method = "tick"`.
+- mcdev 26.4 surface: protected `addOptions`, public `tick`, protected
+  `addTitle`, which adds the title and the restart warning to the private
+  `LinearLayout header` before it is laid out; `tick` shows and hides the
+  restart warning in it and calls `repositionElements()`.
+- Source tokens: `method = "addOptions"`, `method = "tick"`,
+  `method = "addTitle"`, `private LinearLayout header`.
 - Purpose: append VIM Video Settings controls only when the active or selected
-  graphics API makes them relevant, and refresh control enabled state live.
+  graphics API makes them relevant, refresh control enabled state live, and
+  say under the title that the mod is off while OpenGL runs or is chosen.
 
 ## Terrain Capture And Draw Hooks
 

@@ -19,7 +19,7 @@
   "options.vulkanimprovement.terrainFragmentShadingRateSize": "Terrain VRS Size",
   "options.vulkanimprovement.terrainFragmentShadingRateSize.tooltip": "Requested Vulkan fragment shading-rate tile size for terrain. The renderer clamps this to device limits. Requires Terrain VRS.",
   "options.vulkanimprovement.presentPacing": "Present Pacing",
-  "options.vulkanimprovement.presentPacing.tooltip": "With VSync on, keeps Minecraft from running more than a frame ahead of the screen, using Vulkan present id and present wait. Requires VSync and a device that supports them.",
+  "options.vulkanimprovement.presentPacing.tooltip": "With VSync on, keeps Minecraft from running more than a frame ahead of the screen: on the Vulkan swapchain with present id and present wait, and with Prefer DXGI Present through DXGI's frame latency wait, where a change applies from the next resize or restart. Requires VSync, and on the Vulkan swapchain a device with present id and present wait.",
   "options.vulkanimprovement.waitIdleBeforeTerrainUpload": "Wait Idle Uploads",
   "options.vulkanimprovement.waitIdleBeforeTerrainUpload.tooltip": "Waits for the Vulkan device to idle before terrain uploads. Heavy validation mode. Requires Mesh Terrain or Capture Bootstrap.",
   "options.vulkanimprovement.allowCpuVisibleMeshletFallback": "CPU Visible Fallback",
@@ -52,5 +52,14 @@
   "options.vulkanimprovement.initialIndexPayloadMib.tooltip": "Initial GPU terrain index-payload buffer size. Requires Mesh Terrain or Capture Bootstrap.",
   "options.vulkanimprovement.terrainMirrorStabilizationMillis": "Mirror Stabilization",
   "options.vulkanimprovement.terrainMirrorStabilizationMillis.tooltip": "Delay before mirrored terrain is treated as stable after capture churn. Requires Mesh Terrain or Capture Bootstrap.",
-  "key.vulkanimprovement.dump_diagnostics": "Dump Vulkan Improvement Diagnostics"
+  "key.vulkanimprovement.dump_diagnostics": "Dump Vulkan Improvement Diagnostics",
+  "vulkanimprovement.notice.title": "Vulkan Improvement is off",
+  "vulkanimprovement.notice.openGlChosen": "Vulkan Improvement does nothing on OpenGL",
+  "vulkanimprovement.notice.openGlRunning": "Vulkan Improvement is off: Minecraft runs on OpenGL",
+  "vulkanimprovement.notice.reason.chosen": "Graphics API is set to Prefer OpenGL. Set it to Default or Prefer Vulkan in Video Settings and restart.",
+  "vulkanimprovement.notice.reason.launchOption": "A launch option or another mod started Minecraft on OpenGL without trying Vulkan.",
+  "vulkanimprovement.notice.reason.unsupported": "This GPU lacks what the mod needs from Vulkan (%s), so Minecraft started on OpenGL. Without the mod it would use Vulkan.",
+  "vulkanimprovement.notice.reason.failed": "Minecraft could not start Vulkan (%s) and started on OpenGL.",
+  "vulkanimprovement.notice.reason.failedMissing": "Minecraft could not start Vulkan (%s: %s) and started on OpenGL.",
+  "vulkanimprovement.notice.more": "%s and %s more"
 }
