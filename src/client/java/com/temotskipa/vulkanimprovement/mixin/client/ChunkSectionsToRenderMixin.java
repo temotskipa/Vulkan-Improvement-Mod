@@ -25,7 +25,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public final class ChunkSectionsToRenderMixin {
 	@Inject(method = "renderGroup", at = @At("HEAD"))
 	private void vim$observeTerrainGroup(ChunkSectionLayerGroup group, RenderPass renderPass, GpuSampler sampler, GpuTextureView atlas, ChunkSectionsToRender.@Nullable ImprovedFogTextures improvedFogTextures, boolean wireframe, CallbackInfo ci) {
-		if (!VulkanImprovementRuntime.isVulkanBackendActive()) {
+		if (!VulkanImprovementRuntime.isModAvailable()) {
 			return;
 		}
 		TerrainPerformanceMonitor.get().markGroup(group, false);
@@ -46,7 +46,7 @@ public final class ChunkSectionsToRenderMixin {
 	
 	@Inject(method = "renderGroup", at = @At("RETURN"))
 	private void vim$leaveTerrainGroup(ChunkSectionLayerGroup group, RenderPass renderPass, GpuSampler sampler, GpuTextureView atlas, ChunkSectionsToRender.@Nullable ImprovedFogTextures improvedFogTextures, boolean wireframe, CallbackInfo ci) {
-		if (VulkanImprovementRuntime.isVulkanBackendActive()) {
+		if (VulkanImprovementRuntime.isModAvailable()) {
 			TerrainPerformanceMonitor.get().markGroup(group, true);
 		}
 		if (!TerrainRenderContext.isTerrainPass()) {

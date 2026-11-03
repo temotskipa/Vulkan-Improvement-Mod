@@ -2,6 +2,7 @@ package com.temotskipa.vulkanimprovement.client.vulkan.runtime;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.device.GpuDevice;
+import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanImprovementSupport;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.PreferredGraphicsApi;
 
@@ -12,7 +13,7 @@ public final class VulkanImprovementRuntime {
 	}
 	
 	public static boolean isModRendererActive() {
-		if (!isVulkanBackendActive()) {
+		if (!isModAvailable()) {
 			return false;
 		}
 		RendererLifecycleState state = RendererCoreServices.get().currentLifecycleState();
@@ -36,6 +37,14 @@ public final class VulkanImprovementRuntime {
 		return known.vulkan();
 	}
 	
+	/**
+	 * Whether the mod's paths can run: Minecraft draws with Vulkan on a device that enables
+	 * everything the mod needs.
+	 */
+	public static boolean isModAvailable() {
+		return isVulkanBackendActive() && VulkanImprovementSupport.enabled();
+	}
+
 	public static boolean shouldShowVideoOptions(Minecraft minecraft) {
 		if (minecraft == null) {
 			return false;

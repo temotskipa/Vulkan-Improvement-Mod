@@ -32,23 +32,27 @@ inside a render pass the level renderer has already opened.
 - Target: `com.mojang.renderpearl.backend.vulkan.VulkanBackend`.
 - mcdev 26.4 surface: private static `createVma(VkDevice)`, which calls
   `Vma.vmaCreateAllocator`; private static
-  `checkDeviceSuitability(VkPhysicalDevice, Set<FeatureSet>, Set<FeatureSet>)`,
-  which returns the reason a device is unsuitable or `null`.
+  `createDevice(FeatureSet, VulkanPhysicalDevice)`, which public
+  `createDevice(String, int, GpuDebugOptions)` calls with the composite
+  `"Enabled"` feature set, after choosing the physical device and before
+  `createVma`.
 - Source tokens: `method = "createVma"`, `vmaCreateAllocator`,
-  `method = "checkDeviceSuitability"`.
-- Purpose: create the allocator for Vulkan 1.4 with buffer device addresses,
-  and reject a device whose API version is below 1.4, which a feature set
-  cannot express.
+  `method = "createDevice(Lcom/mojang/renderpearl/backend/vulkan/init/FeatureSet;Lcom/mojang/renderpearl/backend/vulkan/VulkanPhysicalDevice;)Lorg/lwjgl/vulkan/VkDevice;"`.
+- Purpose: note whether the device enables the mod's optional feature set and
+  what it lacks otherwise, and on such a device create the allocator for
+  Vulkan 1.4 with buffer device addresses and maintenance 5.
 
 ### VulkanFeatureSetsMixin
 
 - Target: `com.mojang.renderpearl.backend.vulkan.VulkanFeatureSets`.
-- mcdev 26.4 surface: public static `requiredFeatureSets()` returns a new
-  mutable set on every call; `VulkanBackend` reads it for the availability
-  probe and for device creation.
-- Source tokens: `method = "requiredFeatureSets"`.
-- Purpose: add the mod's required extensions and features as feature sets, so
-  Minecraft checks, reports and enables them with its own.
+- mcdev 26.4 surface: public static `optionalFeatureSets()` returns a new
+  mutable set on every call; public `createDevice(String, int,
+  GpuDebugOptions)` of `VulkanBackend` enables each set the chosen device
+  supports whose `FeatureSet.Condition` holds, and leaves out any other.
+- Source tokens: `method = "optionalFeatureSets"`.
+- Purpose: offer the mod's extensions and features as one optional feature
+  set, conditioned on the Vulkan 1.4 device API, so a GPU without them still
+  draws with Minecraft's Vulkan renderer.
 
 ### VulkanInstanceMixin
 

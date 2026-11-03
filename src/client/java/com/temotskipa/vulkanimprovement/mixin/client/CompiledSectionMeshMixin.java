@@ -52,7 +52,7 @@ public final class CompiledSectionMeshMixin implements SectionMeshletCaptureHold
 	
 	@Inject(method = "close", at = @At("HEAD"))
 	private void vim$releaseMeshletCapture(CallbackInfo ci) {
-		if (VulkanImprovementRuntime.isVulkanBackendActive()) {
+		if (VulkanImprovementRuntime.isModAvailable()) {
 			SectionMeshletStore.release((CompiledSectionMesh) (Object) this);
 		}
 	}

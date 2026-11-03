@@ -4,6 +4,7 @@ import com.mojang.renderpearl.api.device.GpuSurface.PresentMode;
 import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
 import com.mojang.renderpearl.util.dx.Win32Handle;
 import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanCapabilitySnapshot;
+import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanImprovementSupport;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
 import org.jspecify.annotations.Nullable;
 import org.lwjgl.system.MemoryStack;
@@ -139,14 +140,15 @@ public final class PresentPacingController {
 	}
 	
 	/**
-	 * Whether the DXGI swapchain Minecraft is about to create gets a frame latency object. Pacing is
-	 * decided once for each swapchain: a swapchain with the object no longer waits in its present,
-	 * so every present has to wait on the object, and lowering its latency once it is in use
+	 * Whether the DXGI swapchain Minecraft is about to create gets a frame latency object: on a
+	 * device the mod runs on, with pacing on. Pacing is decided once for each swapchain: a swapchain
+	 * with the object no longer waits in its present, so every present has to wait on the object,
+	 * and lowering its latency once it is in use
 	 * leaves it presenting at about five sixths of the refresh rate.
 	 */
 	public boolean pacesNewDxgiSwapchain() {
 		this.disabled = TerrainRendererDebugConfig.disablePresentPacing();
-		this.dxgiPaced = !this.disabled;
+		this.dxgiPaced = !this.disabled && VulkanImprovementSupport.enabled();
 		return this.dxgiPaced;
 	}
 	

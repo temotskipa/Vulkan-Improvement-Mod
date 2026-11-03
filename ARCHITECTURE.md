@@ -40,12 +40,17 @@ the mod is idle (see `LevelRendererMixin` in
 2. Client mixins patch Minecraft's Vulkan backend, device, render pass, chunk
    section, and video settings classes. Their targets are listed in
    [the mixin target manifest](docs/references/minecraft-26-4-mixin-targets.md).
-3. `VulkanFeatureSetsMixin` adds the mod's required extensions and features to
-   the feature sets Minecraft requires of a Vulkan device, and
-   `VulkanBackendMixin` adds the Vulkan 1.4 API requirement, before device
-   selection completes.
-4. `VulkanDeviceMixin` captures physical-device capabilities and configures the
-   singletons `MeshTerrainRenderer` and `ModelGpuVertices`.
+3. `VulkanFeatureSetsMixin` offers the mod's extensions and features to
+   Minecraft as one optional feature set, conditioned on the Vulkan 1.4 device
+   API. Minecraft enables it on a device that supports all of it; on any other
+   it draws with Vulkan without it, and the mod stays off as it does under
+   OpenGL. `VulkanBackendMixin` records which (`VulkanImprovementSupport`) and
+   what the device lacks, and on a supported device creates Minecraft's
+   allocator for Vulkan 1.4 with buffer device addresses.
+4. On a supported device `VulkanDeviceMixin` captures physical-device
+   capabilities and configures the singletons `MeshTerrainRenderer`,
+   `ModelGpuVertices`, `ParticleGpuVertices` and `TextGpuVertices`. The terrain
+   mixins gate on `VulkanImprovementRuntime.isModAvailable()`.
 5. Chunk-section mixins mirror vanilla chunk geometry into `SectionMeshletStore`
    and related GPU buffers.
 6. Each frame Minecraft collects the section layers it will draw. With strict
@@ -108,10 +113,11 @@ the mod is idle (see `LevelRendererMixin` in
 - `client.vulkan.runtime`: Owns renderer lifecycle services, domain registry
   diagnostics, the bug report, backend-active checks, and Video
   Settings option construction. `VulkanBackendNotice` tells the player when
-  the mod is off: a toast once Minecraft has loaded on OpenGL, saying why
-  (OpenGL chosen, a launch option, or a GPU that lacks what the mod requires,
-  which leaves Minecraft no Vulkan device), and a line under the title of Video
-  Settings while OpenGL runs or is chosen. With Graphics API at Default,
+  the mod is off: a toast once Minecraft has loaded, saying why (OpenGL
+  chosen, a launch option, Minecraft failing to start Vulkan, or a GPU that
+  lacks what the mod needs, on which Minecraft draws with Vulkan without it),
+  and a line under the title of Video Settings while OpenGL runs or is chosen
+  or the GPU lacks what the mod needs. With Graphics API at Default,
   Minecraft tries Vulkan first (it picks the order at random since
   26.4-snapshot-7).
 - `client.vulkan.terrain`: Owns terrain meshlet storage, GPU buffer layout,

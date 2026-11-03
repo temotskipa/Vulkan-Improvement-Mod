@@ -8,6 +8,7 @@ import com.mojang.renderpearl.backend.vulkan.VulkanPhysicalDevice;
 import com.mojang.renderpearl.backend.vulkan.checkpoints.CheckpointExtension;
 import com.mojang.renderpearl.backend.vulkan.init.FeatureSet;
 import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanImprovementCapabilities;
+import com.temotskipa.vulkanimprovement.client.vulkan.device.VulkanImprovementSupport;
 import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelGpuVertices;
 import com.temotskipa.vulkanimprovement.client.vulkan.model.ParticleGpuVertices;
 import com.temotskipa.vulkanimprovement.client.vulkan.model.TextGpuVertices;
@@ -31,8 +32,17 @@ public final class VulkanDeviceMixin {
 	@Final
 	private VkDevice vkDevice;
 	
+	/**
+	 * Configures the mod's paths with the device, if it enables the mod's feature set. On any other
+	 * device they stay off, as they are under OpenGL, and the capabilities stay empty, which greys
+	 * out the mod's video options.
+	 */
 	@Inject(method = "<init>", at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/backend/vulkan/VulkanPhysicalDevice;close()V"))
 	private void vim$captureCapabilities(VulkanInstance instance, VulkanPhysicalDevice physicalDevice, FeatureSet enabledFeatureSet, VkDevice vkDevice, long vma, CheckpointExtension checkpointExtension, CallbackInfo ci) {
+		if (!VulkanImprovementSupport.enabled()) {
+			VulkanImprovementCapabilities.forget();
+			return;
+		}
 		VulkanDevice device = (VulkanDevice) (Object) this;
 		MeshTerrainRenderer.get().configure(device, VulkanImprovementCapabilities.capture(physicalDevice, enabledFeatureSet.extensions()));
 		ModelGpuVertices.get().configure(device);

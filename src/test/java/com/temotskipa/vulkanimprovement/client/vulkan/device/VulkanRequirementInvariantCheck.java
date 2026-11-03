@@ -1,10 +1,10 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.device;
 
 import com.mojang.renderpearl.backend.vulkan.init.FeatureSet;
+import com.mojang.renderpearl.backend.vulkan.init.FeatureSet.Condition;
 import com.mojang.renderpearl.backend.vulkan.init.VulkanFeature;
 import org.lwjgl.vulkan.*;
 
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -17,7 +17,7 @@ public final class VulkanRequirementInvariantCheck {
 	static void main() {
 		checkVersionString();
 		checkRequirementGroups();
-		checkRequiredFeatureSets();
+		checkOptionalFeatureSet();
 		checkRequiredExtensions();
 		checkRequiredFeatures();
 		checkDescriptorBufferOnlyAdapter();
@@ -69,24 +69,19 @@ public final class VulkanRequirementInvariantCheck {
 	}
 	
 	/**
-	 * Minecraft takes the startup requirements as feature sets: one per group that names anything,
-	 * together covering exactly the required extensions and features.
+	 * Minecraft takes the mod's requirements as one optional feature set, covering exactly the
+	 * required extensions and features, with the Vulkan 1.4 device API as its condition: a device
+	 * that lacks any of it draws with Vulkan without the mod instead of falling back to OpenGL.
 	 */
-	private static void checkRequiredFeatureSets() {
-		List<FeatureSet> defaults = VulkanFeatureRequirements.requiredFeatureSets(true);
-		require(defaults.size() == 2, "the default startup requirements must be the hard-rendering and descriptor-heap feature sets");
-		require(VulkanFeatureRequirements.requiredFeatureSets(false).size() == 1, "the descriptor-buffer-only adapter must leave only the hard-rendering feature set");
-		
-		Set<String> extensions = new HashSet<>();
-		Set<VulkanFeature> features = new HashSet<>();
-		for (FeatureSet featureSet : defaults) {
-			require(featureSet.name().startsWith(VulkanFeatureRequirements.FEATURE_SET_PREFIX), "a feature set must be recognisable as the mod's in Minecraft's log: " + featureSet.name());
-			extensions.addAll(featureSet.extensions());
-			features.addAll(featureSet.features());
-		}
-		require(extensions.equals(VulkanFeatureRequirements.requiredDeviceExtensions(true)), "the feature sets must cover exactly the required extensions");
-		require(features.equals(VulkanFeatureRequirements.requiredDeviceFeatures(true)), "the feature sets must cover exactly the required features");
-		require(defaults.stream().noneMatch(featureSet -> featureSet.name().contains("base-vulkan-api")), "the API version is not a feature set; device selection checks it separately");
+	private static void checkOptionalFeatureSet() {
+		FeatureSet defaults = VulkanFeatureRequirements.optionalFeatureSet(true);
+		require(defaults.name().startsWith(VulkanFeatureRequirements.FEATURE_SET_PREFIX), "the feature set must be recognisable as the mod's in Minecraft's log: " + defaults.name());
+		require(defaults.extensions().equals(VulkanFeatureRequirements.requiredDeviceExtensions(true)), "the feature set must cover exactly the required extensions");
+		require(defaults.features().equals(VulkanFeatureRequirements.requiredDeviceFeatures(true)), "the feature set must cover exactly the required features");
+		require(defaults.condition() != Condition.IDENTITY_CONDITION, "the Vulkan 1.4 device API must be the feature set's condition");
+		FeatureSet descriptorBufferOnly = VulkanFeatureRequirements.optionalFeatureSet(false);
+		require(!descriptorBufferOnly.extensions().contains(EXTDescriptorHeap.VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME), "the descriptor-buffer-only adapter must leave the descriptor heap out of the feature set");
+		require(VulkanFeatureRequirements.optionalFeatureSet() == VulkanFeatureRequirements.optionalFeatureSet(), "the feature set must be the same object each time, so Minecraft's enabled features can be asked whether they contain it");
 	}
 	
 	private static void checkRequiredExtensions() {

@@ -25,7 +25,7 @@ public final class VulkanImprovementCapabilities {
 			VkPhysicalDeviceDescriptorHeapPropertiesEXT descriptorHeapProperties = VkPhysicalDeviceDescriptorHeapPropertiesEXT.calloc(stack).sType$Default();
 			VkPhysicalDeviceDescriptorBufferPropertiesEXT descriptorBufferProperties = VkPhysicalDeviceDescriptorBufferPropertiesEXT.calloc(stack).sType$Default();
 			VkPhysicalDeviceFragmentShadingRatePropertiesKHR fragmentShadingRateProperties = VkPhysicalDeviceFragmentShadingRatePropertiesKHR.calloc(stack).sType$Default();
-			// Core in Vulkan 1.4, which the mod requires.
+			// Core in Vulkan 1.4, which a device the mod runs on has.
 			VkPhysicalDeviceVulkan13Properties vulkan13Properties = VkPhysicalDeviceVulkan13Properties.calloc(stack).sType$Default();
 			VkPhysicalDeviceVulkan11Properties vulkan11Properties = VkPhysicalDeviceVulkan11Properties.calloc(stack).sType$Default().pNext(vulkan13Properties.address());
 			
@@ -81,6 +81,15 @@ public final class VulkanImprovementCapabilities {
 	
 	public static VulkanCapabilitySnapshot snapshot() {
 		return lastSnapshot;
+	}
+
+	/**
+	 * Drops what an earlier device had, for a device the mod does not run on.
+	 */
+	public static void forget() {
+		lastSnapshot = VulkanCapabilitySnapshot.empty();
+		maxTaskWorkGroups = 0;
+		maxBufferBytes = 0L;
 	}
 	
 	/**

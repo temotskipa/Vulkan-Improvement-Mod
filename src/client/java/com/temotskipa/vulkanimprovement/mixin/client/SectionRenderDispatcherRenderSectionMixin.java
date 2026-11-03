@@ -25,7 +25,7 @@ public final class SectionRenderDispatcherRenderSectionMixin {
 	
 	@Inject(method = "addSectionBuffersToUberBuffer", at = @At("HEAD"))
 	private void vim$captureSectionMeshletInput(ChunkSectionLayer layer, CompiledSectionMesh key, @Nullable ByteBuffer vertexBuffer, @Nullable ByteBuffer indexBuffer, CallbackInfoReturnable<Boolean> cir) {
-		if (!VulkanImprovementRuntime.isVulkanBackendActive() || !TerrainRendererDebugConfig.terrainCaptureEnabled()) {
+		if (!VulkanImprovementRuntime.isModAvailable() || !TerrainRendererDebugConfig.terrainCaptureEnabled()) {
 			return;
 		}
 		SectionMeshletStore.capture(this.sectionNode, key, layer, vertexBuffer, indexBuffer);
@@ -37,7 +37,7 @@ public final class SectionRenderDispatcherRenderSectionMixin {
 	 */
 	@Inject(method = "setSectionMesh", at = @At("RETURN"))
 	private void vim$markMeshShown(SectionMesh sectionMesh, CallbackInfoReturnable<SectionMesh> cir) {
-		if (VulkanImprovementRuntime.isVulkanBackendActive() && sectionMesh instanceof CompiledSectionMesh compiledSectionMesh) {
+		if (VulkanImprovementRuntime.isModAvailable() && sectionMesh instanceof CompiledSectionMesh compiledSectionMesh) {
 			SectionMeshletStore.meshShown(compiledSectionMesh, this.uploadedTime);
 		}
 	}

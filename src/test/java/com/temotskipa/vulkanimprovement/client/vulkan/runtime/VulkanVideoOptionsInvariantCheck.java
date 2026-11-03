@@ -42,17 +42,13 @@ public final class VulkanVideoOptionsInvariantCheck {
 	}
 	
 	/**
-	 * The toast may say that Minecraft would use Vulkan without the mod only when the mod alone
-	 * turned the device down, and every line the notice shows must have its text.
+	 * A GPU that lacks what the mod needs keeps Minecraft on Vulkan with the mod off, which the
+	 * toast and the Video Settings line both say, and every line the notice shows must have its text.
 	 */
 	private static void checkBackendNotice(String noticeSource, String langSource) {
-		Set<String> mod = Set.of("VK_EXT_mesh_shader", "meshShader", "VULKAN_CORE_1_4");
-		Set<String> minecraft = Set.of("VK_KHR_swapchain", "samplerAnisotropy", "meshShader");
-		require(VulkanBackendNotice.onlyTheModRequires(List.of("VK_EXT_mesh_shader", "VULKAN_CORE_1_4"), mod, minecraft), "a device that lacks only what the mod requires is turned down by the mod");
-		require(!VulkanBackendNotice.onlyTheModRequires(List.of("VK_EXT_mesh_shader", "VK_KHR_swapchain"), mod, minecraft), "a device Minecraft turns down as well is not the mod's doing");
-		require(!VulkanBackendNotice.onlyTheModRequires(List.of("meshShader"), mod, minecraft), "what Minecraft requires too is not the mod's doing");
-		require(!VulkanBackendNotice.onlyTheModRequires(List.of("VULKAN_CORE_1_2"), mod, minecraft), "what neither requires of a feature set is not the mod's doing");
-		require(!VulkanBackendNotice.onlyTheModRequires(List.of(), mod, minecraft), "a failure that names nothing missing is not the mod's doing");
+		require(methodBody(noticeSource, "public static void showToastOnce").contains("else if (!VulkanImprovementSupport.enabled())"), "the toast must say when Vulkan runs on a GPU the mod cannot use");
+		require(methodBody(noticeSource, "public static @Nullable Component videoSettingsLine").contains("if (!VulkanImprovementSupport.enabled())"), "Video Settings must say when Vulkan runs on a GPU the mod cannot use");
+		require(!noticeSource.contains("onlyTheModRequires"), "the mod no longer turns a device down, so no failure is the mod's doing");
 		Matcher key = NOTICE_KEY.matcher(noticeSource);
 		int keys = 0;
 		while (key.find()) {
@@ -186,7 +182,7 @@ public final class VulkanVideoOptionsInvariantCheck {
 	}
 	
 	private static void requireCallGuard(String methodBody, String serviceCall, String message) {
-		requireCallGuard(methodBody, serviceCall, message, "VulkanImprovementRuntime.isVulkanBackendActive()");
+		requireCallGuard(methodBody, serviceCall, message, "VulkanImprovementRuntime.isModAvailable()");
 	}
 	
 	private static void requireCallGuard(String methodBody, String serviceCall, String message, String requiredGate) {

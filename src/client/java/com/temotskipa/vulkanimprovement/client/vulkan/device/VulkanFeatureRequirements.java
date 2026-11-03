@@ -1,9 +1,11 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.device;
 
+import com.mojang.renderpearl.backend.vulkan.VulkanPhysicalDevice;
 import com.mojang.renderpearl.backend.vulkan.init.FeatureSet;
 import com.mojang.renderpearl.backend.vulkan.init.VulkanFeature;
 import com.mojang.renderpearl.backend.vulkan.init.VulkanPNextStruct;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
+import org.jspecify.annotations.Nullable;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.*;
 
@@ -13,7 +15,7 @@ import java.util.List;
 import java.util.Set;
 
 public final class VulkanFeatureRequirements {
-	public static final String VULKAN_14_CAPABILITY = "Vulkan Improvement Mod requires VULKAN_CORE_1_4; remove the mod to use vanilla renderer";
+	public static final String VULKAN_14_CAPABILITY = "Vulkan Improvement needs the Vulkan 1.4 device API (VULKAN_CORE_1_4)";
 	/**
 	 * How a device that lacks the Vulkan 1.4 API reports it, in Minecraft's style for its own API
 	 * versions.
@@ -36,7 +38,8 @@ public final class VulkanFeatureRequirements {
 	private static final VulkanPNextStruct FRAGMENT_SHADING_RATE_FEATURES = new VulkanPNextStruct(VkPhysicalDeviceFragmentShadingRateFeaturesKHR.class);
 	private static final VulkanPNextStruct PRESENT_ID_FEATURES = new VulkanPNextStruct(VkPhysicalDevicePresentIdFeaturesKHR.class);
 	private static final VulkanPNextStruct PRESENT_WAIT_FEATURES = new VulkanPNextStruct(VkPhysicalDevicePresentWaitFeaturesKHR.class);
-	
+	private static @Nullable FeatureSet optionalFeatureSet;
+
 	private VulkanFeatureRequirements() {
 	}
 	
@@ -147,22 +150,35 @@ public final class VulkanFeatureRequirements {
 	}
 	
 	/**
-	 * The mod's startup requirements as Minecraft feature sets, one per requirement group that
-	 * names an extension or a feature. Minecraft adds them to its own required sets, so device
-	 * selection, the missing-capability report and device creation all take them into account.
+	 * Everything the mod needs of a device as one feature set, which Minecraft offers as optional:
+	 * it enables the set on a device that supports all of it and the Vulkan 1.4 device API, and on
+	 * any other device draws with Vulkan without it, the mod staying off. One set rather than one
+	 * per group, since the mod's paths need all of it. The same set every time, so that Minecraft's
+	 * enabled features can be asked whether they contain it.
 	 */
-	public static List<FeatureSet> requiredFeatureSets() {
-		return requiredFeatureSets(!TerrainRendererDebugConfig.validationDescriptorBufferOnly());
-	}
-	
-	static List<FeatureSet> requiredFeatureSets(boolean requireDescriptorHeap) {
-		List<FeatureSet> featureSets = new ArrayList<>();
-		for (VulkanRequirementGroup group : startupRequiredRequirementGroups(requireDescriptorHeap)) {
-			if (!group.deviceExtensions().isEmpty() || !group.deviceFeatures().isEmpty()) {
-				featureSets.add(new FeatureSet(FEATURE_SET_PREFIX + "[" + group.id() + "]", group.deviceExtensions(), group.deviceFeatures()));
-			}
+	public static synchronized FeatureSet optionalFeatureSet() {
+		if (optionalFeatureSet == null) {
+			optionalFeatureSet = optionalFeatureSet(!TerrainRendererDebugConfig.validationDescriptorBufferOnly());
 		}
-		return List.copyOf(featureSets);
+		return optionalFeatureSet;
+	}
+
+	static FeatureSet optionalFeatureSet(boolean requireDescriptorHeap) {
+		return new FeatureSet(FEATURE_SET_PREFIX + "[device]", requiredDeviceExtensions(requireDescriptorHeap), requiredDeviceFeatures(requireDescriptorHeap), VulkanFeatureRequirements::supportsRequiredApi);
+	}
+
+	/**
+	 * What the device lacks of the mod's feature set: its extensions, then its features, then the
+	 * Vulkan 1.4 device API.
+	 */
+	public static List<String> missingCapabilities(VulkanPhysicalDevice physicalDevice) {
+		FeatureSet featureSet = optionalFeatureSet();
+		List<String> missing = new ArrayList<>(featureSet.extensions().stream().filter(extension -> !physicalDevice.hasDeviceExtension(extension)).sorted().toList());
+		featureSet.unsupportedFeatures(physicalDevice.vkPhysicalDevice()).stream().map(VulkanFeature::name).sorted().forEach(missing::add);
+		if (!supportsRequiredApi(physicalDevice.vkPhysicalDevice())) {
+			missing.add(VULKAN_14_CAPABILITY_NAME);
+		}
+		return List.copyOf(missing);
 	}
 	
 	public static Set<String> optionalAccelerationExtensions() {

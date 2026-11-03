@@ -24,7 +24,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public final class ChunkSectionsToRenderDrawIndirectMixin {
 	@Inject(method = "render", at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/api/commands/RenderPass;setPipeline(Lcom/mojang/renderpearl/api/pipeline/CompiledRenderPipeline;)V", shift = Shift.AFTER), cancellable = true)
 	private void vim$drawMeshTerrainLayer(ChunkSectionLayer layer, RenderPass renderPass, @Nullable GpuBuffer defaultIndexBuffer, @Nullable IndexType defaultIndexType, boolean improvedFog, boolean wireframe, @Nullable OitStage oitStage, CallbackInfo ci) {
-		if (VulkanImprovementRuntime.isVulkanBackendActive() && MeshTerrainRenderer.get().drawTerrainLayer(layer, renderPass)) {
+		if (VulkanImprovementRuntime.isModAvailable() && MeshTerrainRenderer.get().drawTerrainLayer(layer, renderPass)) {
 			ci.cancel();
 		}
 	}

@@ -68,7 +68,7 @@ public final class LevelRendererMixin {
 	@Inject(method = "extractSectionDrawGroups", at = @At("HEAD"))
 	private void vim$beginVisibleFrame(boolean respectTranslucentOrder, List<?> sectionInfos, Map<?, ?> drawGroups, CallbackInfoReturnable<Integer> cir) {
 		boolean gpuDriven = false;
-		if (VulkanImprovementRuntime.isVulkanBackendActive()) {
+		if (VulkanImprovementRuntime.isModAvailable()) {
 			TerrainPerformanceMonitor.get().beginFrame();
 			if (TerrainRendererDebugConfig.terrainCaptureEnabled()) {
 				gpuDriven = MeshTerrainRenderer.get().beginVisibleFrame(this.levelRenderState.renderWireframeTerrain, Util.toMillis(this.optionsRenderState.chunkSectionFadeInTime), this.visibleSections, this.vim$collectedSections);
@@ -114,7 +114,7 @@ public final class LevelRendererMixin {
 	@Inject(method = "extractSectionDrawGroups", at = @At("RETURN"))
 	private void vim$endVisibleFrame(boolean respectTranslucentOrder, List<?> sectionInfos, Map<?, ?> drawGroups, CallbackInfoReturnable<Integer> cir) {
 		SectionMeshletStore.endVisibleFrame();
-		if (VulkanImprovementRuntime.isVulkanBackendActive()) {
+		if (VulkanImprovementRuntime.isModAvailable()) {
 			MeshTerrainRenderer.get().prepareVisibleFrame(this.levelRenderState.renderWireframeTerrain);
 			TerrainPerformanceMonitor.get().endPrepare();
 		}
@@ -147,21 +147,21 @@ public final class LevelRendererMixin {
 	
 	@Inject(method = "invalidateCompiledGeometry", at = @At("HEAD"))
 	private void vim$clearMeshletCacheForGeometryInvalidation(ClientLevel level, Options options, Camera camera, BlockColors blockColors, CallbackInfo ci) {
-		if (VulkanImprovementRuntime.isVulkanBackendActive() && TerrainRendererDebugConfig.terrainCaptureEnabled()) {
+		if (VulkanImprovementRuntime.isModAvailable() && TerrainRendererDebugConfig.terrainCaptureEnabled()) {
 			SectionMeshletStore.clearAll("invalidateCompiledGeometry");
 		}
 	}
 	
 	@Inject(method = "resetLevelRenderData", at = @At("HEAD"))
 	private void vim$clearMeshletCacheForLevelReset(CallbackInfo ci) {
-		if (VulkanImprovementRuntime.isVulkanBackendActive() && TerrainRendererDebugConfig.terrainCaptureEnabled()) {
+		if (VulkanImprovementRuntime.isModAvailable() && TerrainRendererDebugConfig.terrainCaptureEnabled()) {
 			SectionMeshletStore.clearAll("resetLevelRenderData");
 		}
 	}
 	
 	@Inject(method = "close", at = @At("HEAD"))
 	private void vim$clearMeshletCacheForRendererClose(CallbackInfo ci) {
-		if (VulkanImprovementRuntime.isVulkanBackendActive() && TerrainRendererDebugConfig.terrainCaptureEnabled()) {
+		if (VulkanImprovementRuntime.isModAvailable() && TerrainRendererDebugConfig.terrainCaptureEnabled()) {
 			SectionMeshletStore.clearAll("close");
 		}
 	}
