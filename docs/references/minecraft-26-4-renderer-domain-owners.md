@@ -6,7 +6,10 @@ type; the counts below still hold.
 
 Each renderer domain in `RendererDomainContract` names the Mojang class that
 owns the vanilla path for it. This file records what mcdev shows for those
-classes. No mixin targets them: the mod draws none of these domains.
+classes. No mixin targets them: these classes still submit, order and draw
+their domains. The GPU vertex paths write the vertices of models, items and
+particles further down, in the feature renderers, and the bug report's
+`domains` line names them as `gpu-vertices`.
 
 Do not change an owner in `RendererDomainContract` without re-running mcdev
 against the Minecraft version in `gradle.properties` and updating this file in

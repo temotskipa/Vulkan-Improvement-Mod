@@ -84,8 +84,15 @@ public final class ModelGpuVertices {
 	 */
 	private @Nullable GpuBuffer meshMarker;
 	private @Nullable GpuBuffer meshConversions;
+	/**
+	 * The mixins of other mods that change what the path replaces, null until the path first checks.
+	 */
 	private @Nullable List<String> otherModMixins;
 	private @Nullable List<String> otherItemMixins;
+	/**
+	 * Whether the vertex pass could not be built on the current device.
+	 */
+	private boolean buildFailed;
 	private @Nullable RenderType offeredRenderType;
 	private @Nullable ItemQuadLayout offeredItem;
 	private @Nullable Object stagedBufferUsed;
@@ -126,6 +133,7 @@ public final class ModelGpuVertices {
 	public synchronized void configure(VulkanDevice vulkanDevice) {
 		shutdownNow();
 		this.device = vulkanDevice;
+		this.buildFailed = false;
 		this.meshShadersAvailable = VulkanImprovementCapabilities.snapshot().meshShaderExtension();
 	}
 	
@@ -209,8 +217,56 @@ public final class ModelGpuVertices {
 		} catch (IllegalStateException | GpuOutOfMemoryException ex) {
 			LOGGER.error("[Vulkan Improvement] GPU model vertices stay off: the vertex pass could not be built", ex);
 			shutdownNow();
+			this.buildFailed = true;
 			return false;
 		}
+	}
+
+	/**
+	 * Why entity and block-entity models stay on Minecraft's vertex path, or null while the GPU
+	 * writes their vertices.
+	 */
+	public synchronized @Nullable String offReason() {
+		if (!TerrainRendererDebugConfig.gpuModelVerticesEnabled()) {
+			return "GPU model vertices are off";
+		}
+		if (this.buildFailed) {
+			return "the vertex pass could not be built";
+		}
+		if (this.device == null) {
+			return "Minecraft does not draw with Vulkan";
+		}
+		if (this.otherModMixins != null && !this.otherModMixins.isEmpty()) {
+			return "other mods change what the path replaces: " + this.otherModMixins;
+		}
+		if (this.pipeline == null) {
+			return "the vertex pass is built when a world first draws";
+		}
+		return null;
+	}
+
+	/**
+	 * Why items stay on Minecraft's vertex path, or null while the GPU writes their vertices.
+	 */
+	public synchronized @Nullable String itemOffReason() {
+		String models = offReason();
+		if (models != null) {
+			return models;
+		}
+		if (!TerrainRendererDebugConfig.gpuItemVerticesEnabled()) {
+			return "GPU item vertices are off";
+		}
+		if (this.otherItemMixins != null && !this.otherItemMixins.isEmpty()) {
+			return "other mods change what the item path replaces: " + this.otherItemMixins;
+		}
+		return null;
+	}
+
+	/**
+	 * Whether mesh shaders draw the GPU model draws whose pipeline they can replace.
+	 */
+	public boolean drawsWithMeshShaders() {
+		return TerrainRendererDebugConfig.gpuModelMeshShadersEnabled() && this.meshShadersAvailable;
 	}
 	
 	ModelVertexFrame frame() {
@@ -495,6 +551,6 @@ public final class ModelGpuVertices {
 	
 	public synchronized String describe() {
 		String resident = this.store == null ? "" : ", residentCubes=" + this.store.residentCubes() + ", residentItemLists=" + this.store.residentItemLists() + ", cpuOnlyCubes=" + this.store.cpuOnlyCubes() + ", residentPolygonBytes=" + this.store.residentBytes() + ", collectedPolygons=" + this.store.collectedPolygons();
-		return "enabled=" + TerrainRendererDebugConfig.gpuModelVerticesEnabled() + ", ready=" + (this.pipeline != null) + ", otherModMixins=" + this.otherModMixins + ", gpuSubmits=" + this.gpuSubmits + ", cpuSubmits=" + this.cpuSubmits + ", itemVertices=" + TerrainRendererDebugConfig.gpuItemVerticesEnabled() + ", otherItemMixins=" + this.otherItemMixins + ", gpuItemSubmits=" + this.gpuItemSubmits + ", cpuItemSubmits=" + this.cpuItemSubmits + ", writtenFrames=" + this.writtenFrames + ", lastFrameParts=" + this.lastFrameParts + ", lastFrameCubes=" + this.lastFrameCubes + ", lastFrameVertices=" + this.lastFrameVertices + ", lastFrameDraws=" + this.lastFrameDraws + ", meshShaders=" + TerrainRendererDebugConfig.gpuModelMeshShadersEnabled() + ", meshShadersAvailable=" + this.meshShadersAvailable + ", lastFrameMeshDraws=" + this.lastFrameMeshDraws + ", lastFrameMeshCubes=" + this.lastFrameMeshCubes + ", meshDraws=" + this.meshDraws + ", meshDrawsLeftOut=" + this.meshDrawsLeftOut + ", framesLeftOut=" + this.framesLeftOut + ", meshPipelines=[" + ModelMeshPipelines.describe() + "]" + resident + ", storesRenewed=" + this.storesRenewed;
+		return "enabled=" + TerrainRendererDebugConfig.gpuModelVerticesEnabled() + ", ready=" + (this.pipeline != null) + ", otherModMixins=" + Objects.requireNonNullElse(this.otherModMixins, "unchecked") + ", gpuSubmits=" + this.gpuSubmits + ", cpuSubmits=" + this.cpuSubmits + ", itemVertices=" + TerrainRendererDebugConfig.gpuItemVerticesEnabled() + ", otherItemMixins=" + Objects.requireNonNullElse(this.otherItemMixins, "unchecked") + ", gpuItemSubmits=" + this.gpuItemSubmits + ", cpuItemSubmits=" + this.cpuItemSubmits + ", writtenFrames=" + this.writtenFrames + ", lastFrameParts=" + this.lastFrameParts + ", lastFrameCubes=" + this.lastFrameCubes + ", lastFrameVertices=" + this.lastFrameVertices + ", lastFrameDraws=" + this.lastFrameDraws + ", meshShaders=" + TerrainRendererDebugConfig.gpuModelMeshShadersEnabled() + ", meshShadersAvailable=" + this.meshShadersAvailable + ", lastFrameMeshDraws=" + this.lastFrameMeshDraws + ", lastFrameMeshCubes=" + this.lastFrameMeshCubes + ", meshDraws=" + this.meshDraws + ", meshDrawsLeftOut=" + this.meshDrawsLeftOut + ", framesLeftOut=" + this.framesLeftOut + ", meshPipelines=[" + ModelMeshPipelines.describe() + "]" + resident + ", storesRenewed=" + this.storesRenewed;
 	}
 }

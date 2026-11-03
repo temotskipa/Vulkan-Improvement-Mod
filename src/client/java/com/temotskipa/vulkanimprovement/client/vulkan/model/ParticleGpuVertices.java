@@ -70,7 +70,14 @@ public final class ParticleGpuVertices {
 	private @Nullable ModelBufferPool inputBuffers;
 	private @Nullable ModelBufferPool vertexBuffers;
 	private @Nullable GpuBuffer vertices;
+	/**
+	 * The mixins of other mods that change what the path replaces, null until the path first checks.
+	 */
 	private @Nullable List<String> otherModMixins;
+	/**
+	 * Whether the vertex pass could not be built on the current device.
+	 */
+	private boolean buildFailed;
 	private @Nullable Object stagedBuffer;
 	private @Nullable Object stagedBufferUsed;
 	private boolean preparingLevel;
@@ -92,6 +99,7 @@ public final class ParticleGpuVertices {
 	public synchronized void configure(VulkanDevice vulkanDevice) {
 		shutdownNow();
 		this.device = vulkanDevice;
+		this.buildFailed = false;
 	}
 	
 	public synchronized void shutdownNow() {
@@ -151,8 +159,31 @@ public final class ParticleGpuVertices {
 		} catch (IllegalStateException | GpuOutOfMemoryException ex) {
 			LOGGER.error("[Vulkan Improvement] GPU particle vertices stay off: the vertex pass could not be built", ex);
 			shutdownNow();
+			this.buildFailed = true;
 			return false;
 		}
+	}
+
+	/**
+	 * Why particles stay on Minecraft's vertex path, or null while the GPU writes their vertices.
+	 */
+	public synchronized @Nullable String offReason() {
+		if (!TerrainRendererDebugConfig.gpuParticleVerticesEnabled()) {
+			return "GPU particle vertices are off";
+		}
+		if (this.buildFailed) {
+			return "the vertex pass could not be built";
+		}
+		if (this.device == null) {
+			return "Minecraft does not draw with Vulkan";
+		}
+		if (this.otherModMixins != null && !this.otherModMixins.isEmpty()) {
+			return "other mods change what the path replaces: " + this.otherModMixins;
+		}
+		if (this.pipeline == null) {
+			return "the vertex pass is built when a world first draws";
+		}
+		return null;
 	}
 	
 	private void build(VulkanDevice vulkanDevice) {
@@ -306,6 +337,6 @@ public final class ParticleGpuVertices {
 	}
 	
 	public synchronized String describe() {
-		return "enabled=" + TerrainRendererDebugConfig.gpuParticleVerticesEnabled() + ", ready=" + (this.pipeline != null) + ", otherModMixins=" + this.otherModMixins + ", gpuLayers=" + this.gpuLayers + ", writtenFrames=" + this.writtenFrames + ", lastFrameParticles=" + this.lastFrameParticles;
+		return "enabled=" + TerrainRendererDebugConfig.gpuParticleVerticesEnabled() + ", ready=" + (this.pipeline != null) + ", otherModMixins=" + Objects.requireNonNullElse(this.otherModMixins, "unchecked") + ", gpuLayers=" + this.gpuLayers + ", writtenFrames=" + this.writtenFrames + ", lastFrameParticles=" + this.lastFrameParticles;
 	}
 }

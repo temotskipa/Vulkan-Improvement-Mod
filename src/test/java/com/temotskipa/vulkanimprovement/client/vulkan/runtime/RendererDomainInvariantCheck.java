@@ -31,6 +31,30 @@ public final class RendererDomainInvariantCheck {
 		checkResetDefaultsAllDomainsToVanilla();
 		checkTerrainMeshPathKeepsOtherDomainsVanilla();
 		checkTerrainDomainFollowsTheRendererMode();
+		checkGpuVertexPathsReportTheirOwnPath();
+		checkBugReportObservesTheGpuVertexPaths();
+	}
+
+	/**
+	 * A domain whose vertices the GPU writes is reported as that path while it is on, and as vanilla,
+	 * with the reason, while it is off.
+	 */
+	private static void checkGpuVertexPathsReportTheirOwnPath() {
+		RendererDomainState on = RendererDomainState.gpuVerticesOr(null, "test path");
+		require("gpu-vertices".equals(on.path()) && "test path".equals(on.reason()), "a GPU vertex path that is on must be reported as gpu-vertices");
+		require(on.cpuDrawLists() && on.gpuMeshGeneration() && !on.gpuWorkQueues() && !on.gpuVisibility(), "a GPU vertex path writes vertices for the draws Minecraft lists, and claims nothing more");
+		RendererDomainState off = RendererDomainState.gpuVerticesOr("GPU model vertices are off", "test path");
+		require("vanilla".equals(off.path()) && "GPU model vertices are off".equals(off.reason()), "a GPU vertex path that is off must be reported as vanilla with the reason");
+	}
+
+	/**
+	 * The GPU vertex paths turn on and off as a world draws, so a bug report observes them as it is
+	 * written rather than when the renderer was ready.
+	 */
+	private static void checkBugReportObservesTheGpuVertexPaths() {
+		String diagnostics = read(RENDERER_DIAGNOSTICS);
+		require(diagnostics.indexOf("RendererDomainObserver.observeGpuVertexPaths();") < diagnostics.indexOf("\"domains: \""), "bug reports must observe the GPU vertex paths before describing the domains");
+		require(diagnostics.contains("RendererDomainObserver.observeGpuVertexPaths();"), "bug reports must observe the GPU vertex paths");
 	}
 	
 	/**

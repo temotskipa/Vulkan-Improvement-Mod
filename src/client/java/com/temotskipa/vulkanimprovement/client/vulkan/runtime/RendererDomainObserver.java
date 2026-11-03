@@ -1,11 +1,13 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.runtime;
 
+import com.temotskipa.vulkanimprovement.client.vulkan.model.ModelGpuVertices;
+import com.temotskipa.vulkanimprovement.client.vulkan.model.ParticleGpuVertices;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
 
 public final class RendererDomainObserver {
 	private RendererDomainObserver() {
 	}
-	
+
 	public static void observeRendererReady() {
 		RendererDomainRegistry registry = RendererDomainRegistry.get();
 		observeTerrainMode();
@@ -16,8 +18,9 @@ public final class RendererDomainObserver {
 			registry.set(domain, RendererDomainState.vanilla("observed vanilla Minecraft renderer path"));
 		}
 		registry.set(RendererDomain.DIAGNOSTICS, RendererDomainState.vanilla("log output, video options, and vim.dumpRendererDiagnostics key"));
+		observeGpuVertexPaths();
 	}
-	
+
 	/**
 	 * Records which path draws terrain in the current mode. The mesh path is configured in every
 	 * mode; it is the selected path only while it draws.
@@ -34,5 +37,19 @@ public final class RendererDomainObserver {
 			state = RendererDomainState.meshTerrainGpu("mesh terrain drawn over vanilla terrain, which stays visible");
 		}
 		RendererDomainRegistry.get().set(RendererDomain.TERRAIN, state);
+	}
+
+	/**
+	 * Records whether the GPU writes the vertices of models, items and particles. Each path decides
+	 * as a world draws and can be switched at any time, so this is observed again for each report.
+	 */
+	public static void observeGpuVertexPaths() {
+		RendererDomainRegistry registry = RendererDomainRegistry.get();
+		ModelGpuVertices models = ModelGpuVertices.get();
+		RendererDomainState modelState = RendererDomainState.gpuVerticesOr(models.offReason(), models.drawsWithMeshShaders() ? "the GPU writes model vertices; mesh shaders draw those whose pipeline they replace, Minecraft the rest" : "the GPU writes model vertices; Minecraft draws them");
+		registry.set(RendererDomain.ENTITIES, modelState);
+		registry.set(RendererDomain.BLOCK_ENTITIES, modelState);
+		registry.set(RendererDomain.ITEMS, RendererDomainState.gpuVerticesOr(models.itemOffReason(), "the GPU writes item model vertices; Minecraft draws them"));
+		registry.set(RendererDomain.PARTICLES, RendererDomainState.gpuVerticesOr(ParticleGpuVertices.get().offReason(), "the GPU writes quad particle vertices; Minecraft draws them"));
 	}
 }
