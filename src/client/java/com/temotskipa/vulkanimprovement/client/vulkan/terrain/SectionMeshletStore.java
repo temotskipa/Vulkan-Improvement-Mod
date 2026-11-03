@@ -687,7 +687,7 @@ public final class SectionMeshletStore {
 				stagedIndexBytes += layer.buffers().indexBytes();
 			}
 		}
-		return "liveSections=" + SECTIONS.size() + ", capturedLayers=" + layers + ", meshletDescriptors=" + meshlets + ", stagedVertexBytes=" + stagedVertexBytes + ", stagedIndexBytes=" + stagedIndexBytes + ", visibleFrame=" + VISIBLE_FRAME.published() + ", residentPages=" + PAGES.stats() + ", invalidationCount=" + INVALIDATION_COUNT.get() + ", lastInvalidationReason=" + lastInvalidationReason + ", rejectedCaptures=" + REJECTED_CAPTURES.get() + ", lastRejectedCapture=" + lastRejectedCapture;
+		return "liveSections=" + SECTIONS.size() + ", capturedLayers=" + layers + ", meshletDescriptors=" + meshlets + ", stagedVertexBytes=" + stagedVertexBytes + ", stagedIndexBytes=" + stagedIndexBytes + ", visibleFrame=" + VISIBLE_FRAME.published() + ", residentPages=[" + PAGES.stats().describe() + "], invalidationCount=" + INVALIDATION_COUNT.get() + ", lastInvalidationReason=" + lastInvalidationReason + ", rejectedCaptures=" + REJECTED_CAPTURES.get() + ", lastRejectedCapture=" + lastRejectedCapture;
 	}
 	
 	/**
