@@ -50,8 +50,6 @@
   "options.vulkanimprovement.initialVertexPayloadMib.tooltip": "Initial GPU terrain vertex-payload buffer size. Requires Mesh Terrain or Capture Bootstrap.",
   "options.vulkanimprovement.initialIndexPayloadMib": "Index Payload",
   "options.vulkanimprovement.initialIndexPayloadMib.tooltip": "Initial GPU terrain index-payload buffer size. Requires Mesh Terrain or Capture Bootstrap.",
-  "options.vulkanimprovement.terrainMirrorStabilizationMillis": "Mirror Stabilization",
-  "options.vulkanimprovement.terrainMirrorStabilizationMillis.tooltip": "Delay before mirrored terrain is treated as stable after capture churn. Requires Mesh Terrain or Capture Bootstrap.",
   "key.vulkanimprovement.dump_diagnostics": "Dump Vulkan Improvement Diagnostics",
   "vulkanimprovement.notice.title": "Vulkan Improvement is off",
   "vulkanimprovement.notice.openGlChosen": "Vulkan Improvement does nothing on OpenGL",

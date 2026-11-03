@@ -9,8 +9,6 @@ public final class TerrainRendererDebugConfig {
 	public static final int MAX_VERTEX_PAYLOAD_MIB = 1024;
 	public static final int MIN_INDEX_PAYLOAD_MIB = 1;
 	public static final int MAX_INDEX_PAYLOAD_MIB = 512;
-	public static final int MIN_TERRAIN_MIRROR_STABILIZATION_MILLIS = 0;
-	public static final int MAX_TERRAIN_MIRROR_STABILIZATION_MILLIS = 10_000;
 	private static volatile boolean dumpCapabilities = booleanProperty("vim.dumpCapabilities", true);
 	private static volatile boolean disablePresentPacing = booleanProperty("vim.disablePresentPacing", false);
 	private static volatile int presentPacingFrameLatency = intProperty("vim.presentPacingFrameLatency", 1, 0, 3);
@@ -25,7 +23,6 @@ public final class TerrainRendererDebugConfig {
 	private static volatile int initialMeshletCapacity = intProperty("vim.initialMeshletCapacity", 524288, MIN_MESHLET_CAPACITY, MAX_MESHLET_CAPACITY);
 	private static volatile int initialVertexPayloadBytes = intProperty("vim.initialVertexPayloadBytes", 512 * 1024 * 1024, MIN_VERTEX_PAYLOAD_MIB * 1024 * 1024, MAX_VERTEX_PAYLOAD_MIB * 1024 * 1024);
 	private static volatile int initialIndexPayloadBytes = intProperty("vim.initialIndexPayloadBytes", 64 * 1024 * 1024, MIN_INDEX_PAYLOAD_MIB * 1024 * 1024, MAX_INDEX_PAYLOAD_MIB * 1024 * 1024);
-	private static volatile int terrainMirrorStabilizationMillis = intProperty("vim.terrainMirrorStabilizationMillis", 750, MIN_TERRAIN_MIRROR_STABILIZATION_MILLIS, MAX_TERRAIN_MIRROR_STABILIZATION_MILLIS);
 	private static volatile boolean fragmentShadingRateEnabled = !booleanProperty("vim.disableFragmentShadingRate", false);
 	private static volatile boolean replaceVanillaTerrain = booleanProperty("vim.replaceVanillaTerrain", false);
 	private static volatile boolean terrainCaptureBootstrap = booleanProperty("vim.enableTerrainCaptureBootstrap", false);
@@ -137,11 +134,6 @@ public final class TerrainRendererDebugConfig {
 		setIntProperty("vim.initialIndexPayloadBytes", initialIndexPayloadBytes);
 	}
 	
-	public static void setTerrainMirrorStabilizationMillis(int millis) {
-		terrainMirrorStabilizationMillis = Math.clamp(millis, MIN_TERRAIN_MIRROR_STABILIZATION_MILLIS, MAX_TERRAIN_MIRROR_STABILIZATION_MILLIS);
-		setIntProperty("vim.terrainMirrorStabilizationMillis", terrainMirrorStabilizationMillis);
-	}
-	
 	public static void setReplaceVanillaTerrain(boolean enabled) {
 		replaceVanillaTerrain = enabled;
 		setBooleanProperty("vim.replaceVanillaTerrain", enabled);
@@ -246,7 +238,7 @@ public final class TerrainRendererDebugConfig {
 	}
 	
 	public static String describe() {
-		return "rendererMode=" + rendererMode() + ", requireVulkanBackend=" + requireVulkanBackend() + ", enableTerrainCaptureBootstrap=" + terrainCaptureBootstrapEnabled() + ", enableMeshTranslucentTerrain=" + meshTranslucentTerrainEnabled() + ", enableMeshletFrustumCulling=" + meshletFrustumCullingEnabled() + ", strictMeshTerrainReplacement=" + strictMeshTerrainReplacement() + ", enableVanillaChunkVisibilityFade=" + vanillaChunkVisibilityFadeEnabled() + ", drawAllCapturedTerrainLayers=" + drawAllCapturedTerrainLayers() + ", terrainGpuTimer=" + terrainGpuTimerEnabled() + ", cullMeshlets=" + cullMeshletsEnabled() + ", taskStagePageCulling=" + taskStagePageCullingEnabled() + ", gpuDrivenTerrain=" + gpuDrivenTerrainEnabled() + ", gpuModelVertices=" + gpuModelVerticesEnabled() + ", gpuModelMeshShaders=" + gpuModelMeshShadersEnabled() + ", gpuItemVertices=" + gpuItemVerticesEnabled() + ", gpuParticleVertices=" + gpuParticleVerticesEnabled() + ", gpuTextVertices=" + gpuTextVerticesEnabled() + ", keepFramebuffers=" + keepFramebuffersEnabled() + ", barriersByResource=" + barriersByResourceEnabled() + ", defaultSolidCutoutLayerMode=" + solidCutoutLayerMode() + ", defaultTranslucentLayerMode=" + translucentLayerMode() + ", dumpCapabilities=" + dumpCapabilities() + ", enableAcceleratedWorldgenProviderIntegration=" + acceleratedWorldgenProviderIntegrationEnabled() + ", disableFragmentShadingRate=" + !fragmentShadingRateEnabled() + ", disablePresentPacing=" + disablePresentPacing() + ", presentPacingFrameLatency=" + presentPacingFrameLatency() + ", validationDescriptorBufferOnly=" + validationDescriptorBufferOnly() + ", waitIdleBeforeTerrainUpload=" + waitIdleBeforeTerrainUpload() + ", allowCpuVisibleMeshletFallback=" + allowCpuVisibleMeshletFallback() + ", enableGpuGeneratedMeshTaskCommands=" + enableGpuGeneratedMeshTaskCommands() + ", terrainFragmentShadingRate=" + terrainFragmentShadingRate() + ", terrainMirrorStabilizationMillis=" + terrainMirrorStabilizationMillis() + ", initialSectionCapacity=" + initialSectionCapacity() + ", initialMeshletCapacity=" + initialMeshletCapacity() + ", initialVertexPayloadBytes=" + initialVertexPayloadBytes() + ", initialIndexPayloadBytes=" + initialIndexPayloadBytes();
+		return "rendererMode=" + rendererMode() + ", requireVulkanBackend=" + requireVulkanBackend() + ", enableTerrainCaptureBootstrap=" + terrainCaptureBootstrapEnabled() + ", enableMeshTranslucentTerrain=" + meshTranslucentTerrainEnabled() + ", enableMeshletFrustumCulling=" + meshletFrustumCullingEnabled() + ", strictMeshTerrainReplacement=" + strictMeshTerrainReplacement() + ", enableVanillaChunkVisibilityFade=" + vanillaChunkVisibilityFadeEnabled() + ", drawAllCapturedTerrainLayers=" + drawAllCapturedTerrainLayers() + ", terrainGpuTimer=" + terrainGpuTimerEnabled() + ", cullMeshlets=" + cullMeshletsEnabled() + ", taskStagePageCulling=" + taskStagePageCullingEnabled() + ", gpuDrivenTerrain=" + gpuDrivenTerrainEnabled() + ", gpuModelVertices=" + gpuModelVerticesEnabled() + ", gpuModelMeshShaders=" + gpuModelMeshShadersEnabled() + ", gpuItemVertices=" + gpuItemVerticesEnabled() + ", gpuParticleVertices=" + gpuParticleVerticesEnabled() + ", gpuTextVertices=" + gpuTextVerticesEnabled() + ", keepFramebuffers=" + keepFramebuffersEnabled() + ", barriersByResource=" + barriersByResourceEnabled() + ", defaultSolidCutoutLayerMode=" + solidCutoutLayerMode() + ", defaultTranslucentLayerMode=" + translucentLayerMode() + ", dumpCapabilities=" + dumpCapabilities() + ", enableAcceleratedWorldgenProviderIntegration=" + acceleratedWorldgenProviderIntegrationEnabled() + ", disableFragmentShadingRate=" + !fragmentShadingRateEnabled() + ", disablePresentPacing=" + disablePresentPacing() + ", presentPacingFrameLatency=" + presentPacingFrameLatency() + ", validationDescriptorBufferOnly=" + validationDescriptorBufferOnly() + ", waitIdleBeforeTerrainUpload=" + waitIdleBeforeTerrainUpload() + ", allowCpuVisibleMeshletFallback=" + allowCpuVisibleMeshletFallback() + ", enableGpuGeneratedMeshTaskCommands=" + enableGpuGeneratedMeshTaskCommands() + ", terrainFragmentShadingRate=" + terrainFragmentShadingRate() + ", initialSectionCapacity=" + initialSectionCapacity() + ", initialMeshletCapacity=" + initialMeshletCapacity() + ", initialVertexPayloadBytes=" + initialVertexPayloadBytes() + ", initialIndexPayloadBytes=" + initialIndexPayloadBytes();
 	}
 	
 	public static String rendererMode() {
@@ -403,10 +395,6 @@ public final class TerrainRendererDebugConfig {
 	
 	public static int terrainFragmentShadingRate() {
 		return terrainFragmentShadingRate;
-	}
-	
-	public static int terrainMirrorStabilizationMillis() {
-		return terrainMirrorStabilizationMillis;
 	}
 	
 	public static int initialSectionCapacity() {

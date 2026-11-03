@@ -45,7 +45,6 @@ public final class VulkanImprovementVideoOptions {
 	private static @Nullable OptionInstance<Integer> initialMeshletCapacity;
 	private static @Nullable OptionInstance<Integer> initialVertexPayloadMib;
 	private static @Nullable OptionInstance<Integer> initialIndexPayloadMib;
-	private static @Nullable OptionInstance<Integer> terrainMirrorStabilizationMillis;
 	
 	private VulkanImprovementVideoOptions() {
 	}
@@ -56,7 +55,7 @@ public final class VulkanImprovementVideoOptions {
 		}
 		ensureOptions();
 		syncFromConfig();
-		return new OptionInstance[]{meshTerrainRenderer, terrainCaptureBootstrap, meshTranslucentTerrain, meshletFrustumCulling, strictMeshTerrainReplacement, drawAllCapturedTerrainLayers, vanillaChunkVisibilityFade, terrainFragmentShadingRate, terrainFragmentShadingRateSize, presentPacing, waitIdleBeforeTerrainUpload, allowCpuVisibleMeshletFallback, gpuGeneratedMeshTaskCommands, gpuDrivenTerrain, cullMeshlets, taskStagePageCulling, terrainGpuTimer, dumpCapabilities, requireVulkanBackend, acceleratedWorldgenProviderIntegration, validationDescriptorBufferOnly, initialSectionCapacity, initialMeshletCapacity, initialVertexPayloadMib, initialIndexPayloadMib, terrainMirrorStabilizationMillis};
+		return new OptionInstance[]{meshTerrainRenderer, terrainCaptureBootstrap, meshTranslucentTerrain, meshletFrustumCulling, strictMeshTerrainReplacement, drawAllCapturedTerrainLayers, vanillaChunkVisibilityFade, terrainFragmentShadingRate, terrainFragmentShadingRateSize, presentPacing, waitIdleBeforeTerrainUpload, allowCpuVisibleMeshletFallback, gpuGeneratedMeshTaskCommands, gpuDrivenTerrain, cullMeshlets, taskStagePageCulling, terrainGpuTimer, dumpCapabilities, requireVulkanBackend, acceleratedWorldgenProviderIntegration, validationDescriptorBufferOnly, initialSectionCapacity, initialMeshletCapacity, initialVertexPayloadMib, initialIndexPayloadMib};
 	}
 	
 	private static void ensureOptions() {
@@ -88,7 +87,6 @@ public final class VulkanImprovementVideoOptions {
 		initialMeshletCapacity = intOption("options.vulkanimprovement.initialMeshletCapacity", TerrainRendererDebugConfig.MIN_MESHLET_CAPACITY, TerrainRendererDebugConfig.MAX_MESHLET_CAPACITY, TerrainRendererDebugConfig.initialMeshletCapacity(), TerrainRendererDebugConfig::setInitialMeshletCapacity);
 		initialVertexPayloadMib = mibOption("options.vulkanimprovement.initialVertexPayloadMib", TerrainRendererDebugConfig.MIN_VERTEX_PAYLOAD_MIB, TerrainRendererDebugConfig.MAX_VERTEX_PAYLOAD_MIB, TerrainRendererDebugConfig.initialVertexPayloadMib(), TerrainRendererDebugConfig::setInitialVertexPayloadMib);
 		initialIndexPayloadMib = mibOption("options.vulkanimprovement.initialIndexPayloadMib", TerrainRendererDebugConfig.MIN_INDEX_PAYLOAD_MIB, TerrainRendererDebugConfig.MAX_INDEX_PAYLOAD_MIB, TerrainRendererDebugConfig.initialIndexPayloadMib(), TerrainRendererDebugConfig::setInitialIndexPayloadMib);
-		terrainMirrorStabilizationMillis = intOption("options.vulkanimprovement.terrainMirrorStabilizationMillis", TerrainRendererDebugConfig.MIN_TERRAIN_MIRROR_STABILIZATION_MILLIS, TerrainRendererDebugConfig.MAX_TERRAIN_MIRROR_STABILIZATION_MILLIS, TerrainRendererDebugConfig.terrainMirrorStabilizationMillis(), TerrainRendererDebugConfig::setTerrainMirrorStabilizationMillis);
 	}
 	
 	private static void syncFromConfig() {
@@ -117,7 +115,6 @@ public final class VulkanImprovementVideoOptions {
 		requireOption(initialMeshletCapacity).set(TerrainRendererDebugConfig.initialMeshletCapacity());
 		requireOption(initialVertexPayloadMib).set(TerrainRendererDebugConfig.initialVertexPayloadMib());
 		requireOption(initialIndexPayloadMib).set(TerrainRendererDebugConfig.initialIndexPayloadMib());
-		requireOption(terrainMirrorStabilizationMillis).set(TerrainRendererDebugConfig.terrainMirrorStabilizationMillis());
 	}
 	
 	private static void onMeshTerrainChanged(boolean enabled) {
@@ -177,7 +174,6 @@ public final class VulkanImprovementVideoOptions {
 		setWidgetActive(optionsList, initialMeshletCapacity, rules.capturedTerrain());
 		setWidgetActive(optionsList, initialVertexPayloadMib, rules.capturedTerrain());
 		setWidgetActive(optionsList, initialIndexPayloadMib, rules.capturedTerrain());
-		setWidgetActive(optionsList, terrainMirrorStabilizationMillis, rules.capturedTerrain());
 	}
 
 	private static VulkanVideoOptionRules currentRules() {
