@@ -42,6 +42,7 @@ public final class TerrainRendererDebugConfig {
 	private static volatile boolean gpuItemVertices = booleanProperty("vim.gpuItemVertices", true);
 	private static volatile boolean gpuParticleVertices = booleanProperty("vim.gpuParticleVertices", true);
 	private static volatile boolean gpuTextVertices = booleanProperty("vim.gpuTextVertices", true);
+	private static volatile boolean shareItemBoundingBoxes = booleanProperty("vim.shareItemBoundingBoxes", false);
 	
 	private TerrainRendererDebugConfig() {
 	}
@@ -207,6 +208,11 @@ public final class TerrainRendererDebugConfig {
 		setBooleanProperty("vim.barriersByResource", enabled);
 	}
 	
+	public static void setShareItemBoundingBoxes(boolean enabled) {
+		shareItemBoundingBoxes = enabled;
+		setBooleanProperty("vim.shareItemBoundingBoxes", enabled);
+	}
+	
 	public static void setGpuItemVerticesEnabled(boolean enabled) {
 		gpuItemVertices = enabled;
 		setBooleanProperty("vim.gpuItemVertices", enabled);
@@ -238,7 +244,7 @@ public final class TerrainRendererDebugConfig {
 	}
 	
 	public static String describe() {
-		return "rendererMode=" + rendererMode() + ", requireVulkanBackend=" + requireVulkanBackend() + ", enableTerrainCaptureBootstrap=" + terrainCaptureBootstrapEnabled() + ", enableMeshTranslucentTerrain=" + meshTranslucentTerrainEnabled() + ", enableMeshletFrustumCulling=" + meshletFrustumCullingEnabled() + ", strictMeshTerrainReplacement=" + strictMeshTerrainReplacement() + ", enableVanillaChunkVisibilityFade=" + vanillaChunkVisibilityFadeEnabled() + ", drawAllCapturedTerrainLayers=" + drawAllCapturedTerrainLayers() + ", terrainGpuTimer=" + terrainGpuTimerEnabled() + ", cullMeshlets=" + cullMeshletsEnabled() + ", taskStagePageCulling=" + taskStagePageCullingEnabled() + ", gpuDrivenTerrain=" + gpuDrivenTerrainEnabled() + ", gpuModelVertices=" + gpuModelVerticesEnabled() + ", gpuModelMeshShaders=" + gpuModelMeshShadersEnabled() + ", gpuItemVertices=" + gpuItemVerticesEnabled() + ", gpuParticleVertices=" + gpuParticleVerticesEnabled() + ", gpuTextVertices=" + gpuTextVerticesEnabled() + ", keepFramebuffers=" + keepFramebuffersEnabled() + ", barriersByResource=" + barriersByResourceEnabled() + ", defaultSolidCutoutLayerMode=" + solidCutoutLayerMode() + ", defaultTranslucentLayerMode=" + translucentLayerMode() + ", dumpCapabilities=" + dumpCapabilities() + ", enableAcceleratedWorldgenProviderIntegration=" + acceleratedWorldgenProviderIntegrationEnabled() + ", disableFragmentShadingRate=" + !fragmentShadingRateEnabled() + ", disablePresentPacing=" + disablePresentPacing() + ", presentPacingFrameLatency=" + presentPacingFrameLatency() + ", validationDescriptorBufferOnly=" + validationDescriptorBufferOnly() + ", waitIdleBeforeTerrainUpload=" + waitIdleBeforeTerrainUpload() + ", allowCpuVisibleMeshletFallback=" + allowCpuVisibleMeshletFallback() + ", enableGpuGeneratedMeshTaskCommands=" + enableGpuGeneratedMeshTaskCommands() + ", terrainFragmentShadingRate=" + terrainFragmentShadingRate() + ", initialSectionCapacity=" + initialSectionCapacity() + ", initialMeshletCapacity=" + initialMeshletCapacity() + ", initialVertexPayloadBytes=" + initialVertexPayloadBytes() + ", initialIndexPayloadBytes=" + initialIndexPayloadBytes();
+		return "rendererMode=" + rendererMode() + ", requireVulkanBackend=" + requireVulkanBackend() + ", enableTerrainCaptureBootstrap=" + terrainCaptureBootstrapEnabled() + ", enableMeshTranslucentTerrain=" + meshTranslucentTerrainEnabled() + ", enableMeshletFrustumCulling=" + meshletFrustumCullingEnabled() + ", strictMeshTerrainReplacement=" + strictMeshTerrainReplacement() + ", enableVanillaChunkVisibilityFade=" + vanillaChunkVisibilityFadeEnabled() + ", drawAllCapturedTerrainLayers=" + drawAllCapturedTerrainLayers() + ", terrainGpuTimer=" + terrainGpuTimerEnabled() + ", cullMeshlets=" + cullMeshletsEnabled() + ", taskStagePageCulling=" + taskStagePageCullingEnabled() + ", gpuDrivenTerrain=" + gpuDrivenTerrainEnabled() + ", gpuModelVertices=" + gpuModelVerticesEnabled() + ", gpuModelMeshShaders=" + gpuModelMeshShadersEnabled() + ", gpuItemVertices=" + gpuItemVerticesEnabled() + ", gpuParticleVertices=" + gpuParticleVerticesEnabled() + ", gpuTextVertices=" + gpuTextVerticesEnabled() + ", shareItemBoundingBoxes=" + shareItemBoundingBoxes() + ", keepFramebuffers=" + keepFramebuffersEnabled() + ", barriersByResource=" + barriersByResourceEnabled() + ", defaultSolidCutoutLayerMode=" + solidCutoutLayerMode() + ", defaultTranslucentLayerMode=" + translucentLayerMode() + ", dumpCapabilities=" + dumpCapabilities() + ", enableAcceleratedWorldgenProviderIntegration=" + acceleratedWorldgenProviderIntegrationEnabled() + ", disableFragmentShadingRate=" + !fragmentShadingRateEnabled() + ", disablePresentPacing=" + disablePresentPacing() + ", presentPacingFrameLatency=" + presentPacingFrameLatency() + ", validationDescriptorBufferOnly=" + validationDescriptorBufferOnly() + ", waitIdleBeforeTerrainUpload=" + waitIdleBeforeTerrainUpload() + ", allowCpuVisibleMeshletFallback=" + allowCpuVisibleMeshletFallback() + ", enableGpuGeneratedMeshTaskCommands=" + enableGpuGeneratedMeshTaskCommands() + ", terrainFragmentShadingRate=" + terrainFragmentShadingRate() + ", initialSectionCapacity=" + initialSectionCapacity() + ", initialMeshletCapacity=" + initialMeshletCapacity() + ", initialVertexPayloadBytes=" + initialVertexPayloadBytes() + ", initialIndexPayloadBytes=" + initialIndexPayloadBytes();
 	}
 	
 	public static String rendererMode() {
@@ -336,6 +342,16 @@ public final class TerrainRendererDebugConfig {
 	
 	public static boolean keepFramebuffersEnabled() {
 		return keepFramebuffers;
+	}
+	
+	/**
+	 * Whether an item's model bounding box, which Minecraft works out again for every item in every
+	 * frame from all of its model's corners, is shared between items and frames with the same model
+	 * and transforms. Off by default: with it on, frames of a frozen scene vary by one level in a few
+	 * hundred pixels where they are otherwise identical, which is not yet explained.
+	 */
+	public static boolean shareItemBoundingBoxes() {
+		return shareItemBoundingBoxes;
 	}
 	
 	public static boolean barriersByResourceEnabled() {

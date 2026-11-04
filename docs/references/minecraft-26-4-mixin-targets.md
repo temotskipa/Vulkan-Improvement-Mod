@@ -605,6 +605,34 @@ pipelines.
   an item it does not take runs Minecraft's method whole, so that its quads
   keep their order. Outlines and special foil never reach the path.
 
+### ItemStackRenderStateMixin
+
+- Target: `net.minecraft.client.renderer.item.ItemStackRenderState`.
+- mcdev 26.4 surface: public `getModelBoundingBox()`, which returns
+  `cachedModelBoundingBox` if set and otherwise builds an `AABB` from
+  `visitExtents`: every corner of each of the first `activeLayerCount`
+  `layers`, through the layer's `ItemTransform` (for the left hand of the
+  package-private `displayContext`) and its local transform. `clear()` sets the
+  cached box to null, and Minecraft clears an item's render state every frame.
+  Called by `ItemEntityRenderer.submit`, `submitMultipleFromCount`,
+  `renderMultipleFromCount` and `ShelfRenderer.submitItem`.
+- Source tokens: `method = "getModelBoundingBox"`, `private int activeLayerCount`,
+  `private @Nullable AABB cachedModelBoundingBox`,
+  `ItemDisplayContext displayContext`.
+- Purpose: share the box between items and frames with the same model,
+  transforms and hand (`ItemBoundingBoxes`), with `vim.shareItemBoundingBoxes`.
+
+### ItemStackLayerRenderStateMixin
+
+- Target: `net.minecraft.client.renderer.item.ItemStackRenderState$LayerRenderState`.
+- mcdev 26.4 surface: private fields `extents` (`Supplier<Vector3fc[]>`, the
+  model wrapper's memoized corners), `itemTransform` (the model's
+  `ItemTransform` for the display context) and final `localTransform` (a
+  `Matrix4f` the model's transform is copied into).
+- Source tokens: `private Supplier<Vector3fc[]> extents`,
+  `private ItemTransform itemTransform`, `private Matrix4f localTransform`.
+- Purpose: hand those to `ItemStackRenderStateMixin` as the key of a box.
+
 ### BakedQuadMixin
 
 - Target: `net.minecraft.client.resources.model.geometry.BakedQuad`.

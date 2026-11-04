@@ -20,6 +20,8 @@
     "GlobalSettingsUniformMixin",
     "GlslCompilerMixin",
     "ItemFeatureRendererMixin",
+    "ItemStackLayerRenderStateMixin",
+    "ItemStackRenderStateMixin",
     "LevelRendererMixin",
     "MinecraftMixin",
     "ModelFeatureRendererMixin",
