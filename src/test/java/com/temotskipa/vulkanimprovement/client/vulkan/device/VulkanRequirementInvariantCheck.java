@@ -81,7 +81,8 @@ public final class VulkanRequirementInvariantCheck {
 		require(defaults.condition() != Condition.IDENTITY_CONDITION, "the Vulkan 1.4 device API must be the feature set's condition");
 		FeatureSet descriptorBufferOnly = VulkanFeatureRequirements.optionalFeatureSet(false);
 		require(!descriptorBufferOnly.extensions().contains(EXTDescriptorHeap.VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME), "the descriptor-buffer-only adapter must leave the descriptor heap out of the feature set");
-		require(VulkanFeatureRequirements.optionalFeatureSet() == VulkanFeatureRequirements.optionalFeatureSet(), "the feature set must be the same object each time, so Minecraft's enabled features can be asked whether they contain it");
+		FeatureSet offered = VulkanFeatureRequirements.optionalFeatureSet();
+		require(offered == VulkanFeatureRequirements.optionalFeatureSet(), "the feature set must be the same object each time, so Minecraft's enabled features can be asked whether they contain it");
 	}
 	
 	private static void checkRequiredExtensions() {

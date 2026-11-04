@@ -44,11 +44,11 @@ public final class VulkanBackendMixin {
 	}
 
 	@WrapOperation(method = "createVma", at = @At(value = "INVOKE", target = "Lorg/lwjgl/util/vma/Vma;vmaCreateAllocator(Lorg/lwjgl/util/vma/VmaAllocatorCreateInfo;Lorg/lwjgl/PointerBuffer;)I", remap = false))
-	private static int vim$createModernVmaAllocator(VmaAllocatorCreateInfo createInfo, PointerBuffer allocator, Operation<Integer> original) {
+	private static int vim$createModernVmaAllocator(VmaAllocatorCreateInfo pCreateInfo, PointerBuffer pAllocator, Operation<Integer> original) {
 		if (VulkanImprovementSupport.enabled()) {
-			createInfo.vulkanApiVersion(VK14.VK_API_VERSION_1_4);
-			createInfo.flags(createInfo.flags() | Vma.VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT | Vma.VMA_ALLOCATOR_CREATE_KHR_MAINTENANCE5_BIT);
+			pCreateInfo.vulkanApiVersion(VK14.VK_API_VERSION_1_4);
+			pCreateInfo.flags(pCreateInfo.flags() | Vma.VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT | Vma.VMA_ALLOCATOR_CREATE_KHR_MAINTENANCE5_BIT);
 		}
-		return original.call(createInfo, allocator);
+		return original.call(pCreateInfo, pAllocator);
 	}
 }
