@@ -97,6 +97,7 @@ public final class VulkanRequirementInvariantCheck {
 		require(extensions.contains(KHRMaintenance6.VK_KHR_MAINTENANCE_6_EXTENSION_NAME), "maintenance6 extension must be required");
 		require(extensions.contains(KHRPresentId.VK_KHR_PRESENT_ID_EXTENSION_NAME), "present id extension must be required");
 		require(extensions.contains(KHRPresentWait.VK_KHR_PRESENT_WAIT_EXTENSION_NAME), "present wait extension must be required");
+		require(extensions.contains(KHRPushDescriptor.VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME), "push descriptor extension must be required, for the depth pyramid's image");
 	}
 	
 	private static void checkRequiredFeatures() {

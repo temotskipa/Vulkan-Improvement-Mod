@@ -18,6 +18,7 @@ import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.core.SectionPos;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
+import org.jspecify.annotations.Nullable;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.util.shaderc.Shaderc;
 import org.lwjgl.vulkan.*;
@@ -32,6 +33,16 @@ import java.util.concurrent.atomic.LongAdder;
 
 public final class MeshShaderTerrainProgram {
 	private static final MeshShaderTerrainProgram INSTANCE = new MeshShaderTerrainProgram();
+	/**
+	 * Where the GPU-driven pass's push constants say which of its steps runs, after three buffer
+	 * addresses and the frame's record.
+	 */
+	private static final int SECTION_PAGES_PASS_OFFSET = Long.BYTES * 3 + Integer.BYTES;
+	/**
+	 * The step of the GPU-driven pass that tests pages against the depth pyramid, after its three
+	 * first-phase steps.
+	 */
+	private static final int SECTION_PAGES_LATE_PASS = 3;
 	private final Map<TerrainPipelineKey, TerrainMeshPipeline> pipelineCache = new HashMap<>();
 	private final LongAdder pipelineCompiles = new LongAdder();
 	private final LongAdder meshTaskDispatches = new LongAdder();
@@ -40,6 +51,7 @@ public final class MeshShaderTerrainProgram {
 	private final LongAdder meshTaskIndirectDispatches = new LongAdder();
 	private final LongAdder meshTaskGpuCommandPreparations = new LongAdder();
 	private final LongAdder gpuDrivenPagePreparations = new LongAdder();
+	private final LongAdder latePagePreparations = new LongAdder();
 	private final LongAdder meshTaskGpuCommandPreparationsInsideRenderPass = new LongAdder();
 	private final LongAdder meshTasksDispatched = new LongAdder();
 	private final LongAdder textureDescriptorBufferBinds = new LongAdder();
@@ -52,13 +64,16 @@ public final class MeshShaderTerrainProgram {
 	private volatile ComputePipeline commandPipeline;
 	private volatile long sectionPagesModule;
 	private volatile ComputePipeline sectionPagesPipeline;
+	private volatile long depthPyramidModule;
+	private volatile ComputePipeline depthPyramidPipeline;
 	private volatile String lastError = "";
 	private volatile String taskShaderCompileSource = "unconfigured";
 	private volatile String meshShaderCompileSource = "unconfigured";
 	private volatile String fragmentShaderCompileSource = "unconfigured";
 	private volatile String commandShaderCompileSource = "unconfigured";
 	private volatile String sectionPagesShaderCompileSource = "unconfigured";
-	
+	private volatile String depthPyramidShaderCompileSource = "unconfigured";
+
 	private MeshShaderTerrainProgram() {
 	}
 	
@@ -80,9 +95,13 @@ public final class MeshShaderTerrainProgram {
 			this.commandShaderCompileSource = compiler.lastCompileSource();
 			this.sectionPagesModule = compiler.compile(device, TerrainShaderSource.VISIBLE_SECTION_PAGES_SHADER, TerrainShaderSource.VISIBLE_SECTION_PAGES_SHADER_SPIRV, Shaderc.shaderc_compute_shader);
 			this.sectionPagesShaderCompileSource = compiler.lastCompileSource();
+			this.depthPyramidModule = compiler.compile(device, TerrainShaderSource.DEPTH_PYRAMID_SHADER, TerrainShaderSource.DEPTH_PYRAMID_SHADER_SPIRV, Shaderc.shaderc_compute_shader);
+			this.depthPyramidShaderCompileSource = compiler.lastCompileSource();
 			this.commandPipeline = ComputePipeline.create(device, this.commandModule, TerrainGpuLayout.TERRAIN_MESH_TASK_COMMAND_PUSH_CONSTANT_BYTES, "VIM Terrain Mesh Task Command");
 			this.pipelineCompiles.increment();
 			this.sectionPagesPipeline = ComputePipeline.create(device, this.sectionPagesModule, TerrainGpuLayout.SECTION_PAGES_PUSH_CONSTANT_BYTES, "VIM Terrain Visible Section Pages");
+			this.pipelineCompiles.increment();
+			this.depthPyramidPipeline = ComputePipeline.createWithPushedImage(device, this.depthPyramidModule, TerrainGpuLayout.DEPTH_PYRAMID_PUSH_CONSTANT_BYTES, "VIM Terrain Depth Pyramid");
 			this.pipelineCompiles.increment();
 			this.lastError = "";
 			VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_SHADER_MODULE, this.taskModule, "VIM Terrain Task Shader");
@@ -90,6 +109,7 @@ public final class MeshShaderTerrainProgram {
 			VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_SHADER_MODULE, this.fragmentModule, "VIM Terrain Fragment Shader");
 			VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_SHADER_MODULE, this.commandModule, "VIM Terrain Mesh Task Command Shader");
 			VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_SHADER_MODULE, this.sectionPagesModule, "VIM Terrain Visible Section Pages Shader");
+			VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_SHADER_MODULE, this.depthPyramidModule, "VIM Terrain Depth Pyramid Shader");
 		} catch (RuntimeException ex) {
 			shutdown();
 			this.lastError = ex.getMessage();
@@ -114,6 +134,12 @@ public final class MeshShaderTerrainProgram {
 				activeSectionPagesPipeline.destroy(activeDevice);
 			}
 			this.sectionPagesPipeline = null;
+			ComputePipeline activeDepthPyramidPipeline = this.depthPyramidPipeline;
+			if (activeDepthPyramidPipeline != null) {
+				activeDepthPyramidPipeline.destroy(activeDevice);
+			}
+			this.depthPyramidPipeline = null;
+			destroyModule(activeDevice, this.depthPyramidModule);
 			destroyModule(activeDevice, this.sectionPagesModule);
 			destroyModule(activeDevice, this.commandModule);
 			destroyModule(activeDevice, this.fragmentModule);
@@ -125,6 +151,7 @@ public final class MeshShaderTerrainProgram {
 		this.taskModule = 0L;
 		this.commandModule = 0L;
 		this.sectionPagesModule = 0L;
+		this.depthPyramidModule = 0L;
 		this.device = null;
 	}
 	
@@ -188,6 +215,17 @@ public final class MeshShaderTerrainProgram {
 	
 	public boolean ready() {
 		return this.taskModule != 0L && this.meshModule != 0L && this.fragmentModule != 0L && this.commandModule != 0L && this.commandPipeline != null && this.sectionPagesPipeline != null;
+	}
+
+	/**
+	 * The pipeline that builds the depth pyramid, or null before the program is configured.
+	 */
+	@Nullable ComputePipeline depthPyramidPipeline() {
+		return this.depthPyramidPipeline;
+	}
+
+	@Nullable VulkanDevice device() {
+		return this.device;
 	}
 	
 	/**
@@ -492,8 +530,10 @@ public final class MeshShaderTerrainProgram {
 	 * @param layerOutputs  the record each layer's task records begin at
 	 * @param layerCommands the command each layer's tasks are counted in, or -1 for a layer not drawn
 	 * @param fadeMillis    how long a section takes to fade in, or 0 for no fade
+	 * @param occlusion     whether the frame culls by occlusion, so that the pages hidden in the
+	 *                      frame before are left to {@link #prepareLatePages}
 	 */
-	synchronized boolean prepareGpuDrivenPages(TerrainGpuDrivenFrame frame, VisibleSectionGrid sections, int slotCount, int[] layerOutputs, int[] layerCommands, int fadeMillis) {
+	synchronized boolean prepareGpuDrivenPages(TerrainGpuDrivenFrame frame, VisibleSectionGrid sections, int slotCount, int[] layerOutputs, int[] layerCommands, int fadeMillis, boolean occlusion) {
 		VulkanDevice activeDevice = this.device;
 		ComputePipeline pipeline = this.sectionPagesPipeline;
 		if (activeDevice == null || pipeline == null || !frame.ready() || slotCount <= 0) {
@@ -504,32 +544,14 @@ public final class MeshShaderTerrainProgram {
 			this.meshTaskGpuCommandPreparationsInsideRenderPass.increment();
 			return false;
 		}
-		DescriptorHeapTerrainResources resources = DescriptorHeapTerrainResources.get();
 		try (MemoryStack stack = MemoryStack.stackPush()) {
-			ByteBuffer pushConstants = stack.malloc(TerrainGpuLayout.SECTION_PAGES_PUSH_CONSTANT_BYTES);
-			pushConstants.putLong(resources.sectionMetadataAddress());
-			pushConstants.putLong(frame.address());
-			pushConstants.putLong(resources.terrainMeshTaskCommandAddress());
-			pushConstants.putInt(frame.frameRecord());
-			int stepOffset = pushConstants.position();
-			pushConstants.putInt(0);
-			pushConstants.putInt(sections.minX()).putInt(sections.minY()).putInt(sections.minZ()).putInt(slotCount);
-			pushConstants.putInt(sections.sizeX()).putInt(sections.sizeY()).putInt(sections.sizeZ()).putInt(SectionMeshletStore.fadeClockMillis());
-			putCameraSection(pushConstants);
-			pushConstants.putInt(fadeMillis);
-			for (int layer = 0; layer < TerrainGpuLayout.SECTION_PAGES_LAYERS; layer++) {
-				pushConstants.putInt(layer < layerOutputs.length ? layerOutputs[layer] : 0);
-			}
-			for (int layer = 0; layer < TerrainGpuLayout.SECTION_PAGES_LAYERS; layer++) {
-				pushConstants.putInt(layer < layerCommands.length ? layerCommands[layer] : -1);
-			}
-			pushConstants.flip();
+			ByteBuffer pushConstants = sectionPagesPushConstants(stack, frame, sections, slotCount, layerOutputs, layerCommands, fadeMillis, null, occlusion);
 			VK12.vkCmdBindPipeline(commandBuffer, VK10.VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.handle());
 			int slotGroups = (slotCount + TerrainGpuLayout.SECTION_PAGES_WORKGROUP_SIZE - 1) / TerrainGpuLayout.SECTION_PAGES_WORKGROUP_SIZE;
 			// Count each distance's tasks, place the distances, write the records.
 			int[] workgroups = {slotGroups, 1, slotGroups};
 			for (int step = 0; step < workgroups.length; step++) {
-				pushConstants.putInt(stepOffset, step);
+				pushConstants.putInt(SECTION_PAGES_PASS_OFFSET, step);
 				VK12.vkCmdPushConstants(commandBuffer, pipeline.layout(), VK10.VK_SHADER_STAGE_COMPUTE_BIT, 0, pushConstants);
 				VK12.vkCmdDispatch(commandBuffer, workgroups[step], 1, 1);
 				boolean last = step == workgroups.length - 1;
@@ -542,7 +564,75 @@ public final class MeshShaderTerrainProgram {
 		this.gpuDrivenPagePreparations.increment();
 		return true;
 	}
-	
+
+	/**
+	 * Has the GPU test every page of a GPU-driven frame's sections in view against the depth
+	 * pyramid, write the draws of those seen now that {@link #prepareGpuDrivenPages} left out, and
+	 * mark each page for the next frame. Recorded into the command buffer Minecraft records the
+	 * frame into, once the pyramid is built and while no render pass is open; one barrier after it
+	 * makes what it wrote visible to the draws.
+	 *
+	 * @param layerOutputs  the record each layer's late task records begin at
+	 * @param layerCommands the command each layer's late tasks are counted in, or -1 for a layer not drawn
+	 * @param pyramid       the depth pyramid, or null to draw every page the first phase left out
+	 */
+	synchronized boolean prepareLatePages(VkCommandBuffer commandBuffer, TerrainGpuDrivenFrame frame, VisibleSectionGrid sections, int slotCount, int[] layerOutputs, int[] layerCommands, int fadeMillis, @Nullable TerrainDepthPyramid pyramid) {
+		ComputePipeline pipeline = this.sectionPagesPipeline;
+		if (this.device == null || pipeline == null || !frame.ready() || slotCount <= 0 || pyramid != null && !pyramid.ready()) {
+			return false;
+		}
+		try (MemoryStack stack = MemoryStack.stackPush()) {
+			ByteBuffer pushConstants = sectionPagesPushConstants(stack, frame, sections, slotCount, layerOutputs, layerCommands, fadeMillis, pyramid, true);
+			pushConstants.putInt(SECTION_PAGES_PASS_OFFSET, SECTION_PAGES_LATE_PASS);
+			VK12.vkCmdBindPipeline(commandBuffer, VK10.VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.handle());
+			VK12.vkCmdPushConstants(commandBuffer, pipeline.layout(), VK10.VK_SHADER_STAGE_COMPUTE_BIT, 0, pushConstants);
+			VK12.vkCmdDispatch(commandBuffer, (slotCount + TerrainGpuLayout.SECTION_PAGES_WORKGROUP_SIZE - 1) / TerrainGpuLayout.SECTION_PAGES_WORKGROUP_SIZE, 1, 1);
+			// The draws read what the pass wrote: the indirect draw its commands, the task stage the records.
+			VkMemoryBarrier2.Buffer written = VkMemoryBarrier2.calloc(1, stack).sType$Default().srcStageMask(VK13.VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT).srcAccessMask(VK13.VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT).dstStageMask(VK13.VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | EXTMeshShader.VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT | EXTMeshShader.VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT).dstAccessMask(VK13.VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK13.VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+			VK13.vkCmdPipelineBarrier2(commandBuffer, VkDependencyInfo.calloc(stack).sType$Default().pMemoryBarriers(written));
+		}
+		this.latePagePreparations.increment();
+		return true;
+	}
+
+	/**
+	 * The GPU-driven pass's push constants, with its first step selected.
+	 *
+	 * @param pyramid   the depth pyramid the pages are tested against, or null for a step that tests none
+	 * @param occlusion whether the frame culls by occlusion
+	 */
+	private static ByteBuffer sectionPagesPushConstants(MemoryStack stack, TerrainGpuDrivenFrame frame, VisibleSectionGrid sections, int slotCount, int[] layerOutputs, int[] layerCommands, int fadeMillis, @Nullable TerrainDepthPyramid pyramid, boolean occlusion) {
+		DescriptorHeapTerrainResources resources = DescriptorHeapTerrainResources.get();
+		ByteBuffer pushConstants = stack.malloc(TerrainGpuLayout.SECTION_PAGES_PUSH_CONSTANT_BYTES);
+		pushConstants.putLong(resources.sectionMetadataAddress());
+		pushConstants.putLong(frame.address());
+		pushConstants.putLong(resources.terrainMeshTaskCommandAddress());
+		pushConstants.putInt(frame.frameRecord());
+		pushConstants.putInt(0);
+		pushConstants.putInt(sections.minX()).putInt(sections.minY()).putInt(sections.minZ()).putInt(slotCount);
+		pushConstants.putInt(sections.sizeX()).putInt(sections.sizeY()).putInt(sections.sizeZ()).putInt(SectionMeshletStore.fadeClockMillis());
+		putCameraSection(pushConstants);
+		pushConstants.putInt(fadeMillis);
+		for (int layer = 0; layer < TerrainGpuLayout.SECTION_PAGES_LAYERS; layer++) {
+			pushConstants.putInt(layer < layerOutputs.length ? layerOutputs[layer] : 0);
+		}
+		for (int layer = 0; layer < TerrainGpuLayout.SECTION_PAGES_LAYERS; layer++) {
+			pushConstants.putInt(layer < layerCommands.length ? layerCommands[layer] : -1);
+		}
+		pushConstants.putLong(pyramid != null ? pyramid.address() : 0L);
+		pushConstants.putLong(resources.terrainOcclusionCounterAddress());
+		if (pyramid != null) {
+			pushConstants.putInt(pyramid.width()).putInt(pyramid.height()).putInt(pyramid.levels());
+		}
+		else {
+			pushConstants.putInt(0).putInt(0).putInt(0);
+		}
+		pushConstants.putInt(occlusion ? 1 : 0);
+		writeCameraPushConstants(pushConstants);
+		pushConstants.flip();
+		return pushConstants;
+	}
+
 	/**
 	 * The section the camera is in, which the GPU-driven pass sorts tasks by their distance from.
 	 */
@@ -559,6 +649,6 @@ public final class MeshShaderTerrainProgram {
 	}
 	
 	public String describe() {
-		return "ready=" + ready() + ", lastError=" + this.lastError + ", taskShaderCompileSource=" + this.taskShaderCompileSource + ", meshShaderCompileSource=" + this.meshShaderCompileSource + ", fragmentShaderCompileSource=" + this.fragmentShaderCompileSource + ", commandShaderCompileSource=" + this.commandShaderCompileSource + ", visibleSectionPagesShaderCompileSource=" + this.sectionPagesShaderCompileSource + ", pipelineCacheSize=" + this.pipelineCache.size() + ", commandPipelineReady=" + (this.commandPipeline != null) + ", visibleSectionPagesPipelineReady=" + (this.sectionPagesPipeline != null) + ", pipelineCompiles=" + this.pipelineCompiles.sum() + ", meshTaskDispatches=" + this.meshTaskDispatches.sum() + ", meshTaskDirectDispatches=" + this.meshTaskDirectDispatches.sum() + ", meshTaskIndirectDispatches=" + this.meshTaskIndirectDispatches.sum() + ", meshTaskGpuCommandPreparations=" + this.meshTaskGpuCommandPreparations.sum() + ", gpuDrivenPagePreparations=" + this.gpuDrivenPagePreparations.sum() + ", meshTaskGpuCommandPreparationsInsideRenderPass=" + this.meshTaskGpuCommandPreparationsInsideRenderPass.sum() + ", meshTasksDispatched=" + this.meshTasksDispatched.sum() + ", improvedFogDispatches=" + this.improvedFogDispatches.sum() + ", textureDescriptorBufferBinds=" + this.textureDescriptorBufferBinds.sum() + ", textureDescriptorBufferMissing=" + this.textureDescriptorBufferMissing.sum();
+		return "ready=" + ready() + ", lastError=" + this.lastError + ", taskShaderCompileSource=" + this.taskShaderCompileSource + ", meshShaderCompileSource=" + this.meshShaderCompileSource + ", fragmentShaderCompileSource=" + this.fragmentShaderCompileSource + ", commandShaderCompileSource=" + this.commandShaderCompileSource + ", visibleSectionPagesShaderCompileSource=" + this.sectionPagesShaderCompileSource + ", depthPyramidShaderCompileSource=" + this.depthPyramidShaderCompileSource + ", pipelineCacheSize=" + this.pipelineCache.size() + ", commandPipelineReady=" + (this.commandPipeline != null) + ", visibleSectionPagesPipelineReady=" + (this.sectionPagesPipeline != null) + ", pipelineCompiles=" + this.pipelineCompiles.sum() + ", meshTaskDispatches=" + this.meshTaskDispatches.sum() + ", meshTaskDirectDispatches=" + this.meshTaskDirectDispatches.sum() + ", meshTaskIndirectDispatches=" + this.meshTaskIndirectDispatches.sum() + ", meshTaskGpuCommandPreparations=" + this.meshTaskGpuCommandPreparations.sum() + ", gpuDrivenPagePreparations=" + this.gpuDrivenPagePreparations.sum() + ", latePagePreparations=" + this.latePagePreparations.sum() + ", meshTaskGpuCommandPreparationsInsideRenderPass=" + this.meshTaskGpuCommandPreparationsInsideRenderPass.sum() + ", meshTasksDispatched=" + this.meshTasksDispatched.sum() + ", improvedFogDispatches=" + this.improvedFogDispatches.sum() + ", textureDescriptorBufferBinds=" + this.textureDescriptorBufferBinds.sum() + ", textureDescriptorBufferMissing=" + this.textureDescriptorBufferMissing.sum();
 	}
 }

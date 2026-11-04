@@ -23,10 +23,24 @@ public final class TerrainGpuLayout {
 	 */
 	public static final int VISIBILITY_WORKGROUP_SIZE = 64;
 	/**
-	 * The GPU-driven pass's push constants: three buffer addresses, two integers, and five rows
-	 * of four integers.
+	 * The GPU-driven pass's push constants: three buffer addresses, two integers, five rows of four
+	 * integers, then for the occlusion test the depth pyramid's and the occlusion counters'
+	 * addresses, a row of four integers, the camera's block and its offset inside that block, and
+	 * four rows of the view-projection matrix.
 	 */
-	public static final int SECTION_PAGES_PUSH_CONSTANT_BYTES = 112;
+	public static final int SECTION_PAGES_PUSH_CONSTANT_BYTES = 240;
+	/**
+	 * The depth pyramid pass's push constants: the pyramid's address, the depth image's size, the
+	 * level a dispatch starts from and how many levels the pyramid stores.
+	 */
+	public static final int DEPTH_PYRAMID_PUSH_CONSTANT_BYTES = 24;
+	/**
+	 * How many texels of its source, along each axis, one workgroup of the depth pyramid pass
+	 * reduces, and how many levels above its source one dispatch writes: a tile of 64 comes down
+	 * to one texel in six.
+	 */
+	public static final int DEPTH_PYRAMID_TILE = 64;
+	public static final int DEPTH_PYRAMID_LEVELS_PER_DISPATCH = 6;
 	/**
 	 * How many page-table slots one workgroup of the GPU-driven pass looks at.
 	 */
@@ -48,6 +62,11 @@ public final class TerrainGpuLayout {
 	 * Where the visibility pass's counters start in the debug counters, after the mesh stage's four.
 	 */
 	public static final int VISIBILITY_COUNTER_OFFSET = 16;
+	/**
+	 * Where the occlusion test's counters start in the debug counters, after the visibility pass's
+	 * three: the pages it tested, found hidden, and drew in the second phase.
+	 */
+	public static final int OCCLUSION_COUNTER_OFFSET = 32;
 	public static final int MATERIAL_RECORD_STRIDE = 64;
 	public static final int MATERIAL_TABLE_CAPACITY = 256;
 	/**

@@ -4,10 +4,11 @@ import java.lang.foreign.MemoryLayout;
 import java.lang.foreign.StructLayout;
 
 /**
- * A section layer's record in the page table.
+ * A section layer's record in the page table. The GPU marks a page {@code occluded} when the depth
+ * pyramid hid it in the last frame that culled by occlusion; the CPU writes a page with it clear.
  */
 public final class TerrainResidentPageRecord {
-	public static final StructLayout LAYOUT = MemoryLayout.structLayout(TerrainGpuRecords.LONG.withName("sectionNode"), TerrainGpuRecords.INT.withName("sectionX"), TerrainGpuRecords.INT.withName("sectionY"), TerrainGpuRecords.INT.withName("sectionZ"), TerrainGpuRecords.INT.withName("layer"), TerrainGpuRecords.INT.withName("firstMeshlet"), TerrainGpuRecords.INT.withName("meshletCount"), TerrainGpuRecords.INT.withName("estimatedVertices"), TerrainGpuRecords.INT.withName("estimatedMeshlets"), TerrainGpuRecords.INT.withName("vertexBytes"), TerrainGpuRecords.INT.withName("indexBytes"), TerrainGpuRecords.LONG.withName("vertexByteOffset"), TerrainGpuRecords.LONG.withName("indexByteOffset"), TerrainGpuRecords.INT.withName("fadeStart"), TerrainGpuRecords.INT.withName("customIndexBuffer"), TerrainGpuRecords.INT.withName("reserved1"), TerrainGpuRecords.INT.withName("reserved2")).withName("ResidentPage");
+	public static final StructLayout LAYOUT = MemoryLayout.structLayout(TerrainGpuRecords.LONG.withName("sectionNode"), TerrainGpuRecords.INT.withName("sectionX"), TerrainGpuRecords.INT.withName("sectionY"), TerrainGpuRecords.INT.withName("sectionZ"), TerrainGpuRecords.INT.withName("layer"), TerrainGpuRecords.INT.withName("firstMeshlet"), TerrainGpuRecords.INT.withName("meshletCount"), TerrainGpuRecords.INT.withName("estimatedVertices"), TerrainGpuRecords.INT.withName("estimatedMeshlets"), TerrainGpuRecords.INT.withName("vertexBytes"), TerrainGpuRecords.INT.withName("indexBytes"), TerrainGpuRecords.LONG.withName("vertexByteOffset"), TerrainGpuRecords.LONG.withName("indexByteOffset"), TerrainGpuRecords.INT.withName("fadeStart"), TerrainGpuRecords.INT.withName("customIndexBuffer"), TerrainGpuRecords.INT.withName("occluded"), TerrainGpuRecords.INT.withName("reserved2")).withName("ResidentPage");
 	public static final long SECTION_NODE = TerrainGpuRecords.offset(LAYOUT, "sectionNode");
 	public static final long SECTION_X = TerrainGpuRecords.offset(LAYOUT, "sectionX");
 	public static final long SECTION_Y = TerrainGpuRecords.offset(LAYOUT, "sectionY");

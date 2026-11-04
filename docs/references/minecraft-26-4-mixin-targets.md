@@ -355,6 +355,13 @@ inside a render pass the level renderer has already opened.
   fade duration and the time, which `RenderSection.getVisibility(long, long)`
   takes. It walks `visibleSections` through the one
   `ObjectArrayList.iterator()` call in the method.
+  Final field `targets`, a `LevelTargetBundle` whose public `main` handle
+  holds the `RenderTarget` the main pass draws into; private
+  `executeOit(ChunkSectionsToRender, FeatureRenderDispatcher.PreparedFrame)`,
+  which the main pass calls only with improved transparency, right after the
+  try-with-resources of its "Solid" render pass (opaque terrain, solid
+  features and the sky blit) closes, and before anything reads that pass's
+  depth.
 - Source tokens: `private LevelRenderState levelRenderState`,
   `private ObjectArrayList<SectionRenderDispatcher.RenderSection> visibleSections`,
   `private OptionsRenderState optionsRenderState`,
@@ -362,7 +369,8 @@ inside a render pass the level renderer has already opened.
   `SectionRenderDispatcher;getRenderSectionSlice(`, `ObjectArrayList;iterator()`,
   `FeatureRenderDispatcher;prepareFrame(`,
   `method = "invalidateCompiledGeometry"`, `method = "resetLevelRenderData"`,
-  `method = "close"`.
+  `method = "close"`, `private LevelTargetBundle targets`,
+  `method = "executeOit"`.
 - Purpose: bracket the collection of a frame's section layers, record them
   in Minecraft's draw order and, in strict replacement, take the section
   layers the mesh path draws out of it (a `@Redirect` of the slice lookup
@@ -384,6 +392,11 @@ inside a render pass the level renderer has already opened.
   frame graph opens a render pass, it opens and closes the window in which the
   GPU model path takes model submits; Minecraft's other callers, the GUI item
   atlas, picture-in-picture, the hand and the 3D HUD, are left to Minecraft.
+  At the head of `executeOit` it runs the second phase of terrain occlusion
+  culling on the main target: a depth pyramid from the depth the Solid pass
+  wrote, the test of every page in view, and a render pass of the mod's with
+  the `COLOR_DEPTH` layout that draws the pages seen now that the first phase
+  left out, before the transparency passes read the depth.
 
 ### SectionRenderDispatcherRenderSectionMixin
 

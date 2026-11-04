@@ -37,6 +37,7 @@ public final class VulkanImprovementVideoOptions {
 	private static @Nullable OptionInstance<Boolean> allowCpuVisibleMeshletFallback;
 	private static @Nullable OptionInstance<Boolean> gpuGeneratedMeshTaskCommands;
 	private static @Nullable OptionInstance<Boolean> gpuDrivenTerrain;
+	private static @Nullable OptionInstance<Boolean> terrainOcclusionCulling;
 	private static @Nullable OptionInstance<Boolean> cullMeshlets;
 	private static @Nullable OptionInstance<Boolean> taskStagePageCulling;
 	private static @Nullable OptionInstance<Boolean> terrainGpuTimer;
@@ -55,7 +56,7 @@ public final class VulkanImprovementVideoOptions {
 		}
 		ensureOptions();
 		syncFromConfig();
-		return new OptionInstance[]{meshTerrainRenderer, terrainCaptureBootstrap, meshTranslucentTerrain, meshletFrustumCulling, strictMeshTerrainReplacement, drawAllCapturedTerrainLayers, vanillaChunkVisibilityFade, terrainFragmentShadingRate, terrainFragmentShadingRateSize, presentPacing, waitIdleBeforeTerrainUpload, allowCpuVisibleMeshletFallback, gpuGeneratedMeshTaskCommands, gpuDrivenTerrain, cullMeshlets, taskStagePageCulling, terrainGpuTimer, dumpCapabilities, requireVulkanBackend, acceleratedWorldgenProviderIntegration, validationDescriptorBufferOnly, initialSectionCapacity, initialMeshletCapacity, initialVertexPayloadMib, initialIndexPayloadMib};
+		return new OptionInstance[]{meshTerrainRenderer, terrainCaptureBootstrap, meshTranslucentTerrain, meshletFrustumCulling, strictMeshTerrainReplacement, drawAllCapturedTerrainLayers, vanillaChunkVisibilityFade, terrainFragmentShadingRate, terrainFragmentShadingRateSize, presentPacing, waitIdleBeforeTerrainUpload, allowCpuVisibleMeshletFallback, gpuGeneratedMeshTaskCommands, gpuDrivenTerrain, terrainOcclusionCulling, cullMeshlets, taskStagePageCulling, terrainGpuTimer, dumpCapabilities, requireVulkanBackend, acceleratedWorldgenProviderIntegration, validationDescriptorBufferOnly, initialSectionCapacity, initialMeshletCapacity, initialVertexPayloadMib, initialIndexPayloadMib};
 	}
 	
 	private static void ensureOptions() {
@@ -76,6 +77,7 @@ public final class VulkanImprovementVideoOptions {
 		allowCpuVisibleMeshletFallback = OptionInstance.createBoolean("options.vulkanimprovement.allowCpuVisibleMeshletFallback", OptionInstance.cachedConstantTooltip(Component.translatable("options.vulkanimprovement.allowCpuVisibleMeshletFallback.tooltip")), TerrainRendererDebugConfig.allowCpuVisibleMeshletFallback(), TerrainRendererDebugConfig::setAllowCpuVisibleMeshletFallback);
 		gpuGeneratedMeshTaskCommands = OptionInstance.createBoolean("options.vulkanimprovement.gpuGeneratedMeshTaskCommands", OptionInstance.cachedConstantTooltip(Component.translatable("options.vulkanimprovement.gpuGeneratedMeshTaskCommands.tooltip")), TerrainRendererDebugConfig.enableGpuGeneratedMeshTaskCommands(), TerrainRendererDebugConfig::setEnableGpuGeneratedMeshTaskCommands);
 		gpuDrivenTerrain = OptionInstance.createBoolean("options.vulkanimprovement.gpuDrivenTerrain", OptionInstance.cachedConstantTooltip(Component.translatable("options.vulkanimprovement.gpuDrivenTerrain.tooltip")), TerrainRendererDebugConfig.gpuDrivenTerrainEnabled(), TerrainRendererDebugConfig::setGpuDrivenTerrainEnabled);
+		terrainOcclusionCulling = OptionInstance.createBoolean("options.vulkanimprovement.terrainOcclusionCulling", OptionInstance.cachedConstantTooltip(Component.translatable("options.vulkanimprovement.terrainOcclusionCulling.tooltip")), TerrainRendererDebugConfig.terrainOcclusionCullingEnabled(), TerrainRendererDebugConfig::setTerrainOcclusionCullingEnabled);
 		cullMeshlets = OptionInstance.createBoolean("options.vulkanimprovement.cullMeshlets", OptionInstance.cachedConstantTooltip(Component.translatable("options.vulkanimprovement.cullMeshlets.tooltip")), TerrainRendererDebugConfig.cullMeshletsEnabled(), TerrainRendererDebugConfig::setCullMeshletsEnabled);
 		taskStagePageCulling = OptionInstance.createBoolean("options.vulkanimprovement.taskStagePageCulling", OptionInstance.cachedConstantTooltip(Component.translatable("options.vulkanimprovement.taskStagePageCulling.tooltip")), TerrainRendererDebugConfig.taskStagePageCullingEnabled(), TerrainRendererDebugConfig::setTaskStagePageCullingEnabled);
 		terrainGpuTimer = OptionInstance.createBoolean("options.vulkanimprovement.terrainGpuTimer", OptionInstance.cachedConstantTooltip(Component.translatable("options.vulkanimprovement.terrainGpuTimer.tooltip")), TerrainRendererDebugConfig.terrainGpuTimerEnabled(), TerrainRendererDebugConfig::setTerrainGpuTimerEnabled);
@@ -104,6 +106,7 @@ public final class VulkanImprovementVideoOptions {
 		requireOption(allowCpuVisibleMeshletFallback).set(TerrainRendererDebugConfig.allowCpuVisibleMeshletFallback());
 		requireOption(gpuGeneratedMeshTaskCommands).set(TerrainRendererDebugConfig.enableGpuGeneratedMeshTaskCommands());
 		requireOption(gpuDrivenTerrain).set(TerrainRendererDebugConfig.gpuDrivenTerrainEnabled());
+		requireOption(terrainOcclusionCulling).set(TerrainRendererDebugConfig.terrainOcclusionCullingEnabled());
 		requireOption(cullMeshlets).set(TerrainRendererDebugConfig.cullMeshletsEnabled());
 		requireOption(taskStagePageCulling).set(TerrainRendererDebugConfig.taskStagePageCullingEnabled());
 		requireOption(terrainGpuTimer).set(TerrainRendererDebugConfig.terrainGpuTimerEnabled());
@@ -166,6 +169,7 @@ public final class VulkanImprovementVideoOptions {
 		setWidgetActive(optionsList, allowCpuVisibleMeshletFallback, rules.terrainInView());
 		setWidgetActive(optionsList, gpuGeneratedMeshTaskCommands, rules.terrainInView());
 		setWidgetActive(optionsList, gpuDrivenTerrain, rules.gpuDrivenTerrain());
+		setWidgetActive(optionsList, terrainOcclusionCulling, rules.occlusionCulling());
 		setWidgetActive(optionsList, cullMeshlets, rules.taskMeshletCulling());
 		setWidgetActive(optionsList, taskStagePageCulling, rules.taskPageCulling());
 		setWidgetActive(optionsList, terrainGpuTimer, rules.gpuTimer());
@@ -179,7 +183,7 @@ public final class VulkanImprovementVideoOptions {
 	private static VulkanVideoOptionRules currentRules() {
 		VulkanCapabilitySnapshot capabilities = VulkanImprovementCapabilities.snapshot();
 		boolean meshTerrainSupported = capabilities.meshShaderExtension() && capabilities.descriptorBufferExtension();
-		return new VulkanVideoOptionRules(meshTerrainSupported, TerrainRendererDebugConfig.replaceVanillaTerrain(), TerrainRendererDebugConfig.terrainCaptureBootstrapEnabled(), TerrainRendererDebugConfig.strictMeshTerrainReplacement(), TerrainRendererDebugConfig.drawAllCapturedTerrainLayers(), TerrainRendererDebugConfig.enableGpuGeneratedMeshTaskCommands(), TerrainRendererDebugConfig.gpuDrivenTerrainEnabled(), capabilities.fragmentShadingRateExtension(), TerrainRendererDebugConfig.fragmentShadingRateEnabled(), capabilities.presentIdExtension() && capabilities.presentWaitExtension() || PresentPacingController.get().presentsThroughDxgi(), Minecraft.getInstance().options.enableVsync().get(), TerrainPerformanceMonitor.get().gpuTimerAvailable(), AcceleratedWorldgenProviderCompatibility.providerPresent());
+		return new VulkanVideoOptionRules(meshTerrainSupported, TerrainRendererDebugConfig.replaceVanillaTerrain(), TerrainRendererDebugConfig.terrainCaptureBootstrapEnabled(), TerrainRendererDebugConfig.strictMeshTerrainReplacement(), TerrainRendererDebugConfig.drawAllCapturedTerrainLayers(), TerrainRendererDebugConfig.enableGpuGeneratedMeshTaskCommands(), TerrainRendererDebugConfig.gpuDrivenTerrainEnabled(), Minecraft.getInstance().options.improvedTransparency().get(), capabilities.fragmentShadingRateExtension(), TerrainRendererDebugConfig.fragmentShadingRateEnabled(), capabilities.presentIdExtension() && capabilities.presentWaitExtension() || PresentPacingController.get().presentsThroughDxgi(), Minecraft.getInstance().options.enableVsync().get(), TerrainPerformanceMonitor.get().gpuTimerAvailable(), AcceleratedWorldgenProviderCompatibility.providerPresent());
 	}
 	
 	private static void setWidgetActive(OptionsList optionsList, OptionInstance<?> option, boolean active) {

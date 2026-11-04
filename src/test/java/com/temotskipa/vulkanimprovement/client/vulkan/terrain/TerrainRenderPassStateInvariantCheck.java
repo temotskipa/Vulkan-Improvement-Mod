@@ -16,7 +16,9 @@ public final class TerrainRenderPassStateInvariantCheck {
 	private static final Path TERRAIN_DRAW_RESULT = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/TerrainDrawResult.java");
 	private static final Path TERRAIN_TEXTURE_BINDING = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/TerrainTextureBinding.java");
 	private static final Path DESCRIPTOR_HEAP_TERRAIN_RESOURCES = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/DescriptorHeapTerrainResources.java");
-	
+	private static final Path TERRAIN_OCCLUSION = Path.of("src/client/java/com/temotskipa/vulkanimprovement/client/vulkan/terrain/TerrainOcclusion.java");
+	private static final Path SECTION_PAGES_SHADER = Path.of("src/client/resources/assets/vulkanimprovement/shaders/terrain/visible_section_pages.comp.glsl");
+
 	private TerrainRenderPassStateInvariantCheck() {
 	}
 	
@@ -32,6 +34,35 @@ public final class TerrainRenderPassStateInvariantCheck {
 		checkMeshProgramDoesNotLeaveMeshPipelineBoundOnDescriptorFailure(read(MESH_SHADER_PROGRAM));
 		checkMeshProgramUsesVanillaCameraProjection(read(MESH_SHADER_PROGRAM));
 		checkTerrainTextureBindingsExposeSamplerState(read(DESCRIPTOR_HEAP_TERRAIN_RESOURCES), read(TERRAIN_TEXTURE_BINDING));
+		checkOcclusionDrawsWhatTheFirstPhaseLeftOut(read(TERRAIN_OCCLUSION), read(MESH_TERRAIN_RENDERER), read(LEVEL_RENDERER_MIXIN), read(SECTION_PAGES_SHADER));
+	}
+
+	/**
+	 * A frame that culls by occlusion leaves the pages hidden in the frame before out of its first
+	 * phase, so its second phase must run in that frame and draw those of them that are seen. It is
+	 * armed only once the first phase is recorded, runs where Minecraft closes the opaque pass of
+	 * improved transparency, and a frame armed but never finished turns culling off.
+	 */
+	private static void checkOcclusionDrawsWhatTheFirstPhaseLeftOut(String occlusion, String meshRenderer, String levelRendererMixin, String sectionPagesShader) {
+		String beginVisibleFrame = methodBody(levelRendererMixin, "private void vim$beginVisibleFrame");
+		require(beginVisibleFrame.contains("TerrainOcclusion.get().beginFrame();") && beginVisibleFrame.indexOf("TerrainOcclusion.get().beginFrame();") < beginVisibleFrame.indexOf("MeshTerrainRenderer.get().beginVisibleFrame("), "every frame must forget the last frame's second phase before it prepares its own");
+		require(methodBody(occlusion, "public void beginFrame").contains("turnOff("), "a frame whose second phase never ran must turn occlusion culling off");
+		require(methodBody(occlusion, "boolean cullsFrame").contains("useImprovedTransparency()"), "only a frame with improved transparency has a place for the second phase");
+		String prepare = methodBody(meshRenderer, "private boolean prepareGpuDrivenFrame");
+		int firstPhase = prepare.indexOf("prepareGpuDrivenPages(");
+		int arm = prepare.indexOf("occlusion.arm(");
+		require(firstPhase >= 0 && prepare.substring(firstPhase, prepare.indexOf(')', firstPhase)).contains("occlusionFrame") && arm > firstPhase, "the second phase must be armed only once the first phase, told the frame culls, is recorded");
+		require(prepare.contains("writeGpuDrivenFrame(this.visibleSectionGrid, this.gpuDrivenLayerTasks, occlusionFrame ? 2 : 1)"), "a frame that culls must reserve the second phase's task records");
+		require(levelRendererMixin.contains("method = \"executeOit\", at = @At(\"HEAD\")") && methodBody(levelRendererMixin, "private void vim$drawOccludedTerrainSecondPhase").contains("TerrainOcclusion.get().drawSecondPhase(this.targets.main.get())"), "the second phase must run on the main target before the transparency passes read its depth");
+		String secondPhase = methodBody(occlusion, "public void drawSecondPhase");
+		int commandBuffer = secondPhase.indexOf("TerrainRenderPassAccess.frameCommandBuffer(");
+		int pyramid = secondPhase.indexOf("this.pyramid.record(");
+		int test = secondPhase.indexOf("program.prepareLatePages(");
+		int draw = secondPhase.indexOf("drawLateTerrain(");
+		require(commandBuffer >= 0 && commandBuffer < pyramid && pyramid < test && test < draw, "the second phase must build the pyramid and test the pages outside a render pass before it draws");
+		require(secondPhase.contains("if (commandBuffer == null)"), "the second phase must refuse to record inside a render pass");
+		require(methodBody(occlusion, "private void drawLateTerrain").contains("RenderPassLayouts.COLOR_DEPTH.equals(pipeline.subpass().renderPassLayout())"), "the second phase must draw only with pipelines made for the opaque pass's layout");
+		require(sectionPagesShader.contains("if (hidden || !hiddenBefore) {"), "the second phase must draw only pages that are seen and that the first phase left out");
 	}
 	
 	private static void checkRenderPassRestoresVanillaPipelineState(String renderPassMixin, String meshRenderer) {

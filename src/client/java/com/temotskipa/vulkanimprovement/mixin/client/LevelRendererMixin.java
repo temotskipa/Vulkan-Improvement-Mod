@@ -9,6 +9,7 @@ import com.temotskipa.vulkanimprovement.client.vulkan.model.TextGpuVertices;
 import com.temotskipa.vulkanimprovement.client.vulkan.runtime.VulkanImprovementRuntime;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.MeshTerrainRenderer;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.SectionMeshletStore;
+import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainOcclusion;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainPerformanceMonitor;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.TerrainRendererDebugConfig;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -18,8 +19,10 @@ import net.minecraft.client.Options;
 import net.minecraft.client.color.block.BlockColors;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.client.renderer.LevelTargetBundle;
 import net.minecraft.client.renderer.SubmitNodeStorage;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
+import net.minecraft.client.renderer.chunk.ChunkSectionsToRender;
 import net.minecraft.client.renderer.chunk.SectionMesh;
 import net.minecraft.client.renderer.chunk.SectionMesh.SectionDraw;
 import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
@@ -57,9 +60,12 @@ public final class LevelRendererMixin {
 	@Shadow
 	@Final
 	private OptionsRenderState optionsRenderState;
+	@Shadow
+	@Final
+	private LevelTargetBundle targets;
 	@Unique
 	private boolean vim$gpuDrivenFrame;
-	
+
 	/**
 	 * Minecraft collects the section layers of a frame here for both of its terrain draw paths. The
 	 * mesh path first decides how it takes the frame's terrain, and in a GPU-driven frame has the
@@ -70,6 +76,7 @@ public final class LevelRendererMixin {
 		boolean gpuDriven = false;
 		if (VulkanImprovementRuntime.isModAvailable()) {
 			TerrainPerformanceMonitor.get().beginFrame();
+			TerrainOcclusion.get().beginFrame();
 			if (TerrainRendererDebugConfig.terrainCaptureEnabled()) {
 				gpuDriven = MeshTerrainRenderer.get().beginVisibleFrame(this.levelRenderState.renderWireframeTerrain, Util.toMillis(this.optionsRenderState.chunkSectionFadeInTime), this.visibleSections, this.vim$collectedSections);
 			}
@@ -124,6 +131,18 @@ public final class LevelRendererMixin {
 		}
 	}
 	
+	/**
+	 * With improved transparency Minecraft closes the render pass of its opaque terrain and
+	 * features here, before its transparency passes read the depth. A frame that culls terrain by
+	 * occlusion draws the terrain its first phase left out and turns out to be seen.
+	 */
+	@Inject(method = "executeOit", at = @At("HEAD"))
+	private void vim$drawOccludedTerrainSecondPhase(ChunkSectionsToRender chunkSectionsToRender, PreparedFrame featureFrame, CallbackInfo ci) {
+		if (VulkanImprovementRuntime.isModAvailable()) {
+			TerrainOcclusion.get().drawSecondPhase(this.targets.main.get());
+		}
+	}
+
 	/**
 	 * The GPU model path takes model submits only while Minecraft prepares the level's features,
 	 * which it does before the frame graph opens a render pass.

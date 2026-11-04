@@ -17,7 +17,8 @@ import java.util.*;
  * together with the time Minecraft's render thread spent on the previous frame without waiting for
  * the GPU: when that is well below the time between frames, the GPU sets the pace.
  * With {@code vim.terrainGpuTimer} on, GPU timestamps bracket the work the mod prepares before
- * Minecraft's render pass and each group of terrain layers Minecraft draws inside it. They are
+ * Minecraft's render pass, each group of terrain layers Minecraft draws inside it, and the second
+ * phase of occlusion culling ({@link TerrainOcclusion}) after it. They are
  * written the way Minecraft writes its own, through its command encoder into a query pool of
  * Minecraft's, which resets a query from the host as it records the write. A frame's timestamps
  * are read back four frames later, when the GPU has long finished them, so nothing waits for the
@@ -31,14 +32,20 @@ public final class TerrainPerformanceMonitor {
 	private static final int PREPARE_END = 1;
 	private static final int FIRST_GROUP_QUERY = 2;
 	private static final int GROUPS = ChunkSectionLayerGroup.values().length;
-	// Created after the constants above: the arrays an instance allocates are sized by GROUPS.
+	// The second phase of occlusion culling follows the groups' queries: its depth pyramid, then
+	// its test and draw.
+	private static final int PYRAMID_QUERY = FIRST_GROUP_QUERY + GROUPS * 2;
+	private static final int OCCLUSION_QUERY = PYRAMID_QUERY + 2;
+	// Timed spans: the mod's preparation, each group, the depth pyramid, and the rest of the second phase.
+	private static final int SPANS = GROUPS + 3;
+	// Created after the constants above: the arrays an instance allocates are sized by SPANS.
 	private static final TerrainPerformanceMonitor INSTANCE = new TerrainPerformanceMonitor();
-	
+
 	private final long[] frameIntervals = new long[FRAME_SAMPLES];
 	private final long[] cpuFrameTimes = new long[FRAME_SAMPLES];
 	private final long[] slotWritten = new long[SLOTS];
-	private final long[] gpuNanos = new long[1 + GROUPS];
-	private final long[] gpuSamples = new long[1 + GROUPS];
+	private final long[] gpuNanos = new long[SPANS];
+	private final long[] gpuSamples = new long[SPANS];
 	private int frameCount;
 	private long lastFrameNanos;
 	private @Nullable VulkanDevice device;
@@ -123,7 +130,7 @@ public final class TerrainPerformanceMonitor {
 		OptionalLong[] results = pool.getValues(readSlot * QUERIES_PER_SLOT, QUERIES_PER_SLOT);
 		long frameNanos = 0L;
 		boolean any = false;
-		for (int pair = 0; pair <= GROUPS; pair++) {
+		for (int pair = 0; pair < SPANS; pair++) {
 			int start = pair * 2;
 			if ((written & (3L << start)) != 3L << start) {
 				continue;
@@ -181,6 +188,26 @@ public final class TerrainPerformanceMonitor {
 			write(FIRST_GROUP_QUERY + group.ordinal() * 2 + (end ? 1 : 0));
 		}
 	}
+
+	/**
+	 * Called outside any render pass where the second phase of occlusion culling starts building
+	 * its depth pyramid, and where it is done.
+	 */
+	synchronized void markPyramid(boolean end) {
+		if (this.slotOpen) {
+			write(PYRAMID_QUERY + (end ? 1 : 0));
+		}
+	}
+
+	/**
+	 * Called outside any render pass where the second phase of occlusion culling starts its test,
+	 * and after the render pass it draws in where it ends.
+	 */
+	synchronized void markOcclusion(boolean end) {
+		if (this.slotOpen) {
+			write(OCCLUSION_QUERY + (end ? 1 : 0));
+		}
+	}
 	
 	public synchronized void reset() {
 		this.frameCount = 0;
@@ -217,6 +244,8 @@ public final class TerrainPerformanceMonitor {
 		for (ChunkSectionLayerGroup group : ChunkSectionLayerGroup.values()) {
 			text.append(", gpu").append(group.name().charAt(0)).append(group.name().substring(1).toLowerCase(Locale.ROOT)).append("Ms=").append(meanMs(1 + group.ordinal()));
 		}
+		text.append(", gpuPyramidMs=").append(meanMs(1 + GROUPS));
+		text.append(", gpuOcclusionMs=").append(meanMs(2 + GROUPS));
 		text.append(", gpuTerrainMs=").append(this.gpuFrames == 0L ? 0.0 : this.gpuFrameNanos / (double) this.gpuFrames / 1.0e6);
 		return text.toString();
 	}

@@ -5,7 +5,7 @@ package com.temotskipa.vulkanimprovement.client.vulkan.runtime;
  * the device and the install have. One that cannot is greyed out, as Minecraft greys out its
  * anisotropy slider: the path that reads it does not run as things stand.
  */
-record VulkanVideoOptionRules(boolean meshTerrainSupported, boolean meshTerrainOn, boolean captureBootstrapOn, boolean cancelVanillaTerrainOn, boolean fullCapturedTerrainOn, boolean gpuTaskCommandsOn, boolean gpuDrivenTerrainOn, boolean shadingRateSupported, boolean shadingRateOn, boolean presentPacingSupported, boolean vsyncOn, boolean gpuTimerSupported, boolean worldgenProviderPresent) {
+record VulkanVideoOptionRules(boolean meshTerrainSupported, boolean meshTerrainOn, boolean captureBootstrapOn, boolean cancelVanillaTerrainOn, boolean fullCapturedTerrainOn, boolean gpuTaskCommandsOn, boolean gpuDrivenTerrainOn, boolean improvedTransparencyOn, boolean shadingRateSupported, boolean shadingRateOn, boolean presentPacingSupported, boolean vsyncOn, boolean gpuTimerSupported, boolean worldgenProviderPresent) {
 	boolean meshTerrain() {
 		return this.meshTerrainSupported;
 	}
@@ -40,6 +40,14 @@ record VulkanVideoOptionRules(boolean meshTerrainSupported, boolean meshTerrainO
 
 	boolean gpuDrivenTerrain() {
 		return terrainInView() && this.cancelVanillaTerrainOn;
+	}
+
+	/**
+	 * Occlusion culling splits GPU-driven terrain in two around where Minecraft closes its opaque
+	 * pass, which it does apart from everything else only with improved transparency.
+	 */
+	boolean occlusionCulling() {
+		return gpuDrivenTerrain() && this.gpuDrivenTerrainOn && this.improvedTransparencyOn;
 	}
 
 	/**

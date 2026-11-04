@@ -338,4 +338,6 @@ cost nothing, so neither the pass's work nor the switch to compute is it.
   started with `--renderDebugLabels` so its passes are labelled) needs its
   Vulkan layer registered in the system registry, which takes administrator
   rights.
-- Occlusion culling on the GPU (step 5).
+- Occlusion culling on the GPU (step 5): done for GPU-driven frames with
+  improved transparency, as step 6 of `gpu-driven-pipeline.md` (Progress,
+  2026-11-04).

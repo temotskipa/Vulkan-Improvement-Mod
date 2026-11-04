@@ -87,6 +87,10 @@ public final class VulkanFeatureRequirements {
 		hardExtensions.add(KHRMaintenance6.VK_KHR_MAINTENANCE_6_EXTENSION_NAME);
 		hardExtensions.add(KHRPresentId.VK_KHR_PRESENT_ID_EXTENSION_NAME);
 		hardExtensions.add(KHRPresentWait.VK_KHR_PRESENT_WAIT_EXTENSION_NAME);
+		// The depth pyramid reads Minecraft's depth image through a pushed descriptor. Vulkan 1.4
+		// has push descriptors as a feature of VkPhysicalDeviceVulkan14Features, which may not be
+		// chained with the maintenance and local-read structs above; the extension needs none.
+		hardExtensions.add(KHRPushDescriptor.VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME);
 		return hardExtensions;
 	}
 	

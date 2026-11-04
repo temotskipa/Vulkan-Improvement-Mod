@@ -237,6 +237,18 @@ renderer code does not drift back into a catch-all root package.
   Minecraft shows the mesh, so a section has the pages of one mesh only.
   A frame falls back to the listed path below when a layer has more tasks than
   one draw may launch, the box is too large, or the visible list has no room.
+- With improved transparency a GPU-driven frame is also culled by occlusion
+  (`TerrainOcclusion`, `vim.terrainOcclusionCulling`), in two phases. The pass
+  above leaves out the pages its page-table record marks as hidden in the
+  frame before. Where Minecraft closes its opaque pass, at the head of
+  `LevelRenderer.executeOit`, `depth_pyramid.comp.glsl` builds a depth
+  pyramid from the depth image Minecraft wrote, read through a pushed
+  descriptor, and a fourth step of the same pass tests every page in view
+  against it, marks each for the next frame, and writes the draws of the pages
+  seen now that were left out. A render pass of the mod's on Minecraft's main
+  target draws them, with the pipeline state the first phase drew with, before
+  the transparency passes read the depth. The CPU never reads a page's result;
+  it reads only counters of how many pages were tested, hidden and drawn late.
 - Otherwise a frame uploads one short list per layer: the page slot and fade-in of every
   section layer Minecraft collected for it, in Minecraft's order, nearest
   first. By default (`vim.taskStagePageCulling`) that list is the draw: one

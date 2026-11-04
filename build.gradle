@@ -464,6 +464,13 @@ tasks.register("checkTerrainLayoutManifest") {
                                  "SECTION_PAGES_WORKGROUP_SIZE",
                                  "SECTION_PAGES_LAYERS",
                                  "SECTION_PAGES_DISTANCES",
+                                 "DEPTH_PYRAMID_PUSH_CONSTANT_BYTES",
+                                 "DEPTH_PYRAMID_TILE",
+                                 "DEPTH_PYRAMID_LEVELS_PER_DISPATCH",
+                                 "VULKAN_1_4_MIN_PUSH_CONSTANT_BYTES",
+                                 "DEBUG_COUNTER_BYTES",
+                                 "VISIBILITY_COUNTER_OFFSET",
+                                 "OCCLUSION_COUNTER_OFFSET",
                                  "BLOCK_VERTEX_STRIDE",
                                  "INDEXED_TRIANGLES_FLAG",
                                  "NORMALIZED_INDEX_STRIDE"]
@@ -478,6 +485,7 @@ tasks.register("checkTerrainLayoutManifest") {
         def fragmentShader = Files.readString(shaderDir.resolve("mesh_terrain.frag.glsl"))
         def commandShader = Files.readString(shaderDir.resolve("mesh_task_command.comp.glsl"))
         def sectionPagesShader = Files.readString(shaderDir.resolve("visible_section_pages.comp.glsl"))
+        def depthPyramidShader = Files.readString(shaderDir.resolve("depth_pyramid.comp.glsl"))
         def normalize = { value -> value.replaceAll(/\s+/, " ").trim() }
         def requireText = { label, text, expected ->
             if (!text.contains(expected)) {
@@ -567,7 +575,7 @@ tasks.register("checkTerrainLayoutManifest") {
         requireText("mesh-task command shader", commandShader, "ResidentPage page = PageTable(pc.pageTable).pages[visible.pageIndex & ((1u << TASK_RECORD_PAGE_BITS) - 1u)];")
         requireText("task terrain shader", taskShader, "EmitMeshTasksEXT(kept, 1, 1);")
         requireText("mesh terrain shader", meshShader, "meshlets.headers[taskPayload.meshlets[gl_WorkGroupID.x]]")
-        def residentPageStruct = "struct ResidentPage { uint64_t sectionNode; int sectionX; int sectionY; int sectionZ; int layer; int firstMeshlet; int meshletCount; int estimatedVertices; int estimatedMeshlets; int vertexBytes; int indexBytes; uint64_t vertexByteOffset; uint64_t indexByteOffset; int fadeStart; int customIndexBuffer; int reserved1; int reserved2; };"
+        def residentPageStruct = "struct ResidentPage { uint64_t sectionNode; int sectionX; int sectionY; int sectionZ; int layer; int firstMeshlet; int meshletCount; int estimatedVertices; int estimatedMeshlets; int vertexBytes; int indexBytes; uint64_t vertexByteOffset; uint64_t indexByteOffset; int fadeStart; int customIndexBuffer; int occluded; int reserved2; };"
         requireNormalizedText("task terrain shader", taskShader, residentPageStruct)
         requireNormalizedText("mesh-task command shader", commandShader, residentPageStruct)
         requireNormalizedText("visible section pages shader", sectionPagesShader, residentPageStruct)
@@ -580,9 +588,29 @@ tasks.register("checkTerrainLayoutManifest") {
         requireNormalizedText("visible section pages shader", sectionPagesShader, "struct VisibleMeshletRecord { uint meshletIndex; float visibility; };")
         // The counters come first in a frame's data, as SECTION_PAGES_COUNTER_RECORDS says.
         requireNormalizedText("visible section pages shader", sectionPagesShader, "buffer FrameData { uint distanceTasks[LAYERS * DISTANCES]; uint distanceCursors[LAYERS * DISTANCES]; uint sectionsInView[]; };")
-        requireNormalizedText("visible section pages shader", sectionPagesShader, "layout(push_constant, scalar) uniform SectionPagePushConstants { uint64_t pageTable; uint64_t records; uint64_t meshTaskCommands; uint frameRecord; uint pass; ivec4 boxMin; ivec4 boxSize; ivec4 cameraSection; uvec4 layerOutput; uvec4 layerCommand; } pc;")
-        if (constants.SECTION_PAGES_PUSH_CONSTANT_BYTES != Long.BYTES * 3 + Integer.BYTES * 2 + Integer.BYTES * 4 * 5) {
+        requireNormalizedText("visible section pages shader", sectionPagesShader, "layout(push_constant, scalar) uniform SectionPagePushConstants { uint64_t pageTable; uint64_t records; uint64_t meshTaskCommands; uint frameRecord; uint pass; ivec4 boxMin; ivec4 boxSize; ivec4 cameraSection; uvec4 layerOutput; uvec4 layerCommand; uint64_t depthPyramid; uint64_t occlusionCounters; uvec4 pyramid; ivec4 cameraBlock; vec4 cameraOffset; vec4 cameraRight; vec4 cameraUp; vec4 cameraForward; vec4 projection; } pc;")
+        if (constants.SECTION_PAGES_PUSH_CONSTANT_BYTES != Long.BYTES * 5 + Integer.BYTES * 2 + Integer.BYTES * 4 * 12) {
             throw new GradleException("TerrainGpuLayout.SECTION_PAGES_PUSH_CONSTANT_BYTES must cover the GPU-driven pass's push constants.")
+        }
+        if (constants.SECTION_PAGES_PUSH_CONSTANT_BYTES > constants.VULKAN_1_4_MIN_PUSH_CONSTANT_BYTES) {
+            throw new GradleException("The GPU-driven pass's push constants must fit what every Vulkan 1.4 device accepts.")
+        }
+        requireText("visible section pages shader", sectionPagesShader, "table.pages[slot].occluded = hidden ? 1 : 0;")
+        requireText("visible section pages shader", sectionPagesShader, "if (pc.pyramid.w != 0u && table.pages[slot].occluded != 0) {")
+        // The occlusion counters follow the visibility pass's three in the debug counters.
+        if (constants.OCCLUSION_COUNTER_OFFSET < constants.VISIBILITY_COUNTER_OFFSET + Integer.BYTES * 3 || constants.OCCLUSION_COUNTER_OFFSET + Integer.BYTES * 3 > constants.DEBUG_COUNTER_BYTES) {
+            throw new GradleException("TerrainGpuLayout.OCCLUSION_COUNTER_OFFSET must leave the visibility counters alone and fit the debug counters.")
+        }
+        // A workgroup of 16 by 16 works out a tile's first level two by two texels per invocation.
+        requireText("depth pyramid shader", depthPyramidShader, "layout(local_size_x = ${constants.DEPTH_PYRAMID_TILE.intdiv(4)}, local_size_y = ${constants.DEPTH_PYRAMID_TILE.intdiv(4)}) in;")
+        requireText("depth pyramid shader", depthPyramidShader, "const uint TILE = ${constants.DEPTH_PYRAMID_TILE}u;")
+        requireText("depth pyramid shader", depthPyramidShader, "const uint LEVELS_PER_DISPATCH = ${constants.DEPTH_PYRAMID_LEVELS_PER_DISPATCH}u;")
+        if (1 << constants.DEPTH_PYRAMID_LEVELS_PER_DISPATCH != constants.DEPTH_PYRAMID_TILE) {
+            throw new GradleException("A depth pyramid dispatch must bring its tile down to one texel.")
+        }
+        requireNormalizedText("depth pyramid shader", depthPyramidShader, "layout(push_constant, scalar) uniform DepthPyramidPushConstants { uint64_t pyramid; uvec2 imageSize; uint sourceLevel; uint levels; } pc;")
+        if (constants.DEPTH_PYRAMID_PUSH_CONSTANT_BYTES != Long.BYTES + Integer.BYTES * 4) {
+            throw new GradleException("TerrainGpuLayout.DEPTH_PYRAMID_PUSH_CONSTANT_BYTES must cover the depth pyramid pass's push constants.")
         }
         if (constants.SECTION_METADATA_STRIDE != Long.BYTES * 3 + Integer.BYTES * 14) {
             throw new GradleException("TerrainGpuLayout.SECTION_METADATA_STRIDE must match the ResidentPage record the shaders read.")

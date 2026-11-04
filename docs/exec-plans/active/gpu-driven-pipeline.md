@@ -442,6 +442,51 @@ the first frame through a reload, with the pass's SPIR-V from the Vulkan SDK.
 
 Step 5 ends here. Block models stay on Minecraft's path: 400 of them cost 0.13 ms.
 
+2026-11-04, step 6 for terrain (`vim.terrainOcclusionCulling`, on by default;
+Video Settings: Terrain Occlusion Culling). GPU-driven terrain is culled in two
+phases when improved transparency is on. The first phase, in Minecraft's opaque
+pass, draws only the pages that were not hidden in the frame before; each page
+keeps that in its page-table record, which the GPU alone writes. Minecraft then
+closes the pass (`LevelRenderer.executeOit`, at its head): a depth pyramid is
+built from the depth it wrote, every page in view is tested against it, and the
+pages seen now that the first phase left out are drawn in a render pass of the
+mod's on the same target, before the transparency passes read the depth. A frame
+whose second phase never ran turns culling off until the renderer is configured
+again; none did.
+
+The pyramid is read straight from Minecraft's depth image, pushed as a
+descriptor: one dispatch writes six levels per 64 by 64 tile through shared
+memory, and one more finishes them. The first version copied the depth into a
+buffer and wrote one level per dispatch, each behind a barrier: 0.19 ms of GPU
+time for the second phase, more than the terrain it hid. Now the pyramid costs
+0.027 ms and the test and the draw 0.009 ms at 1920x1080.
+
+The same session, ground, overlook and horizon, strict mesh terrain, improved
+transparency, culling off and on in turn three times each, medians; terrain GPU
+time from `vim.terrainGpuTimer`, second phase included:
+
+| Scene, render distance | Pages hidden | FPS off | FPS on | Terrain GPU off / on |
+|------------------------|--------------|---------|--------|----------------------|
+| ground, 16             | 47 %         | 2051    | 2121   | 0.216 / 0.200 ms     |
+| overlook, 16           | 5 %          | 1587    | 1472   | 0.274 / 0.314 ms     |
+| horizon, 16            | 6 %          | 1799    | 1651   | 0.173 / 0.215 ms     |
+| ground, 32             | 72 %         | 1072    | 1323   | 0.555 / 0.266 ms     |
+| overlook, 32           | 6 %          | 823     | 814    | 0.703 / 0.728 ms     |
+| horizon, 32            | 10 %         | 727     | 724    | 0.474 / 0.483 ms     |
+
+Where hills hide terrain the GPU draws half of it; where little is hidden the
+second phase costs 0.04 ms, which shows only above 1,000 FPS. Forest hides
+little: a leaf's holes let the sky's depth through, and the pyramid keeps the
+farthest depth.
+
+Parity: frames of a still scene with culling off and on are identical, and so is
+the first frame at the overlook after settling on the ground, where 256 pages the
+ground hid were drawn by the second phase; the few pixels that change by one
+level between any two shots there change the same way with culling off. The
+validation layer, with synchronization validation on, reports nothing from the
+mod over the same runs; it does not see what shaders reach through device
+addresses, which is how the pyramid and the pages are read.
+
 ## Decisions
 
 - The mod extends Minecraft's renderer instead of running its own beside it
@@ -469,6 +514,15 @@ Step 5 ends here. Block models stay on Minecraft's path: 400 of them cost 0.13 m
   vertex-only built-in) keeps the vertex pass. Mesh pipelines are built only
   when both flags are on as Minecraft builds its pipelines, so Minecraft's
   pipelines are untouched otherwise.
+- Occlusion culling needs a point between opaque terrain and everything that
+  reads its depth. Minecraft has one only with improved transparency, where it
+  closes the opaque pass before the transparency passes; without it terrain and
+  translucency share one pass, and the mod does not build for that mode.
+- The depth pyramid reads Minecraft's depth image through a pushed descriptor,
+  so `VK_KHR_push_descriptor` joins the mod's required extensions. Vulkan 1.4
+  makes push descriptors a feature of `VkPhysicalDeviceVulkan14Features`, which
+  may not be chained beside the maintenance 5 and 6 and local-read structs the
+  mod's feature set already asks for; the extension needs no feature struct.
 - A hook that must run when a Minecraft method ends injects at every return
   (`@At("RETURN")`), not at the last (`@At("TAIL")`), unless the method's
   bytecode has one return: the decompiled source can hide early returns, as
@@ -477,6 +531,10 @@ Step 5 ends here. Block models stay on Minecraft's path: 400 of them cost 0.13 m
 ## Follow-Up
 
 - A task stage for step 3, to cull models outside the view on the GPU.
+- Step 6 for entities and block entities: test their boxes against the terrain
+  pyramid before Minecraft extracts them.
+- Skipping the second phase while little is hidden, from the GPU's counts of
+  hidden pages, which the CPU reads a few frames late.
 - `ItemStackRenderState.getModelBoundingBox` recomputes every item's box every
   frame from the same extents and transform: 29 % of the render thread with 900
   dropped items once the vertices are on the GPU. It could be kept per model.

@@ -58,7 +58,7 @@ struct ResidentPage {
     uint64_t indexByteOffset;
     int fadeStart;
     int customIndexBuffer;
-    int reserved1;
+    int occluded;
     int reserved2;
 };
 

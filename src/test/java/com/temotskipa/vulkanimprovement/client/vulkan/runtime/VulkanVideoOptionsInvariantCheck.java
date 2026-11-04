@@ -93,6 +93,8 @@ public final class VulkanVideoOptionsInvariantCheck {
 		require(!full.terrainInView() && !full.gpuDrivenTerrain() && !full.taskMeshletCulling() && !full.taskPageCulling(), "Full Captured Terrain must grey out whatever finds terrain in view");
 		VulkanVideoOptionRules gpuDriven = rules("meshTerrainSupported", "meshTerrainOn", "cancelVanillaTerrainOn", "gpuDrivenTerrainOn");
 		require(gpuDriven.gpuDrivenTerrain() && gpuDriven.taskMeshletCulling() && !gpuDriven.taskPageCulling(), "GPU-driven terrain draws pages without the listed path");
+		require(!gpuDriven.occlusionCulling() && rules("meshTerrainSupported", "meshTerrainOn", "cancelVanillaTerrainOn", "gpuDrivenTerrainOn", "improvedTransparencyOn").occlusionCulling(), "Terrain Occlusion Culling must need improved transparency");
+		require(!rules("meshTerrainSupported", "meshTerrainOn", "cancelVanillaTerrainOn", "improvedTransparencyOn").occlusionCulling(), "Terrain Occlusion Culling must need GPU-driven terrain");
 		require(!rules("shadingRateSupported", "shadingRateOn").shadingRate() && rules("meshTerrainSupported", "meshTerrainOn", "shadingRateSupported").shadingRate(), "Terrain VRS must need mesh terrain and the device");
 		require(!rules("meshTerrainSupported", "meshTerrainOn", "shadingRateSupported").shadingRateSize() && rules("meshTerrainSupported", "meshTerrainOn", "shadingRateSupported", "shadingRateOn").shadingRateSize(), "Terrain VRS Size must need Terrain VRS");
 		require(!rules("presentPacingSupported").presentPacing() && !rules("vsyncOn").presentPacing() && rules("presentPacingSupported", "vsyncOn").presentPacing(), "Present Pacing must need the device and VSync");
@@ -100,7 +102,7 @@ public final class VulkanVideoOptionsInvariantCheck {
 	
 	private static VulkanVideoOptionRules rules(String... on) {
 		Set<String> set = Set.of(on);
-		return new VulkanVideoOptionRules(set.contains("meshTerrainSupported"), set.contains("meshTerrainOn"), set.contains("captureBootstrapOn"), set.contains("cancelVanillaTerrainOn"), set.contains("fullCapturedTerrainOn"), set.contains("gpuTaskCommandsOn"), set.contains("gpuDrivenTerrainOn"), set.contains("shadingRateSupported"), set.contains("shadingRateOn"), set.contains("presentPacingSupported"), set.contains("vsyncOn"), set.contains("gpuTimerSupported"), set.contains("worldgenProviderPresent"));
+		return new VulkanVideoOptionRules(set.contains("meshTerrainSupported"), set.contains("meshTerrainOn"), set.contains("captureBootstrapOn"), set.contains("cancelVanillaTerrainOn"), set.contains("fullCapturedTerrainOn"), set.contains("gpuTaskCommandsOn"), set.contains("gpuDrivenTerrainOn"), set.contains("improvedTransparencyOn"), set.contains("shadingRateSupported"), set.contains("shadingRateOn"), set.contains("presentPacingSupported"), set.contains("vsyncOn"), set.contains("gpuTimerSupported"), set.contains("worldgenProviderPresent"));
 	}
 	
 	private static void checkRuntimeKeepsOptionsVisibleForActiveVulkan(String source) {

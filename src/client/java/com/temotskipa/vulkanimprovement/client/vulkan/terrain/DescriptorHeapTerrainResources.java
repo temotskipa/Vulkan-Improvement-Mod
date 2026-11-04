@@ -512,6 +512,26 @@ public final class DescriptorHeapTerrainResources {
 		long base = TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET;
 		return new long[]{Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, base)), Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, base + Integer.BYTES)), Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, base + 2 * Integer.BYTES))};
 	}
+
+	public long terrainOcclusionCounterAddress() {
+		DeviceBuffer buffer = this.resources.debugCounters();
+		return buffer == null ? 0L : buffer.deviceAddress() + TerrainGpuLayout.OCCLUSION_COUNTER_OFFSET;
+	}
+
+	/**
+	 * How many pages the occlusion test has tested, found hidden, and drawn in the second phase,
+	 * since the buffers were created. The GPU may still be counting the last frames.
+	 */
+	public synchronized long[] occlusionCounters() {
+		DeviceBuffer buffer = this.resources.debugCounters();
+		if (buffer == null) {
+			return new long[3];
+		}
+		buffer.invalidate();
+		MemorySegment counters = buffer.mapped();
+		long base = TerrainGpuLayout.OCCLUSION_COUNTER_OFFSET;
+		return new long[]{Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, base)), Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, base + Integer.BYTES)), Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, base + 2 * Integer.BYTES))};
+	}
 	
 	/**
 	 * Uploads the pages a layer may draw this frame, one record for each of a page's tasks, and
@@ -609,8 +629,11 @@ public final class DescriptorHeapTerrainResources {
 	 * with, cleared, and behind them the sections in view, one bit each. Behind those it reserves
 	 * room for each layer's task records, as many as all the layer's pages would launch, which the
 	 * pass writes. A frame uploads a few kilobytes this way, however much terrain is in view.
+	 *
+	 * @param recordSets how many times over the room for the task records is reserved: twice for a
+	 *                   frame that culls by occlusion, whose second phase writes records of its own
 	 */
-	synchronized TerrainGpuDrivenFrame writeGpuDrivenFrame(VisibleSectionGrid sections, int[] layerTasks) {
+	synchronized TerrainGpuDrivenFrame writeGpuDrivenFrame(VisibleSectionGrid sections, int[] layerTasks, int recordSets) {
 		DeviceBuffer ring = this.resources.visibleMeshlets();
 		if (ring == null || ring.deviceAddress() == 0L || !ring.hostVisible()) {
 			return TerrainGpuDrivenFrame.unavailable();
@@ -618,7 +641,7 @@ public final class DescriptorHeapTerrainResources {
 		int written = TerrainGpuLayout.SECTION_PAGES_COUNTER_RECORDS + sections.wordCount();
 		long count = written;
 		for (int tasks : layerTasks) {
-			count += tasks;
+			count += (long) tasks * recordSets;
 		}
 		if (count > Integer.MAX_VALUE) {
 			return TerrainGpuDrivenFrame.unavailable();

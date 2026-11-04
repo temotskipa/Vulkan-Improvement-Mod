@@ -169,12 +169,16 @@ public final class MeshTerrainRenderer {
 	 * Has the GPU write the draws of the frame's opaque terrain from its own page table, given the
 	 * sections Minecraft found in view as a grid of bits, and lists in {@code collected} the
 	 * sections Minecraft still has to collect. When this returns false the GPU draws nothing of
-	 * the kind and Minecraft collects every section as usual.
+	 * the kind and Minecraft collects every section as usual. A frame that culls by occlusion
+	 * ({@link TerrainOcclusion}) gets a second set of task records and commands for its second
+	 * phase, as large as the first.
 	 */
 	private boolean prepareGpuDrivenFrame(DescriptorHeapTerrainResources terrainResources, int fadeMillis, ObjectArrayList<RenderSection> visibleSections, ObjectArrayList<RenderSection> collected) {
 		if (!TerrainRendererDebugConfig.gpuDrivenTerrainEnabled()) {
 			return false;
 		}
+		TerrainOcclusion occlusion = TerrainOcclusion.get();
+		boolean occlusionFrame = occlusion.cullsFrame();
 		ChunkSectionLayer[] layers = ChunkSectionLayer.values();
 		int maxTasks = VulkanImprovementCapabilities.maxTaskWorkGroups();
 		int drawnTasks = 0;
@@ -195,13 +199,15 @@ public final class MeshTerrainRenderer {
 			collected.clear();
 			return false;
 		}
-		TerrainGpuDrivenFrame frame = terrainResources.writeGpuDrivenFrame(this.visibleSectionGrid, this.gpuDrivenLayerTasks);
+		TerrainGpuDrivenFrame frame = terrainResources.writeGpuDrivenFrame(this.visibleSectionGrid, this.gpuDrivenLayerTasks, occlusionFrame ? 2 : 1);
 		if (!frame.ready()) {
 			return refuseGpuDrivenFrame(collected);
 		}
 		Arrays.fill(this.gpuDrivenLayerCommands, -1);
 		Arrays.fill(this.gpuDrivenDispatches, null);
 		int output = frame.firstTaskRecord();
+		// The second phase's records follow all of the first phase's.
+		int lateOutput = output + drawnTasks;
 		for (ChunkSectionLayer layer : layers) {
 			int ordinal = layer.ordinal();
 			int tasks = this.gpuDrivenLayerTasks[ordinal];
@@ -217,9 +223,22 @@ public final class MeshTerrainRenderer {
 			this.gpuDrivenLayerCommands[ordinal] = command.commandIndex();
 			this.gpuDrivenDispatches[ordinal] = dispatch;
 			output += tasks;
+			if (occlusionFrame) {
+				TerrainMeshTaskCommandUpload lateCommand = terrainResources.reserveMeshTaskCommand(tasks);
+				TerrainMeshTaskDispatch lateDispatch = TerrainMeshTaskDispatch.gpuDrivenPages(frame, lateOutput, tasks, ordinal).withIndirectCommand(lateCommand);
+				if (!lateDispatch.ready() || !lateDispatch.usesIndirectCommand()) {
+					return refuseGpuDrivenFrame(collected);
+				}
+				occlusion.prepareLayer(ordinal, lateOutput, lateCommand.commandIndex(), lateDispatch);
+				lateOutput += tasks;
+			}
 		}
-		if (!MeshShaderTerrainProgram.get().prepareGpuDrivenPages(frame, this.visibleSectionGrid, SectionMeshletStore.pageSlotHighWater(), this.gpuDrivenLayerOutputs, this.gpuDrivenLayerCommands, fadeMillis)) {
+		int slotCount = SectionMeshletStore.pageSlotHighWater();
+		if (!MeshShaderTerrainProgram.get().prepareGpuDrivenPages(frame, this.visibleSectionGrid, slotCount, this.gpuDrivenLayerOutputs, this.gpuDrivenLayerCommands, fadeMillis, occlusionFrame)) {
 			return refuseGpuDrivenFrame(collected);
+		}
+		if (occlusionFrame) {
+			occlusion.arm(frame, this.visibleSectionGrid, slotCount, fadeMillis);
 		}
 		for (TerrainMeshTaskDispatch dispatch : this.gpuDrivenDispatches) {
 			if (dispatch != null) {
@@ -586,6 +605,9 @@ public final class MeshTerrainRenderer {
 			if (drawDispatch.truncated()) {
 				this.meshReplacementTaskTruncations.increment();
 			}
+			if (drawDispatch.source() == TerrainMeshTaskSource.GPU_DRIVEN_PAGES) {
+				TerrainOcclusion.get().drewFirstPhase(drawDispatch.layerOrdinal(), vanillaPipeline, TerrainRenderContext.improvedFog());
+			}
 			int layerOrdinal = drawDispatch.layerOrdinal();
 			if (layerOrdinal < 0) {
 				this.meshReplacementWholeSetDrawCalls.increment();
@@ -612,6 +634,7 @@ public final class MeshTerrainRenderer {
 		try {
 			DescriptorHeapTerrainResources.get().configure(device, capabilities);
 			MeshShaderTerrainProgram.get().configure(device);
+			TerrainOcclusion.get().reset();
 			TerrainPerformanceMonitor.get().configure(device);
 			RendererCoreServices.get().configure(capabilities);
 			RendererDomainObserver.observeRendererReady();
@@ -625,6 +648,7 @@ public final class MeshTerrainRenderer {
 	public void shutdownNow() {
 		RendererCoreServices.get().beginShutdown("immediate renderer shutdown requested");
 		TerrainPerformanceMonitor.get().shutdown();
+		TerrainOcclusion.get().shutdownNow();
 		MeshShaderTerrainProgram.get().shutdown();
 		DescriptorHeapTerrainResources.get().shutdownNow();
 		RendererCoreServices.get().completeShutdown("renderer immediate shutdown complete");

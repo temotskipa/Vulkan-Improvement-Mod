@@ -35,6 +35,7 @@ public final class TerrainRendererDebugConfig {
 	private static volatile boolean cullMeshlets = booleanProperty("vim.cullMeshlets", true);
 	private static volatile boolean taskStagePageCulling = booleanProperty("vim.taskStagePageCulling", true);
 	private static volatile boolean gpuDrivenTerrain = booleanProperty("vim.gpuDrivenTerrain", true);
+	private static volatile boolean terrainOcclusionCulling = booleanProperty("vim.terrainOcclusionCulling", true);
 	private static volatile boolean gpuModelVertices = booleanProperty("vim.gpuModelVertices", true);
 	private static volatile boolean keepFramebuffers = booleanProperty("vim.keepFramebuffers", true);
 	private static volatile boolean barriersByResource = booleanProperty("vim.barriersByResource", true);
@@ -193,6 +194,11 @@ public final class TerrainRendererDebugConfig {
 		setBooleanProperty("vim.gpuDrivenTerrain", enabled);
 	}
 	
+	public static void setTerrainOcclusionCullingEnabled(boolean enabled) {
+		terrainOcclusionCulling = enabled;
+		setBooleanProperty("vim.terrainOcclusionCulling", enabled);
+	}
+
 	public static void setGpuModelVerticesEnabled(boolean enabled) {
 		gpuModelVertices = enabled;
 		setBooleanProperty("vim.gpuModelVertices", enabled);
@@ -244,7 +250,7 @@ public final class TerrainRendererDebugConfig {
 	}
 	
 	public static String describe() {
-		return "rendererMode=" + rendererMode() + ", requireVulkanBackend=" + requireVulkanBackend() + ", enableTerrainCaptureBootstrap=" + terrainCaptureBootstrapEnabled() + ", enableMeshTranslucentTerrain=" + meshTranslucentTerrainEnabled() + ", enableMeshletFrustumCulling=" + meshletFrustumCullingEnabled() + ", strictMeshTerrainReplacement=" + strictMeshTerrainReplacement() + ", enableVanillaChunkVisibilityFade=" + vanillaChunkVisibilityFadeEnabled() + ", drawAllCapturedTerrainLayers=" + drawAllCapturedTerrainLayers() + ", terrainGpuTimer=" + terrainGpuTimerEnabled() + ", cullMeshlets=" + cullMeshletsEnabled() + ", taskStagePageCulling=" + taskStagePageCullingEnabled() + ", gpuDrivenTerrain=" + gpuDrivenTerrainEnabled() + ", gpuModelVertices=" + gpuModelVerticesEnabled() + ", gpuModelMeshShaders=" + gpuModelMeshShadersEnabled() + ", gpuItemVertices=" + gpuItemVerticesEnabled() + ", gpuParticleVertices=" + gpuParticleVerticesEnabled() + ", gpuTextVertices=" + gpuTextVerticesEnabled() + ", shareItemBoundingBoxes=" + shareItemBoundingBoxes() + ", keepFramebuffers=" + keepFramebuffersEnabled() + ", barriersByResource=" + barriersByResourceEnabled() + ", defaultSolidCutoutLayerMode=" + solidCutoutLayerMode() + ", defaultTranslucentLayerMode=" + translucentLayerMode() + ", dumpCapabilities=" + dumpCapabilities() + ", enableAcceleratedWorldgenProviderIntegration=" + acceleratedWorldgenProviderIntegrationEnabled() + ", disableFragmentShadingRate=" + !fragmentShadingRateEnabled() + ", disablePresentPacing=" + disablePresentPacing() + ", presentPacingFrameLatency=" + presentPacingFrameLatency() + ", validationDescriptorBufferOnly=" + validationDescriptorBufferOnly() + ", waitIdleBeforeTerrainUpload=" + waitIdleBeforeTerrainUpload() + ", allowCpuVisibleMeshletFallback=" + allowCpuVisibleMeshletFallback() + ", enableGpuGeneratedMeshTaskCommands=" + enableGpuGeneratedMeshTaskCommands() + ", terrainFragmentShadingRate=" + terrainFragmentShadingRate() + ", initialSectionCapacity=" + initialSectionCapacity() + ", initialMeshletCapacity=" + initialMeshletCapacity() + ", initialVertexPayloadBytes=" + initialVertexPayloadBytes() + ", initialIndexPayloadBytes=" + initialIndexPayloadBytes();
+		return "rendererMode=" + rendererMode() + ", requireVulkanBackend=" + requireVulkanBackend() + ", enableTerrainCaptureBootstrap=" + terrainCaptureBootstrapEnabled() + ", enableMeshTranslucentTerrain=" + meshTranslucentTerrainEnabled() + ", enableMeshletFrustumCulling=" + meshletFrustumCullingEnabled() + ", strictMeshTerrainReplacement=" + strictMeshTerrainReplacement() + ", enableVanillaChunkVisibilityFade=" + vanillaChunkVisibilityFadeEnabled() + ", drawAllCapturedTerrainLayers=" + drawAllCapturedTerrainLayers() + ", terrainGpuTimer=" + terrainGpuTimerEnabled() + ", cullMeshlets=" + cullMeshletsEnabled() + ", taskStagePageCulling=" + taskStagePageCullingEnabled() + ", gpuDrivenTerrain=" + gpuDrivenTerrainEnabled() + ", terrainOcclusionCulling=" + terrainOcclusionCullingEnabled() + ", gpuModelVertices=" + gpuModelVerticesEnabled() + ", gpuModelMeshShaders=" + gpuModelMeshShadersEnabled() + ", gpuItemVertices=" + gpuItemVerticesEnabled() + ", gpuParticleVertices=" + gpuParticleVerticesEnabled() + ", gpuTextVertices=" + gpuTextVerticesEnabled() + ", shareItemBoundingBoxes=" + shareItemBoundingBoxes() + ", keepFramebuffers=" + keepFramebuffersEnabled() + ", barriersByResource=" + barriersByResourceEnabled() + ", defaultSolidCutoutLayerMode=" + solidCutoutLayerMode() + ", defaultTranslucentLayerMode=" + translucentLayerMode() + ", dumpCapabilities=" + dumpCapabilities() + ", enableAcceleratedWorldgenProviderIntegration=" + acceleratedWorldgenProviderIntegrationEnabled() + ", disableFragmentShadingRate=" + !fragmentShadingRateEnabled() + ", disablePresentPacing=" + disablePresentPacing() + ", presentPacingFrameLatency=" + presentPacingFrameLatency() + ", validationDescriptorBufferOnly=" + validationDescriptorBufferOnly() + ", waitIdleBeforeTerrainUpload=" + waitIdleBeforeTerrainUpload() + ", allowCpuVisibleMeshletFallback=" + allowCpuVisibleMeshletFallback() + ", enableGpuGeneratedMeshTaskCommands=" + enableGpuGeneratedMeshTaskCommands() + ", terrainFragmentShadingRate=" + terrainFragmentShadingRate() + ", initialSectionCapacity=" + initialSectionCapacity() + ", initialMeshletCapacity=" + initialMeshletCapacity() + ", initialVertexPayloadBytes=" + initialVertexPayloadBytes() + ", initialIndexPayloadBytes=" + initialIndexPayloadBytes();
 	}
 	
 	public static String rendererMode() {
@@ -314,6 +320,15 @@ public final class TerrainRendererDebugConfig {
 	 */
 	public static boolean gpuDrivenTerrainEnabled() {
 		return gpuDrivenTerrain;
+	}
+
+	/**
+	 * Whether GPU-driven terrain is culled by occlusion when improved transparency is on: the pages
+	 * hidden in the frame before wait until the rest have been drawn and are tested against a depth
+	 * pyramid of what was, and the ones seen are drawn before Minecraft's transparency passes.
+	 */
+	public static boolean terrainOcclusionCullingEnabled() {
+		return terrainOcclusionCulling;
 	}
 	
 	/**
