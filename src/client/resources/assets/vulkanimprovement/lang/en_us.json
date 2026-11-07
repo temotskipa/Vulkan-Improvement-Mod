@@ -30,6 +30,8 @@
   "options.vulkanimprovement.gpuDrivenTerrain.tooltip": "The GPU draws the opaque terrain of every section in view from its own page table. Off lists each frame's pages from the CPU instead. Requires Cancel Vanilla Terrain, with Full Captured Terrain off.",
   "options.vulkanimprovement.terrainOcclusionCulling": "Terrain Occlusion Culling",
   "options.vulkanimprovement.terrainOcclusionCulling.tooltip": "The GPU skips terrain hidden behind what is drawn in front of it. Terrain hidden in the last frame is tested against this frame's depth and drawn before transparent things if it can be seen. Requires GPU-Driven Terrain and Improved Transparency.",
+  "options.vulkanimprovement.entityOcclusionCulling": "Entity Occlusion Culling",
+  "options.vulkanimprovement.entityOcclusionCulling.tooltip": "Entities and block entities the GPU found hidden behind what is drawn in front of them are not drawn. The GPU's answer comes a few frames late, so something stepping out from behind a hill can show a few frames late. Glowing entities and visible name tags are always drawn. Requires Improved Transparency.",
   "options.vulkanimprovement.cullMeshlets": "Task Meshlet Culling",
   "options.vulkanimprovement.cullMeshlets.tooltip": "The task stage drops meshlets that face away from the camera or are out of view before their vertices are read. Requires Mesh Terrain with GPU Task Commands or GPU-Driven Terrain, and Full Captured Terrain off.",
   "options.vulkanimprovement.taskStagePageCulling": "Task Page Culling",

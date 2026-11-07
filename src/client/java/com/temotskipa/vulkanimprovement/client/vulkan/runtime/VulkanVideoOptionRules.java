@@ -51,6 +51,13 @@ record VulkanVideoOptionRules(boolean meshTerrainSupported, boolean meshTerrainO
 	}
 
 	/**
+	 * Entities are tested where Minecraft closes its opaque pass too, whoever draws the terrain.
+	 */
+	boolean entityOcclusionCulling() {
+		return this.meshTerrainSupported && this.improvedTransparencyOn;
+	}
+
+	/**
 	 * The mesh stage's culling, for meshlets drawn from a list. Pages have the task stage's.
 	 */
 	boolean meshletCulling() {

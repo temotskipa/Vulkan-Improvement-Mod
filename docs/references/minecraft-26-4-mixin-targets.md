@@ -501,6 +501,59 @@ inside a render pass the level renderer has already opened.
   mesh, and carry the mod's record of the mesh in a field, so a frame finds it
   without a map lookup.
 
+## Entity Occlusion Hooks
+
+### LevelExtractorMixin
+
+- Target: `net.minecraft.client.renderer.extract.LevelExtractor`.
+- mcdev 26.4 surface: private field `level`, the `ClientLevel` being
+  extracted; public `extract(DeltaTracker, Camera, float)`, which Minecraft
+  calls once a frame before it renders the level, and which calls the private
+  `extractVisibleEntities(Camera, Frustum, DeltaTracker, LevelRenderState)`
+  and then the private `extractVisibleBlockEntities(Camera, float, LevelRenderState)`.
+  `extractVisibleEntities` asks `isEntityVisible`, and through it
+  `EntityRenderDispatcher.shouldRender`, about every entity of
+  `entitiesForRendering`. `extractVisibleBlockEntities` calls
+  `BlockEntityRenderDispatcher.tryExtractRenderState(BlockEntity, float, ModelFeatureRenderer.CrumblingOverlay, boolean)`
+  twice: first, with `false`, for the renderable block entities of each
+  section of `visibleSections` faded in past 0.3, then, with `true`, for the
+  level's globally rendered block entities.
+- Source tokens: `private ClientLevel level`, `method = "extract"`,
+  `method = "extractVisibleEntities"`, `method = "extractVisibleBlockEntities"`,
+  `BlockEntityRenderDispatcher;tryExtractRenderState(`.
+- Purpose: entity occlusion culling (`EntityOcclusion`,
+  `vim.entityOcclusionCulling`). At the head of `extract` it takes the newest
+  results the GPU has finished and readies a slot for the frame's boxes;
+  around `extractVisibleEntities` it marks the entity renderers' view tests as
+  the frame's; a `@WrapOperation` of the first `tryExtractRenderState` call
+  leaves out a block entity of a section in view that a recent test found
+  hidden, and notes the others Minecraft draws.
+
+### EntityRendererMixin
+
+- Target: `net.minecraft.client.renderer.entity.EntityRenderer`.
+- mcdev 26.4 surface: protected final field `entityRenderDispatcher`, whose
+  public `camera` and `distanceToSqr(Entity)` give the distance
+  `extractNameTags` passes to the protected `shouldShowName(T, double)`, which
+  `LivingEntityRenderer`, `MobRenderer` and others override; protected field
+  `shadowRadius`; public
+  `shouldRender(T, Frustum, double, double, double, float)`, whose first
+  `Frustum.isVisible(AABB)` call tests the entity's box for culling, grown by
+  half a block, and whose two later calls test a leashed entity's holder. The
+  renderers that override `shouldRender` (guardian, end crystal, shulker,
+  falling block, fishing hook) call it first; the guardian's, end crystal's
+  and shulker's then draw the entity anyway when a beam or path of theirs is
+  in view.
+- Source tokens: `protected EntityRenderDispatcher entityRenderDispatcher`,
+  `protected float shadowRadius`,
+  `boolean shouldShowName(Entity entity, double distanceToCameraSq)`,
+  `method = "shouldRender"`,
+  `Frustum;isVisible(Lnet/minecraft/world/phys/AABB;)Z", ordinal = 0`.
+- Purpose: a `@WrapOperation` of that first view test notes the box of an
+  entity in view for the GPU's test and leaves out one a recent test found
+  hidden, unless it glows, its name tag shows, it is a fishing hook, whose line
+  reaches back to the rod, or it is the camera's entity.
+
 ## Model Hooks
 
 These hooks let the GPU write the vertices of Minecraft's entity models into

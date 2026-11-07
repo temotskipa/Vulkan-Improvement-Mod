@@ -487,6 +487,45 @@ validation layer, with synchronization validation on, reports nothing from the
 mod over the same runs; it does not see what shaders reach through device
 addresses, which is how the pyramid and the pages are read.
 
+2026-11-08, step 6 for entities and block entities
+(`vim.entityOcclusionCulling`, off by default; Video Settings: Entity Occlusion
+Culling). Minecraft decides on the CPU which entities and block entities a
+frame draws, while it extracts the frame and before anything is drawn, so they
+cannot wait for a second phase as terrain does: a box the GPU finds hidden can
+only leave out work in a later frame. As Minecraft extracts a frame, the box
+each entity renderer tests against the view is noted, grown by four ticks of
+the entity's motion and by its shadow, and so is the block of each block
+entity of a section in view, grown by one. Where Minecraft closes its opaque
+pass the pyramid is built, whether or not the frame's terrain is culled, and
+a fifth step of the GPU-driven pass tests the boxes and writes one word each
+into host-visible memory. The CPU reads a frame's words once its submit has
+finished and leaves out what they found hidden; what it leaves out is still
+noted and tested, so it comes back once a test sees it. At about 1,500 FPS the
+results are two or three frames old when used. A box reaching past the edge
+of the screen is never found hidden, results are not used once older than
+200 ms or once the camera has moved more than a block. A glowing entity and
+one whose name tag shows are always drawn, as their outline and name show
+through what hides them, and so are a fishing hook, whose line reaches back to
+the rod, and the camera's entity.
+
+400 cows and 121 chests floating behind a stone wall in the sky, Minecraft's
+terrain, 1920x1080, ticks frozen, off and on in turn three times each, means:
+
+| View                    | Left out | FPS off | FPS on | Render thread off / on |
+|-------------------------|----------|---------|--------|------------------------|
+| behind the wall         | 521      | 1,118   | 1,900  | 0.78 / 0.36 ms         |
+| every cow in plain view | 0        | 1,091   | 1,070  | 0.80 / 0.82 ms         |
+
+Parity: from above the wall, where 200 cows and every chest stay hidden, five
+PNGs off, on, off, on, off are identical. The validation layer's first run
+caught a write-after-read hazard on Minecraft's depth: in a frame whose
+terrain is not culled nothing ordered the pyramid's reads before Minecraft's
+next pass wrote the depth, which the barriers into terrain's second-phase
+draws had always done. With a barrier for those frames, Minecraft's terrain,
+strict mesh terrain culled in two phases, a resize, a resource reload and
+leaving and joining the world logged only Minecraft's `oit_water_mask`
+warning.
+
 ## Decisions
 
 - The mod extends Minecraft's renderer instead of running its own beside it
@@ -518,6 +557,11 @@ addresses, which is how the pyramid and the pages are read.
   reads its depth. Minecraft has one only with improved transparency, where it
   closes the opaque pass before the transparency passes; without it terrain and
   translucency share one pass, and the mod does not build for that mode.
+- Entities and block entities are culled from results a few frames old, which
+  breaks step 6's rule that nothing newly visible is missing for a frame, so
+  it is off by default and chosen in Video Settings. Minecraft extracts them on
+  the CPU before the frame is drawn, and testing them in the same frame would
+  have the CPU wait for the GPU, which the constraints rule out.
 - The depth pyramid reads Minecraft's depth image through a pushed descriptor,
   so `VK_KHR_push_descriptor` joins the mod's required extensions. Vulkan 1.4
   makes push descriptors a feature of `VkPhysicalDeviceVulkan14Features`, which

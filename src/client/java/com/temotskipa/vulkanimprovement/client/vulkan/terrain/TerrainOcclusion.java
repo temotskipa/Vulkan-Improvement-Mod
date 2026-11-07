@@ -141,10 +141,14 @@ public final class TerrainOcclusion {
 	 * before its transparency passes, with the target it drew into. Records the second phase:
 	 * the depth pyramid, the test of every page in view, and the draw of the pages seen now that
 	 * the first phase left out. A target whose depth the pyramid cannot be built from has every
-	 * page the first phase left out drawn untested.
+	 * page the first phase left out drawn untested. The pyramid is built, and the boxes of
+	 * {@link EntityOcclusion} tested against it, in frames that noted any, whether or not the
+	 * frame's terrain culls by occlusion.
 	 */
 	public void drawSecondPhase(RenderTarget mainTarget) {
-		if (!this.armed) {
+		EntityOcclusion entities = EntityOcclusion.get();
+		boolean terrain = this.armed;
+		if (!terrain && !entities.wantsTest()) {
 			return;
 		}
 		this.armed = false;
@@ -153,15 +157,19 @@ public final class TerrainOcclusion {
 		MeshShaderTerrainProgram program = MeshShaderTerrainProgram.get();
 		VulkanDevice device = program.device();
 		ComputePipeline pyramidPipeline = program.depthPyramidPipeline();
-		if (activeFrame == null || activeSections == null || device == null || pyramidPipeline == null) {
-			turnOff("the renderer was shut down during a frame");
+		if (device == null || pyramidPipeline == null || terrain && (activeFrame == null || activeSections == null)) {
+			if (terrain) {
+				turnOff("the renderer was shut down during a frame");
+			}
 			return;
 		}
 		TerrainPerformanceMonitor monitor = TerrainPerformanceMonitor.get();
 		monitor.markPyramid(false);
 		VkCommandBuffer commandBuffer = TerrainRenderPassAccess.frameCommandBuffer(device.createCommandEncoder());
 		if (commandBuffer == null) {
-			turnOff("a render pass was open where the second phase runs");
+			if (terrain) {
+				turnOff("a render pass was open where the second phase runs");
+			}
 			return;
 		}
 		GpuTexture depth = mainTarget.getDepthTexture();
@@ -173,12 +181,24 @@ public final class TerrainOcclusion {
 		if (tested) {
 			this.pyramid.record(commandBuffer, pyramidPipeline, ((VulkanGpuTextureView) mainTarget.getDepthTextureView()).vkImageView());
 		}
-		else {
+		else if (terrain) {
 			this.untestedFrames.increment();
 		}
 		monitor.markPyramid(true);
+		if (tested) {
+			entities.recordTest(commandBuffer, device, program, this.pyramid);
+		}
+		if (!terrain) {
+			if (tested) {
+				TerrainDepthPyramid.barrierBeforeDepthWrites(commandBuffer);
+			}
+			return;
+		}
 		monitor.markOcclusion(false);
 		if (!program.prepareLatePages(commandBuffer, activeFrame, activeSections, this.slotCount, this.lateOutputs, this.lateCommands, this.fadeMillis, tested ? this.pyramid : null)) {
+			if (tested) {
+				TerrainDepthPyramid.barrierBeforeDepthWrites(commandBuffer);
+			}
 			turnOff("the second phase's test could not be recorded");
 			return;
 		}
@@ -239,13 +259,14 @@ public final class TerrainOcclusion {
 	}
 
 	/**
-	 * Called when the renderer is configured for a device: the pyramid of the last one is given back
-	 * and occlusion culling may run again.
+	 * Called when the renderer is configured for a device: the pyramid of the last one, and the
+	 * ring of entity occlusion, are given back, and occlusion culling may run again.
 	 */
 	void reset() {
 		this.pyramid.close();
 		this.armed = false;
 		this.offReason = null;
+		EntityOcclusion.get().reset();
 	}
 
 	/**
@@ -254,6 +275,7 @@ public final class TerrainOcclusion {
 	void shutdownNow() {
 		this.pyramid.destroyNow();
 		this.armed = false;
+		EntityOcclusion.get().shutdownNow();
 	}
 
 	/**

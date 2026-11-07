@@ -112,6 +112,19 @@ final class TerrainDepthPyramid {
 	}
 
 	/**
+	 * A barrier that lets a render pass write the depth image again once the pyramid has read it:
+	 * the compute passes before it, the pyramid's and the tests that read it, finish before any
+	 * depth test after it. Where the second phase draws terrain, the barrier into its draws does
+	 * this already.
+	 */
+	static void barrierBeforeDepthWrites(VkCommandBuffer commandBuffer) {
+		try (MemoryStack stack = MemoryStack.stackPush()) {
+			VkMemoryBarrier2.Buffer barrier = VkMemoryBarrier2.calloc(1, stack).sType$Default().srcStageMask(VK13.VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT).dstStageMask(VK13.VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK13.VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT);
+			VK13.vkCmdPipelineBarrier2(commandBuffer, VkDependencyInfo.calloc(stack).sType$Default().pMemoryBarriers(barrier));
+		}
+	}
+
+	/**
 	 * A level's size along one axis: the image's, halved as many times as the level's number and
 	 * rounded up.
 	 */

@@ -16,6 +16,9 @@
 // that were hidden in the frame before, and once those drawn have their depth in the depth
 // pyramid, a fourth pass tests every page in view against it: it writes the draws of the pages
 // that are seen now and were left out, and marks each page for the next frame.
+//
+// A fifth pass tests boxes the CPU lists, those of entities and block entities, against the same
+// pyramid, and writes one word for each that the CPU reads a few frames later.
 layout(local_size_x = 64) in;
 
 const uint MESHLETS_PER_TASK = 32u;
@@ -28,6 +31,7 @@ const uint NO_COMMAND = 0xFFFFFFFFu;
 const uint PASS_COUNT = 0u;
 const uint PASS_PLACE = 1u;
 const uint PASS_LATE = 3u;
+const uint PASS_BOXES = 4u;
 
 struct ResidentPage {
     uint64_t sectionNode;
@@ -60,6 +64,12 @@ struct MeshTaskCommand {
     uint groupCountZ;
 };
 
+// A box the fifth pass tests, relative to the camera.
+struct TestBox {
+    vec3 low;
+    vec3 high;
+};
+
 // Only a page's occluded member is written, by the fourth pass; a page copied in has it clear.
 layout(buffer_reference, scalar, buffer_reference_align = 8) buffer PageTable {
     ResidentPage pages[];
@@ -82,6 +92,15 @@ layout(buffer_reference, scalar, buffer_reference_align = 4) buffer MeshTaskComm
 
 layout(buffer_reference, scalar, buffer_reference_align = 4) readonly buffer DepthPyramid {
     float depths[];
+};
+
+layout(buffer_reference, scalar, buffer_reference_align = 4) readonly buffer TestBoxes {
+    TestBox boxes[];
+};
+
+// One word per box the fifth pass tests: 1 for a box that is hidden, 0 for one that is not.
+layout(buffer_reference, scalar, buffer_reference_align = 4) writeonly buffer BoxResults {
+    uint hidden[];
 };
 
 // How many pages the fourth pass has tested, found hidden, and drawn, since the counters were cleared.
@@ -118,7 +137,8 @@ layout(push_constant, scalar) uniform SectionPagePushConstants {
 // pyramid.xy: the size of the depth image the pyramid is built over, pyramid.z: how many levels it
 // stores above the image, 0 for none, and pyramid.w: whether the frame culls by occlusion. The
 // camera's rows are those of Minecraft's view-projection matrix, applied to positions relative to
-// the camera.
+// the camera. The fifth pass reads frameRecord boxes at records and writes their words at
+// meshTaskCommands; it reads no page.
 
 // The farthest depth of a level's texels from low to high, which are at most one apart each way.
 // The pyramid stores level 1 first: level 0 would be the depth image itself.
@@ -138,8 +158,10 @@ float farthestDepth(uint level, uvec2 low, uvec2 high) {
 // Whether a box, given relative to the camera, is behind what the depth pyramid holds everywhere
 // it covers on the screen. Depth is larger nearer the camera, so the box is hidden when its nearest
 // point is farther than the farthest depth drawn over its rectangle. A box that reaches behind the
-// camera is never hidden, and without a pyramid nothing is.
-bool hiddenByDepth(vec3 low, vec3 high) {
+// camera is never hidden, and without a pyramid nothing is. Nor, with wholeOnScreen, is a box that
+// reaches past the edge of the screen: a result used in later frames cannot vouch for what this
+// frame did not draw, which the camera may have turned towards by then.
+bool hiddenByDepth(vec3 low, vec3 high, bool wholeOnScreen) {
     if (pc.pyramid.z == 0u) {
         return false;
     }
@@ -156,6 +178,9 @@ bool hiddenByDepth(vec3 low, vec3 high) {
         screenLow = min(screenLow, xy);
         screenHigh = max(screenHigh, xy);
         nearest = max(nearest, dot(pc.cameraForward, point) / w);
+    }
+    if (wholeOnScreen && (any(lessThan(screenLow, vec2(-1.0))) || any(greaterThan(screenHigh, vec2(1.0))))) {
+        return false;
     }
     // The pixels the rectangle touches, as Vulkan maps the view onto the image.
     vec2 size = vec2(pc.pyramid.xy);
@@ -232,7 +257,7 @@ uvec3 testPage(PageTable table, FrameData frame, uint slot) {
     bool hiddenBefore = table.pages[slot].occluded != 0;
     // A section's mesh may reach a little past its sixteen blocks, so its box has a margin.
     vec3 sectionLow = vec3(section * 16 - pc.cameraBlock.xyz) - pc.cameraOffset.xyz;
-    bool hidden = hiddenByDepth(sectionLow - 2.0, sectionLow + 18.0);
+    bool hidden = hiddenByDepth(sectionLow - 2.0, sectionLow + 18.0, false);
     table.pages[slot].occluded = hidden ? 1 : 0;
     // A page that was not hidden before was drawn in the first phase.
     if (hidden || !hiddenBefore) {
@@ -247,6 +272,14 @@ uvec3 testPage(PageTable table, FrameData frame, uint slot) {
 shared uint occlusionCounts[3];
 
 void main() {
+    if (pc.pass == PASS_BOXES) {
+        uint box = gl_GlobalInvocationID.x;
+        if (box < pc.frameRecord) {
+            TestBox tested = TestBoxes(pc.records).boxes[box];
+            BoxResults(pc.meshTaskCommands).hidden[box] = hiddenByDepth(tested.low, tested.high, true) ? 1u : 0u;
+        }
+        return;
+    }
     FrameData frame = FrameData(pc.records + uint64_t(pc.frameRecord) * 8ul);
     PageTable table = PageTable(pc.pageTable);
     if (pc.pass == PASS_LATE) {

@@ -43,6 +43,16 @@ public final class MeshShaderTerrainProgram {
 	 * first-phase steps.
 	 */
 	private static final int SECTION_PAGES_LATE_PASS = 3;
+	/**
+	 * The step of the GPU-driven pass that tests boxes the CPU lists against the depth pyramid.
+	 */
+	private static final int SECTION_PAGES_BOX_PASS = 4;
+	/**
+	 * The bytes of the push constants the page steps read and the box step does not: five rows of
+	 * four integers, the grid of sections in view, the camera's section, and each layer's output
+	 * and command.
+	 */
+	private static final int SECTION_PAGES_PAGE_ROWS_BYTES = 5 * 4 * Integer.BYTES;
 	private final Map<TerrainPipelineKey, TerrainMeshPipeline> pipelineCache = new HashMap<>();
 	private final LongAdder pipelineCompiles = new LongAdder();
 	private final LongAdder meshTaskDispatches = new LongAdder();
@@ -52,6 +62,7 @@ public final class MeshShaderTerrainProgram {
 	private final LongAdder meshTaskGpuCommandPreparations = new LongAdder();
 	private final LongAdder gpuDrivenPagePreparations = new LongAdder();
 	private final LongAdder latePagePreparations = new LongAdder();
+	private final LongAdder boxTestPreparations = new LongAdder();
 	private final LongAdder meshTaskGpuCommandPreparationsInsideRenderPass = new LongAdder();
 	private final LongAdder meshTasksDispatched = new LongAdder();
 	private final LongAdder textureDescriptorBufferBinds = new LongAdder();
@@ -596,6 +607,46 @@ public final class MeshShaderTerrainProgram {
 	}
 
 	/**
+	 * Has the GPU test boxes the CPU lists against the depth pyramid and write one word for each,
+	 * 1 for a box hidden everywhere it covers and wholly on the screen. Recorded into the command
+	 * buffer Minecraft records the frame into, once the pyramid is built and while no render pass
+	 * is open; one barrier after it makes the words visible to the CPU once the frame's submit has
+	 * finished.
+	 *
+	 * @param boxes   the address of the boxes, relative to the camera, each its low corner then its high one
+	 * @param results the address each box's word is written at
+	 */
+	synchronized boolean prepareBoxTest(VkCommandBuffer commandBuffer, long boxes, long results, int count, TerrainDepthPyramid pyramid) {
+		ComputePipeline pipeline = this.sectionPagesPipeline;
+		if (this.device == null || pipeline == null || count <= 0 || !pyramid.ready()) {
+			return false;
+		}
+		try (MemoryStack stack = MemoryStack.stackPush()) {
+			ByteBuffer pushConstants = stack.calloc(TerrainGpuLayout.SECTION_PAGES_PUSH_CONSTANT_BYTES);
+			pushConstants.putLong(0L);
+			pushConstants.putLong(boxes);
+			pushConstants.putLong(results);
+			pushConstants.putInt(count);
+			pushConstants.putInt(SECTION_PAGES_BOX_PASS);
+			pushConstants.position(pushConstants.position() + SECTION_PAGES_PAGE_ROWS_BYTES);
+			pushConstants.putLong(pyramid.address());
+			pushConstants.putLong(0L);
+			pushConstants.putInt(pyramid.width()).putInt(pyramid.height()).putInt(pyramid.levels()).putInt(1);
+			writeCameraPushConstants(pushConstants);
+			pushConstants.flip();
+			VK12.vkCmdBindPipeline(commandBuffer, VK10.VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.handle());
+			VK12.vkCmdPushConstants(commandBuffer, pipeline.layout(), VK10.VK_SHADER_STAGE_COMPUTE_BIT, 0, pushConstants);
+			VK12.vkCmdDispatch(commandBuffer, Math.ceilDiv(count, TerrainGpuLayout.SECTION_PAGES_WORKGROUP_SIZE), 1, 1);
+			// The CPU reads the words once the frame's submit has finished. That alone makes them
+			// visible to the device only; this barrier makes them visible to the CPU.
+			VkMemoryBarrier2.Buffer written = VkMemoryBarrier2.calloc(1, stack).sType$Default().srcStageMask(VK13.VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT).srcAccessMask(VK13.VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT).dstStageMask(VK13.VK_PIPELINE_STAGE_2_HOST_BIT).dstAccessMask(VK13.VK_ACCESS_2_HOST_READ_BIT);
+			VK13.vkCmdPipelineBarrier2(commandBuffer, VkDependencyInfo.calloc(stack).sType$Default().pMemoryBarriers(written));
+		}
+		this.boxTestPreparations.increment();
+		return true;
+	}
+
+	/**
 	 * The GPU-driven pass's push constants, with its first step selected.
 	 *
 	 * @param pyramid   the depth pyramid the pages are tested against, or null for a step that tests none
@@ -649,6 +700,6 @@ public final class MeshShaderTerrainProgram {
 	}
 	
 	public String describe() {
-		return "ready=" + ready() + ", lastError=" + this.lastError + ", taskShaderCompileSource=" + this.taskShaderCompileSource + ", meshShaderCompileSource=" + this.meshShaderCompileSource + ", fragmentShaderCompileSource=" + this.fragmentShaderCompileSource + ", commandShaderCompileSource=" + this.commandShaderCompileSource + ", visibleSectionPagesShaderCompileSource=" + this.sectionPagesShaderCompileSource + ", depthPyramidShaderCompileSource=" + this.depthPyramidShaderCompileSource + ", pipelineCacheSize=" + this.pipelineCache.size() + ", commandPipelineReady=" + (this.commandPipeline != null) + ", visibleSectionPagesPipelineReady=" + (this.sectionPagesPipeline != null) + ", pipelineCompiles=" + this.pipelineCompiles.sum() + ", meshTaskDispatches=" + this.meshTaskDispatches.sum() + ", meshTaskDirectDispatches=" + this.meshTaskDirectDispatches.sum() + ", meshTaskIndirectDispatches=" + this.meshTaskIndirectDispatches.sum() + ", meshTaskGpuCommandPreparations=" + this.meshTaskGpuCommandPreparations.sum() + ", gpuDrivenPagePreparations=" + this.gpuDrivenPagePreparations.sum() + ", latePagePreparations=" + this.latePagePreparations.sum() + ", meshTaskGpuCommandPreparationsInsideRenderPass=" + this.meshTaskGpuCommandPreparationsInsideRenderPass.sum() + ", meshTasksDispatched=" + this.meshTasksDispatched.sum() + ", improvedFogDispatches=" + this.improvedFogDispatches.sum() + ", textureDescriptorBufferBinds=" + this.textureDescriptorBufferBinds.sum() + ", textureDescriptorBufferMissing=" + this.textureDescriptorBufferMissing.sum();
+		return "ready=" + ready() + ", lastError=" + this.lastError + ", taskShaderCompileSource=" + this.taskShaderCompileSource + ", meshShaderCompileSource=" + this.meshShaderCompileSource + ", fragmentShaderCompileSource=" + this.fragmentShaderCompileSource + ", commandShaderCompileSource=" + this.commandShaderCompileSource + ", visibleSectionPagesShaderCompileSource=" + this.sectionPagesShaderCompileSource + ", depthPyramidShaderCompileSource=" + this.depthPyramidShaderCompileSource + ", pipelineCacheSize=" + this.pipelineCache.size() + ", commandPipelineReady=" + (this.commandPipeline != null) + ", visibleSectionPagesPipelineReady=" + (this.sectionPagesPipeline != null) + ", pipelineCompiles=" + this.pipelineCompiles.sum() + ", meshTaskDispatches=" + this.meshTaskDispatches.sum() + ", meshTaskDirectDispatches=" + this.meshTaskDirectDispatches.sum() + ", meshTaskIndirectDispatches=" + this.meshTaskIndirectDispatches.sum() + ", meshTaskGpuCommandPreparations=" + this.meshTaskGpuCommandPreparations.sum() + ", gpuDrivenPagePreparations=" + this.gpuDrivenPagePreparations.sum() + ", latePagePreparations=" + this.latePagePreparations.sum() + ", boxTestPreparations=" + this.boxTestPreparations.sum() + ", meshTaskGpuCommandPreparationsInsideRenderPass=" + this.meshTaskGpuCommandPreparationsInsideRenderPass.sum() + ", meshTasksDispatched=" + this.meshTasksDispatched.sum() + ", improvedFogDispatches=" + this.improvedFogDispatches.sum() + ", textureDescriptorBufferBinds=" + this.textureDescriptorBufferBinds.sum() + ", textureDescriptorBufferMissing=" + this.textureDescriptorBufferMissing.sum();
 	}
 }

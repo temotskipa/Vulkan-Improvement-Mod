@@ -249,6 +249,21 @@ renderer code does not drift back into a catch-all root package.
   target draws them, with the pipeline state the first phase drew with, before
   the transparency passes read the depth. The CPU never reads a page's result;
   it reads only counters of how many pages were tested, hidden and drawn late.
+- Entities and block entities can be culled against the same pyramid
+  (`EntityOcclusion`, `vim.entityOcclusionCulling`, off by default), in every
+  frame with improved transparency, whoever draws the terrain. As Minecraft
+  extracts a frame it notes the box each entity renderer tests against the
+  view (`EntityRenderer.shouldRender`) and, for each block entity of a section
+  in view, its block grown by one. A fifth step of the same pass tests them
+  against the pyramid and writes one word each into host-visible memory, a
+  ring of four frames. The CPU reads a frame's words once its submit has
+  finished, two or three frames later, and leaves out of the frames after
+  that what they found hidden, so this culling lags where terrain's does not.
+  Results are used only while younger than 200 ms and while the camera is
+  within a block of where they were taken, a box reaching past the edge of the
+  screen is never found hidden, and an entity's box grows by four ticks of its
+  motion and by its shadow. A glowing entity, one whose name tag shows, a
+  fishing hook and the camera's entity are always drawn.
 - Otherwise a frame uploads one short list per layer: the page slot and fade-in of every
   section layer Minecraft collected for it, in Minecraft's order, nearest
   first. By default (`vim.taskStagePageCulling`) that list is the draw: one
