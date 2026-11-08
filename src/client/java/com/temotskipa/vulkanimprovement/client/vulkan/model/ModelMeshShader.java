@@ -9,8 +9,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * The mesh stage that stands in for Minecraft's vertex stage in a GPU model draw (step 3 of the
- * GPU-driven pipeline plan). It is Minecraft's own vertex shader, compiled by Minecraft with its
+ * The mesh stage that stands in for Minecraft's vertex stage in a GPU model draw. It is
+ * Minecraft's own vertex shader, compiled by Minecraft with its
  * defines and includes, run once for each vertex of a cube: the vertex Minecraft would have fetched
  * is made from the cube and part records as the vertex pass makes it, and what the vertex shader
  * writes goes to the mesh outputs at the same locations, for Minecraft's fragment shader. One

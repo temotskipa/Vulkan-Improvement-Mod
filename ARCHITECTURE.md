@@ -385,6 +385,77 @@ renderer code does not drift back into a catch-all root package.
 - `MeshTerrainRenderer.shutdownNow()` must release renderer resources when the
   Vulkan device closes.
 
+## Design Decisions
+
+Decisions measured while building the GPU-driven paths, with what decided them.
+The measurements are in the GPU Validation Matrix of `docs/RELIABILITY.md` and
+in git history.
+
+- Terrain meshlets hold 64 vertices, and a page is drawn by one task per 32 of
+  its meshlets. With 128 vertices the mesh stage's outputs are twice as large
+  and its GPU time on the same terrain about a twentieth higher; one task per
+  page kept one workgroup busy with a large page while the others idled.
+- Solid terrain's mesh pipeline has no alpha test, as Minecraft's solid shader
+  has none.
+- Terrain's textures stay in a descriptor buffer. Pushing them with each draw
+  instead made no difference in any scene.
+- The set of sections drawn stays Minecraft's (`extractSectionDrawGroups`); the
+  GPU only leaves out what it finds out of view or hidden. Minecraft's section
+  walk is kept for drawing, not only for scheduling compiles: a set the GPU
+  chose would differ from Minecraft's in fade-in and in what Minecraft's
+  occlusion graph leaves out.
+- Translucent terrain stays Minecraft's. With improved transparency Minecraft
+  draws it order-independently in three stages (depth bounds, transmittance,
+  accumulation), so the mesh path would need no sorting but a mesh pipeline
+  and fragment work for each stage. Over an ocean at render distance 32 the
+  render thread spends 0.71 ms of a 2.2 ms frame, with the GPU setting the
+  pace, and walking the water's sections is about a fifth of those 0.71 ms, so
+  taking it would not raise the frame rate on the test machine (see the
+  technical debt tracker).
+- Occlusion culling needs a point between opaque terrain and everything that
+  reads its depth. Minecraft has one only with improved transparency, where it
+  closes the opaque pass before the transparency passes; without it terrain and
+  translucency share one pass, and the mod does not build for that mode.
+- Entities and block entities are culled from results a few frames old, as
+  Minecraft decides on the CPU, before the frame is drawn, which of them it
+  draws, and testing them in the same frame would have the CPU wait for the
+  GPU. That breaks the rule that nothing newly visible is missing for a frame,
+  so it is off by default and chosen in Video Settings.
+- Model mesh draws have no task stage. Minecraft already leaves out every
+  entity whose box is out of view before extracting it (in the entity scene 377
+  of 400 mobs were wholly in view, 20 partly and 3 not), so a task stage could
+  cull only parts of the partly visible ones, and the depth pyramid is built
+  after the pass that draws entities, too late to test them in the same frame.
+- The mod's page uploads and terrain passes are recorded into the command
+  buffer Minecraft records the frame into. Executing a command buffer of the
+  mod's instead ends Minecraft's open ones, the object-init one behind a
+  barrier on all work before it.
+- Terrain's compute passes record their own dispatches and barriers into that
+  command buffer; `ComputeCommands` serves the passes that read and write only
+  buffers (models, particles, text). The depth pyramid reads Minecraft's depth
+  image through a pushed descriptor, and the GPU-driven pass orders its steps
+  with barriers of its own, neither of which Minecraft's encoder has a concept
+  of.
+- The mod compiles its own compute shaders and builds its own compute
+  pipelines: Minecraft's `GlslCompiler` compiles only vertex and fragment
+  shaders, numbers bindings for its descriptor model and targets Vulkan 1.2,
+  and its pipelines have no compute or mesh stages. The model mesh stage is the
+  exception: Minecraft compiles it, as a wrapper of the pipeline's own vertex
+  shader, with the pipeline's defines and includes.
+- `VK_KHR_push_descriptor` is among the required extensions, for the depth
+  pyramid. Vulkan 1.4 makes push descriptors a feature of
+  `VkPhysicalDeviceVulkan14Features`, which may not be chained beside the
+  maintenance 5 and 6 and local-read structs the mod's feature set already
+  asks for; the extension needs no feature struct.
+- Minecraft's buffer mappings are not kept. `GpuBuffer.map` maps and unmaps the
+  allocation for every view; keeping each buffer mapped saved nothing
+  measurable (1,124 against 1,127 FPS, 0.346 against 0.347 ms of render thread
+  over 24 runs at the ground), as Minecraft 26.4 batches its uniform writes.
+- A hook that must run when a Minecraft method ends injects at every return
+  (`@At("RETURN")`), not at the last (`@At("TAIL")`), unless the method's
+  bytecode has one return: the decompiled source can hide early returns, as it
+  did in `StagedVertexBuffer.upload()`.
+
 ## Build
 
 Use `.\gradlew.bat build` for the full build, `.\gradlew.bat checkRepoDocs`

@@ -281,6 +281,7 @@ Record manual validation results here before treating the mesh terrain path as g
 | 2026-11-08 | Windows 11 | RTX 4070 Ti | 621.01 / 1.4.357 | 1.4.357    | 26.4-snapshot-7 | 0.165.4+26.4 | terrain occlusion probing                                     | Strict mesh terrain, improved transparency, 1920x1080, ticks frozen; culling off, culling every frame and culling with probing in turn, three rounds each. Where little is hidden probing matches culling off: overlook at render distance 16 932 to 943 FPS off, 858 to 882 every frame, 931 to 946 probing; horizon 935 to 967, 867 to 877 and 940 to 946. Where much is hidden it stays on every frame: ground at render distance 16 1,237 to 1,273 against 1,249 to 1,254, at 32 1,115 to 1,122 against 1,115 to 1,127. A still frame at the overlook shows no stable difference between the two, nor does the ground a few frames after a snap from the overlook, whose first tested frame drew about 3,500 pages its stale marks had left out in its second phase. Culled frames of a still scene vary by one level in up to about 200 pixels where frames without culling vary in one, in the gaps of dense leaves; probing frames vary less, as most are not culled. |
 | 2026-11-08 | Windows 11 | RTX 4070 Ti | 621.01 / 1.4.357 | 1.4.357    | 26.4-snapshot-7 | 0.165.4+26.4 | shared item bounding boxes on by default                      | The 900 floating items of the 2026-11-04 row, Minecraft's terrain, render distance 12, four rounds in turn, ABBA: 768 to 782 FPS without, 948 to 953 with, 1.13 to 1.15 against 0.90 to 0.91 ms of render thread. Five PNGs in turn, twice, the second time starting with it on: no item pixel differs. One run had no stable difference and the other 42 pixels of one level, all on the ground seen through spruce leaves far below the items; shots with it off varied among themselves in 62 pixels of the first run, so the variation the 2026-11-04 row put down to the flag is the terrain's. |
 | 2026-11-08 | Windows 11 | RTX 4070 Ti | 621.01 / 1.4.357 | 1.4.357    | 26.4-snapshot-7 | 0.165.4+26.4 | terrain on Minecraft's buffers                                | Terrain's buffers made by `GpuDevice.createBuffer` (or Minecraft's Vulkan device while it is being made) and mapped through `GpuBuffer.map`. SDK 1.4.363 with core and synchronization validation and shader accesses: strict mesh terrain GPU-driven at the ground and overlook with occlusion culling and probing, entity occlusion culling (106,346 boxes through its ring), render distance 32, a resize, a resource reload, leaving and joining the world, and shutdown; then a second session started with every terrain capacity at its minimum, which grew the buffers 12 times. Only Minecraft's `oit_water_mask` warning. Strict mesh against Minecraft's terrain at the ground at noon: mean under 0.001 of 765, no pixel over 60. |
+| 2026-11-08 | Windows 11 | RTX 4070 Ti | 621.01 / 1.4.357 | 1.4.357    | 26.4-snapshot-7 | 0.165.4+26.4 | GPU-driven frames against the listed path                     | The ground at render distance 16, strict mesh terrain, culling off, 1920x1080, ticks frozen, GPU time from Minecraft's utilization timer, in turn: facing the spruce forest (yaw 0, pitch 18) GPU-driven frames 1,241 to 1,269 FPS and 0.76 to 0.80 ms of GPU, listed 1,411 to 1,433 FPS and 0.63 to 0.66 ms; down at the forest floor (pitch 70) 0.272 against 0.261 ms; over the ocean (yaw 180) 0.814 against 0.794 ms. Timestamps put the forest's difference after terrain: the GPU-driven pass 0.012 ms, opaque terrain 0.005, the transparency passes 0.028, and about 0.05 ms between frames. The gap of 2026-10-28 (0.06 to 0.16 ms) is the same; see the technical debt tracker. |
 
 Required JVM flags to record per run: `vim.replaceVanillaTerrain`, `vim.enableTerrainCaptureBootstrap`, `vim.enableMeshTranslucentTerrain`, `vim.strictMeshTerrainReplacement`, `vim.drawAllCapturedTerrainLayers`, `vim.disableFragmentShadingRate`, `vim.validationDescriptorBufferOnly`, `vim.allowCpuVisibleMeshletFallback`, `vim.enableGpuGeneratedMeshTaskCommands`, `vim.terrainOcclusionCulling`, `vim.terrainOcclusionProbing`, `vim.entityOcclusionCulling`.
 
@@ -376,8 +377,21 @@ ticking is frozen. Sessions differ from each other by up to ten percent on
 this machine, more than most single changes are worth.
 Compare `meanFps`, `onePercentLowFps` and the GPU group times. Look at more
 than one view: on the ground, high above the terrain, and along the horizon.
+The views used so far, in `mcdev_world`, camera position then yaw and pitch:
+ground -54.5 68 198.5, 0, 18; overlook -54.5 160 198.5, 0, 25; horizon -54.5
+100 198.5, 90, 2, each at render distance 16 and 32. For entities, 400 mobs
+floating in a 20 by 20 grid around -54.5 150 210 seen from -54.5 154 198.5,
+0, 10 at render distance 12, and 900 floating items around -55 150 218 seen
+from -54.5 154 198.5, 0, 25. Kill the test entities and their drops after.
 A CPU profile (`jcmd <pid> JFR.start`) shows whether the render thread waits
 for the GPU (swapchain acquire and submit) or is busy itself.
+
+Three things that mislead: a render distance set from a script needs
+`Options.broadcastOptions()` after it, or the integrated server keeps sending
+the old one; `gpuTranslucentMs` reads zero on 26.4, which draws translucent
+terrain outside the group the mixin marks; and Minecraft's frame time
+(`Minecraft.getFrameTimeNs()`, `meanCpuMs`) runs from extraction to the blit
+to the swapchain, leaving out acquiring the image, the submit and the present.
 
 Any buffer the GPU reads or updates every frame lives in device memory
 (`DeviceBufferPlacement.DEVICE_MAPPED`); host memory is for staging and

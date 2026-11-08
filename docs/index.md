@@ -15,7 +15,7 @@ Start with the smallest relevant document and follow links only as needed.
 ## Structured Knowledge
 
 - [design-docs/index.md](design-docs/index.md): design notes and principles.
-- [exec-plans/active/README.md](exec-plans/active/README.md): plans in progress.
+- [exec-plans/active/README.md](exec-plans/active/README.md): plans in progress, none at present.
 - [exec-plans/tech-debt-tracker.md](exec-plans/tech-debt-tracker.md): tracked
   cleanup work.
 - [product-specs/index.md](product-specs/index.md): user-facing behavior and

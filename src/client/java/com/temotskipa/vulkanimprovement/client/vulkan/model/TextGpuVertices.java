@@ -31,7 +31,7 @@ import org.slf4j.Logger;
 import java.util.*;
 
 /**
- * Text laid out once and written by the GPU (step 5 of the GPU-driven pipeline plan). Minecraft
+ * Text laid out once and written by the GPU. Minecraft
  * lays a string out and writes its glyphs every frame, though a sign's string never changes. A
  * string it draws again goes through Minecraft's own layout and glyphs once, into the glyph store,
  * and from then on a frame records its pose and light, and one compute pass writes its vertices

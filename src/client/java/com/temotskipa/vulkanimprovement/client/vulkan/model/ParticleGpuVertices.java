@@ -31,7 +31,7 @@ import java.nio.ByteBuffer;
 import java.util.*;
 
 /**
- * Particle vertices written by the GPU instead of the CPU (step 5 of the GPU-driven pipeline plan).
+ * Particle vertices written by the GPU instead of the CPU.
  * Minecraft extracts its particles into flat arrays every frame; where it would then write four
  * vertices for each, the arrays are copied to the GPU whole, and once Minecraft has uploaded its own
  * vertices one compute pass writes the particles' vertices into a buffer Minecraft draws from with

@@ -36,7 +36,7 @@ import java.lang.foreign.MemorySegment;
 import java.util.*;
 
 /**
- * Model vertices written by the GPU instead of the CPU (step 2 of the GPU-driven pipeline plan).
+ * Model vertices written by the GPU instead of the CPU.
  * While Minecraft prepares the level's features, a model submit whose vertices the GPU can write
  * exactly as Minecraft would is rendered into a {@link ModelVertexSink}: Minecraft animates and
  * poses the model as always, and each posed part's cubes become records instead of vertices. Once
