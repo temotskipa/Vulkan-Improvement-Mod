@@ -45,7 +45,7 @@ public final class TerrainRendererDebugConfig {
 	private static volatile boolean gpuItemVertices = booleanProperty("vim.gpuItemVertices", true);
 	private static volatile boolean gpuParticleVertices = booleanProperty("vim.gpuParticleVertices", true);
 	private static volatile boolean gpuTextVertices = booleanProperty("vim.gpuTextVertices", true);
-	private static volatile boolean shareItemBoundingBoxes = booleanProperty("vim.shareItemBoundingBoxes", false);
+	private static volatile boolean shareItemBoundingBoxes = booleanProperty("vim.shareItemBoundingBoxes", true);
 	
 	private TerrainRendererDebugConfig() {
 	}
@@ -386,8 +386,7 @@ public final class TerrainRendererDebugConfig {
 	/**
 	 * Whether an item's model bounding box, which Minecraft works out again for every item in every
 	 * frame from all of its model's corners, is shared between items and frames with the same model
-	 * and transforms. Off by default: with it on, frames of a frozen scene vary by one level in a few
-	 * hundred pixels where they are otherwise identical, which is not yet explained.
+	 * and transforms.
 	 */
 	public static boolean shareItemBoundingBoxes() {
 		return shareItemBoundingBoxes;

@@ -83,7 +83,11 @@ the mod is idle (see `LevelRendererMixin` in
    item to the same path. A `BakedQuad` is a face with four corners, so a baked
    model's quad list goes into the same store once, and a frame records a part
    and jobs for each run of quads that share a render type, tint and light
-   emission, for the same compute pass and the same draws.
+   emission, for the same compute pass and the same draws. Unless
+   `vim.shareItemBoundingBoxes` is off, `ItemStackRenderStateMixin` shares an
+   item's model bounding box, which Minecraft works out again from every corner
+   of the model for every item in every frame, between items and frames with
+   the same model, transforms and hand (`ItemBoundingBoxes`).
 10. Unless `vim.gpuParticleVertices` is off, `QuadParticleFeatureRendererMixin`
     gives `ParticleGpuVertices` each layer of particles in place of writing its
     vertices. Minecraft's flat particle arrays are copied to the GPU whole, and a

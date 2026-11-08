@@ -568,6 +568,17 @@ frame to frame there, which changes the order in which coplanar faces of
 neighbouring sections are drawn; that is the likely cause, not measured
 directly.
 
+2026-11-08, shared item bounding boxes on by default
+(`vim.shareItemBoundingBoxes`). Minecraft works out every item's model
+bounding box again in every frame from every corner of its model; the box
+depends only on the model's corners, its item and local transforms and the
+hand, so items with the same model share one. With 900 floating items, four
+rounds in turn: 768 to 782 FPS without, 948 to 953 with, 1.14 against 0.90 ms
+of render thread. It had stayed off since 2026-11-04 because frames with it on
+varied by one level in a few hundred pixels. Five PNGs in turn, twice, show no
+item pixel differing; what varies is the ground seen through leaves far below
+the items, by one level, and it varies as much with the flag off.
+
 ## Decisions
 
 - The mod extends Minecraft's renderer instead of running its own beside it
@@ -617,6 +628,3 @@ directly.
 ## Follow-Up
 
 - A task stage for step 3, to cull models outside the view on the GPU.
-- `ItemStackRenderState.getModelBoundingBox` recomputes every item's box every
-  frame from the same extents and transform: 29 % of the render thread with 900
-  dropped items once the vertices are on the GPU. It could be kept per model.
