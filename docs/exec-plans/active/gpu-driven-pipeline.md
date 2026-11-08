@@ -526,6 +526,48 @@ strict mesh terrain culled in two phases, a resize, a resource reload and
 leaving and joining the world logged only Minecraft's `oit_water_mask`
 warning.
 
+2026-11-08, mapping kept, measured and left out. Minecraft's `GpuBuffer.map`
+maps the allocation and unmaps it again when the view closes, and its mappable
+buffers are made without a persistent mapping, so each map of a block no other
+allocation holds mapped costs a `vkMapMemory` and a `vkUnmapMemory`. A script
+on the render thread put that at about 0.7 µs a map. A mixin that kept each
+buffer mapped from its first map until it was destroyed was measured at the
+ground at render distance 16, 1920x1080, Minecraft's terrain, in 24 runs of
+four seconds in turn, ABBA among them: 1,124 against 1,127 FPS and 0.346
+against 0.347 ms of render thread, inside the spread. Minecraft 26.4 batches
+its uniform writes, so a frame maps few buffers, and the mixin was not kept.
+
+2026-11-08, occlusion tests only where they pay (`vim.terrainOcclusionProbing`,
+on by default). Where little terrain is hidden the second phase costs more than
+it saves. The CPU already reads the GPU's counts of tested and hidden pages; it
+now follows the share found hidden from them, a few frames late, and while it
+is under 12 % tests one GPU-driven frame in 16, the others drawing every page in
+view in one phase, until a test finds 20 % or more hidden. Strict mesh terrain,
+improved transparency, 1920x1080, ticks frozen, three rounds of each mode in
+turn in one session:
+
+| Scene, render distance | Culling off | Every frame | Probing     |
+|------------------------|-------------|-------------|-------------|
+| overlook, 16           | 932-943     | 858-882     | 931-946     |
+| horizon, 16            | 935-967     | 867-877     | 940-946     |
+| ground, 16             | 1,172-1,187 | 1,237-1,273 | 1,249-1,254 |
+| ground, 32             | 872-874     | 1,115-1,122 | 1,115-1,127 |
+| overlook, 32           | 618-621     | 616-619     | 618-622     |
+| horizon, 32            | 469-473     | 462-471     | 465-478     |
+
+Probing keeps the gain where hills hide terrain and gives back the loss where
+they do not. A still frame at the overlook shows no stable difference between
+probing and every frame, and neither does the ground a few frames after a snap
+from the overlook: the first tested frame there drew about 3,500 pages that the
+overlook's marks had left out, in its second phase, as it should.
+
+Culled frames of a still scene are not quite identical among themselves: up to
+about 200 pixels change by one level between shots, in the gaps of dense leaves,
+where frames without culling change in one. Pages move between the phases from
+frame to frame there, which changes the order in which coplanar faces of
+neighbouring sections are drawn; that is the likely cause, not measured
+directly.
+
 ## Decisions
 
 - The mod extends Minecraft's renderer instead of running its own beside it
@@ -575,10 +617,6 @@ warning.
 ## Follow-Up
 
 - A task stage for step 3, to cull models outside the view on the GPU.
-- Step 6 for entities and block entities: test their boxes against the terrain
-  pyramid before Minecraft extracts them.
-- Skipping the second phase while little is hidden, from the GPU's counts of
-  hidden pages, which the CPU reads a few frames late.
 - `ItemStackRenderState.getModelBoundingBox` recomputes every item's box every
   frame from the same extents and transform: 29 % of the render thread with 900
   dropped items once the vertices are on the GPU. It could be kept per model.

@@ -36,6 +36,7 @@ public final class TerrainRendererDebugConfig {
 	private static volatile boolean taskStagePageCulling = booleanProperty("vim.taskStagePageCulling", true);
 	private static volatile boolean gpuDrivenTerrain = booleanProperty("vim.gpuDrivenTerrain", true);
 	private static volatile boolean terrainOcclusionCulling = booleanProperty("vim.terrainOcclusionCulling", true);
+	private static volatile boolean terrainOcclusionProbing = booleanProperty("vim.terrainOcclusionProbing", true);
 	private static volatile boolean entityOcclusionCulling = booleanProperty("vim.entityOcclusionCulling", false);
 	private static volatile boolean gpuModelVertices = booleanProperty("vim.gpuModelVertices", true);
 	private static volatile boolean keepFramebuffers = booleanProperty("vim.keepFramebuffers", true);
@@ -200,6 +201,11 @@ public final class TerrainRendererDebugConfig {
 		setBooleanProperty("vim.terrainOcclusionCulling", enabled);
 	}
 
+	public static void setTerrainOcclusionProbingEnabled(boolean enabled) {
+		terrainOcclusionProbing = enabled;
+		setBooleanProperty("vim.terrainOcclusionProbing", enabled);
+	}
+
 	public static void setEntityOcclusionCullingEnabled(boolean enabled) {
 		entityOcclusionCulling = enabled;
 		setBooleanProperty("vim.entityOcclusionCulling", enabled);
@@ -256,7 +262,7 @@ public final class TerrainRendererDebugConfig {
 	}
 	
 	public static String describe() {
-		return "rendererMode=" + rendererMode() + ", requireVulkanBackend=" + requireVulkanBackend() + ", enableTerrainCaptureBootstrap=" + terrainCaptureBootstrapEnabled() + ", enableMeshTranslucentTerrain=" + meshTranslucentTerrainEnabled() + ", enableMeshletFrustumCulling=" + meshletFrustumCullingEnabled() + ", strictMeshTerrainReplacement=" + strictMeshTerrainReplacement() + ", enableVanillaChunkVisibilityFade=" + vanillaChunkVisibilityFadeEnabled() + ", drawAllCapturedTerrainLayers=" + drawAllCapturedTerrainLayers() + ", terrainGpuTimer=" + terrainGpuTimerEnabled() + ", cullMeshlets=" + cullMeshletsEnabled() + ", taskStagePageCulling=" + taskStagePageCullingEnabled() + ", gpuDrivenTerrain=" + gpuDrivenTerrainEnabled() + ", terrainOcclusionCulling=" + terrainOcclusionCullingEnabled() + ", entityOcclusionCulling=" + entityOcclusionCullingEnabled() + ", gpuModelVertices=" + gpuModelVerticesEnabled() + ", gpuModelMeshShaders=" + gpuModelMeshShadersEnabled() + ", gpuItemVertices=" + gpuItemVerticesEnabled() + ", gpuParticleVertices=" + gpuParticleVerticesEnabled() + ", gpuTextVertices=" + gpuTextVerticesEnabled() + ", shareItemBoundingBoxes=" + shareItemBoundingBoxes() + ", keepFramebuffers=" + keepFramebuffersEnabled() + ", barriersByResource=" + barriersByResourceEnabled() + ", defaultSolidCutoutLayerMode=" + solidCutoutLayerMode() + ", defaultTranslucentLayerMode=" + translucentLayerMode() + ", dumpCapabilities=" + dumpCapabilities() + ", enableAcceleratedWorldgenProviderIntegration=" + acceleratedWorldgenProviderIntegrationEnabled() + ", disableFragmentShadingRate=" + !fragmentShadingRateEnabled() + ", disablePresentPacing=" + disablePresentPacing() + ", presentPacingFrameLatency=" + presentPacingFrameLatency() + ", validationDescriptorBufferOnly=" + validationDescriptorBufferOnly() + ", waitIdleBeforeTerrainUpload=" + waitIdleBeforeTerrainUpload() + ", allowCpuVisibleMeshletFallback=" + allowCpuVisibleMeshletFallback() + ", enableGpuGeneratedMeshTaskCommands=" + enableGpuGeneratedMeshTaskCommands() + ", terrainFragmentShadingRate=" + terrainFragmentShadingRate() + ", initialSectionCapacity=" + initialSectionCapacity() + ", initialMeshletCapacity=" + initialMeshletCapacity() + ", initialVertexPayloadBytes=" + initialVertexPayloadBytes() + ", initialIndexPayloadBytes=" + initialIndexPayloadBytes();
+		return "rendererMode=" + rendererMode() + ", requireVulkanBackend=" + requireVulkanBackend() + ", enableTerrainCaptureBootstrap=" + terrainCaptureBootstrapEnabled() + ", enableMeshTranslucentTerrain=" + meshTranslucentTerrainEnabled() + ", enableMeshletFrustumCulling=" + meshletFrustumCullingEnabled() + ", strictMeshTerrainReplacement=" + strictMeshTerrainReplacement() + ", enableVanillaChunkVisibilityFade=" + vanillaChunkVisibilityFadeEnabled() + ", drawAllCapturedTerrainLayers=" + drawAllCapturedTerrainLayers() + ", terrainGpuTimer=" + terrainGpuTimerEnabled() + ", cullMeshlets=" + cullMeshletsEnabled() + ", taskStagePageCulling=" + taskStagePageCullingEnabled() + ", gpuDrivenTerrain=" + gpuDrivenTerrainEnabled() + ", terrainOcclusionCulling=" + terrainOcclusionCullingEnabled() + ", terrainOcclusionProbing=" + terrainOcclusionProbingEnabled() + ", entityOcclusionCulling=" + entityOcclusionCullingEnabled() + ", gpuModelVertices=" + gpuModelVerticesEnabled() + ", gpuModelMeshShaders=" + gpuModelMeshShadersEnabled() + ", gpuItemVertices=" + gpuItemVerticesEnabled() + ", gpuParticleVertices=" + gpuParticleVerticesEnabled() + ", gpuTextVertices=" + gpuTextVerticesEnabled() + ", shareItemBoundingBoxes=" + shareItemBoundingBoxes() + ", keepFramebuffers=" + keepFramebuffersEnabled() + ", barriersByResource=" + barriersByResourceEnabled() + ", defaultSolidCutoutLayerMode=" + solidCutoutLayerMode() + ", defaultTranslucentLayerMode=" + translucentLayerMode() + ", dumpCapabilities=" + dumpCapabilities() + ", enableAcceleratedWorldgenProviderIntegration=" + acceleratedWorldgenProviderIntegrationEnabled() + ", disableFragmentShadingRate=" + !fragmentShadingRateEnabled() + ", disablePresentPacing=" + disablePresentPacing() + ", presentPacingFrameLatency=" + presentPacingFrameLatency() + ", validationDescriptorBufferOnly=" + validationDescriptorBufferOnly() + ", waitIdleBeforeTerrainUpload=" + waitIdleBeforeTerrainUpload() + ", allowCpuVisibleMeshletFallback=" + allowCpuVisibleMeshletFallback() + ", enableGpuGeneratedMeshTaskCommands=" + enableGpuGeneratedMeshTaskCommands() + ", terrainFragmentShadingRate=" + terrainFragmentShadingRate() + ", initialSectionCapacity=" + initialSectionCapacity() + ", initialMeshletCapacity=" + initialMeshletCapacity() + ", initialVertexPayloadBytes=" + initialVertexPayloadBytes() + ", initialIndexPayloadBytes=" + initialIndexPayloadBytes();
 	}
 	
 	public static String rendererMode() {
@@ -335,6 +341,14 @@ public final class TerrainRendererDebugConfig {
 	 */
 	public static boolean terrainOcclusionCullingEnabled() {
 		return terrainOcclusionCulling;
+	}
+
+	/**
+	 * Whether, while occlusion tests find little terrain hidden, only one frame in sixteen is tested
+	 * and the others draw every page in view in one phase.
+	 */
+	public static boolean terrainOcclusionProbingEnabled() {
+		return terrainOcclusionProbing;
 	}
 
 	public static boolean entityOcclusionCullingEnabled() {

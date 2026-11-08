@@ -249,6 +249,13 @@ renderer code does not drift back into a catch-all root package.
   target draws them, with the pipeline state the first phase drew with, before
   the transparency passes read the depth. The CPU never reads a page's result;
   it reads only counters of how many pages were tested, hidden and drawn late.
+  From those, a few frames late, it follows the share of tested pages found
+  hidden: while that is under 12 %, where the second phase costs more than it
+  saves, only one frame in 16 is tested and the others draw every page in view
+  in one phase, until a test finds 20 % or more hidden
+  (`vim.terrainOcclusionProbing`). A tested frame after untested ones leaves out
+  the pages its last test found hidden, and its own second phase draws those
+  seen now.
 - Entities and block entities can be culled against the same pyramid
   (`EntityOcclusion`, `vim.entityOcclusionCulling`, off by default), in every
   frame with improved transparency, whoever draws the terrain. As Minecraft

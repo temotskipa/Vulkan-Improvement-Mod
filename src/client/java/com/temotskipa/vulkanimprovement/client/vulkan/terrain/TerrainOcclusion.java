@@ -32,11 +32,33 @@ import java.util.concurrent.atomic.LongAdder;
  * <p>
  * The second phase runs where Minecraft draws with improved transparency, which is when it closes
  * the opaque pass before anything else is drawn into the target, so only frames with improved
- * transparency cull. Render thread only.
+ * transparency cull.
+ * <p>
+ * The second phase costs the GPU about as much as drawing a twentieth of the pages would, so where
+ * little is hidden it costs more than it saves. With {@code vim.terrainOcclusionProbing}, once the
+ * frames' tests find less than {@link #SPARSE_BELOW} of the pages they test hidden, only one frame
+ * in {@link #PROBE_INTERVAL} is tested, and the others draw every page in view in one phase, until
+ * a test finds {@link #DENSE_FROM} or more hidden. The CPU learns what the tests found from the
+ * GPU's counts, a few frames late, without waiting for them. A tested frame after untested ones
+ * leaves out the pages its last test found hidden, and its own second phase draws those seen now.
+ * Render thread only.
  */
 public final class TerrainOcclusion {
 	private static final Logger LOGGER = LogUtils.getLogger();
 	private static final TerrainOcclusion INSTANCE = new TerrainOcclusion();
+	/**
+	 * The share of tested pages found hidden below which frames are tested only now and then.
+	 */
+	private static final double SPARSE_BELOW = 0.12;
+	/**
+	 * The share of tested pages found hidden from which every frame is tested again.
+	 */
+	private static final double DENSE_FROM = 0.2;
+	/**
+	 * While little is hidden, one frame in this many is tested.
+	 */
+	private static final int PROBE_INTERVAL = 16;
+	private static final long COUNTER_MASK = 0xFFFF_FFFFL;
 	private final TerrainDepthPyramid pyramid = new TerrainDepthPyramid();
 	private final int[] lateOutputs = new int[TerrainGpuLayout.SECTION_PAGES_LAYERS];
 	private final int[] lateCommands = new int[TerrainGpuLayout.SECTION_PAGES_LAYERS];
@@ -48,6 +70,14 @@ public final class TerrainOcclusion {
 	private final LongAdder secondPhaseDraws = new LongAdder();
 	private final LongAdder secondPhaseRefusals = new LongAdder();
 	private final LongAdder untestedFrames = new LongAdder();
+	private final LongAdder probingFrames = new LongAdder();
+	private final LongAdder probingEntered = new LongAdder();
+	// The GPU's counts of tested and hidden pages, as last read, which wrap at 32 bits.
+	private long countedTested;
+	private long countedHidden;
+	// Whether only one frame in PROBE_INTERVAL is tested, and how many frames since the last one.
+	private boolean probing;
+	private int framesSinceProbe;
 	private @Nullable TerrainGpuDrivenFrame frame;
 	private @Nullable VisibleSectionGrid sections;
 	private int slotCount;
@@ -91,7 +121,40 @@ public final class TerrainOcclusion {
 		}
 		Minecraft minecraft = Minecraft.getInstance();
 		GpuTexture depth = minecraft.gameRenderer.mainRenderTarget().getDepthTexture();
-		return minecraft.gameRenderer.useImprovedTransparency() && depth != null && depthSupported(depth);
+		if (!minecraft.gameRenderer.useImprovedTransparency() || depth == null || !depthSupported(depth)) {
+			return false;
+		}
+		followHiddenShare();
+		if (this.probing && TerrainRendererDebugConfig.terrainOcclusionProbingEnabled() && ++this.framesSinceProbe < PROBE_INTERVAL) {
+			this.probingFrames.increment();
+			return false;
+		}
+		this.framesSinceProbe = 0;
+		return true;
+	}
+
+	/**
+	 * Reads what the tests the GPU has finished since the last read found, and decides from the
+	 * share of the pages they found hidden whether every frame is tested.
+	 */
+	private void followHiddenShare() {
+		long[] counted = DescriptorHeapTerrainResources.get().occlusionCounters();
+		long tested = (counted[0] - this.countedTested) & COUNTER_MASK;
+		long hidden = (counted[1] - this.countedHidden) & COUNTER_MASK;
+		this.countedTested = counted[0];
+		this.countedHidden = counted[1];
+		if (tested == 0L || hidden > tested) {
+			return;
+		}
+		double share = (double) hidden / tested;
+		if (!this.probing && share < SPARSE_BELOW) {
+			this.probing = true;
+			this.framesSinceProbe = 0;
+			this.probingEntered.increment();
+		}
+		else if (this.probing && share >= DENSE_FROM) {
+			this.probing = false;
+		}
 	}
 
 	/**
@@ -266,6 +329,9 @@ public final class TerrainOcclusion {
 		this.pyramid.close();
 		this.armed = false;
 		this.offReason = null;
+		this.probing = false;
+		this.countedTested = 0L;
+		this.countedHidden = 0L;
 		EntityOcclusion.get().reset();
 	}
 
@@ -284,6 +350,6 @@ public final class TerrainOcclusion {
 	 */
 	public String describe() {
 		long[] counted = DescriptorHeapTerrainResources.get().occlusionCounters();
-		return "enabled=" + TerrainRendererDebugConfig.terrainOcclusionCullingEnabled() + ", offReason=" + (this.offReason == null ? "none" : this.offReason) + ", testedPages=" + counted[0] + ", hiddenPages=" + counted[1] + ", secondPhasePages=" + counted[2] + ", occlusionFrames=" + this.occlusionFrames.sum() + ", secondPhaseDraws=" + this.secondPhaseDraws.sum() + ", secondPhaseRefusals=" + this.secondPhaseRefusals.sum() + ", untestedFrames=" + this.untestedFrames.sum() + ", pyramid=" + this.pyramid.width() + "x" + this.pyramid.height() + "/" + this.pyramid.levels();
+		return "enabled=" + TerrainRendererDebugConfig.terrainOcclusionCullingEnabled() + ", offReason=" + (this.offReason == null ? "none" : this.offReason) + ", testedPages=" + counted[0] + ", hiddenPages=" + counted[1] + ", secondPhasePages=" + counted[2] + ", occlusionFrames=" + this.occlusionFrames.sum() + ", secondPhaseDraws=" + this.secondPhaseDraws.sum() + ", secondPhaseRefusals=" + this.secondPhaseRefusals.sum() + ", untestedFrames=" + this.untestedFrames.sum() + ", probing=" + this.probing + ", probingFrames=" + this.probingFrames.sum() + ", probingEntered=" + this.probingEntered.sum() + ", pyramid=" + this.pyramid.width() + "x" + this.pyramid.height() + "/" + this.pyramid.levels();
 	}
 }
