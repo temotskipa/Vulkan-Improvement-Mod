@@ -250,8 +250,10 @@ inside a render pass the level renderer has already opened.
   `VulkanGpuBuffer.Direct`; `FrontendGpuDevice.createBuffer` passes the usage
   through unchecked.
 - Source tokens: `method = "bufferUsageToVk"`.
-- Purpose: turn the usage the mod adds, `ShaderStorage.USAGE_SHADER_STORAGE`,
-  into storage-buffer and device-address use.
+- Purpose: turn the usages the mod adds into Vulkan's, each with device-address
+  use: `ShaderStorage.USAGE_SHADER_STORAGE` into a storage buffer, and
+  `DescriptorStorage`'s into a descriptor heap or a sampler or resource
+  descriptor buffer.
 
 ### VulkanGpuBufferDirectMixin
 

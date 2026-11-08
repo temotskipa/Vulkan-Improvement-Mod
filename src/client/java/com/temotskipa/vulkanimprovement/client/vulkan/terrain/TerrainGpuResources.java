@@ -1,14 +1,13 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
+import com.mojang.renderpearl.api.buffers.GpuBuffer;
 import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
+import com.temotskipa.vulkanimprovement.client.vulkan.gpu.DescriptorStorage;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.DeviceBuffer;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.DeviceBufferPlacement;
+import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ShaderStorage;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuRecords;
-import org.lwjgl.vulkan.EXTDescriptorBuffer;
-import org.lwjgl.vulkan.EXTDescriptorHeap;
-import org.lwjgl.vulkan.VK10;
-import org.lwjgl.vulkan.VK12;
 
 import java.lang.foreign.MemorySegment;
 
@@ -17,11 +16,11 @@ record TerrainGpuResources(DeviceBuffer samplerHeap, DeviceBuffer resourceHeap, 
 		if (!layout.configured()) {
 			return empty();
 		}
-		int descriptorHeapUsage = VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | EXTDescriptorHeap.VK_BUFFER_USAGE_DESCRIPTOR_HEAP_BIT_EXT;
-		int samplerDescriptorBufferUsage = VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | EXTDescriptorBuffer.VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT;
-		int resourceDescriptorBufferUsage = VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | EXTDescriptorBuffer.VK_BUFFER_USAGE_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT | EXTDescriptorBuffer.VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT;
-		int storageUsage = VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK10.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-		int indirectStorageUsage = storageUsage | VK10.VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+		int descriptorHeapUsage = GpuBuffer.USAGE_COPY_DST | DescriptorStorage.USAGE_DESCRIPTOR_HEAP;
+		int samplerDescriptorBufferUsage = GpuBuffer.USAGE_COPY_DST | DescriptorStorage.USAGE_SAMPLER_DESCRIPTORS;
+		int resourceDescriptorBufferUsage = GpuBuffer.USAGE_COPY_DST | DescriptorStorage.USAGE_RESOURCE_DESCRIPTORS | DescriptorStorage.USAGE_SAMPLER_DESCRIPTORS;
+		int storageUsage = GpuBuffer.USAGE_COPY_DST | ShaderStorage.USAGE_SHADER_STORAGE;
+		int indirectStorageUsage = storageUsage | GpuBuffer.USAGE_INDIRECT_PARAMETERS;
 		DeviceBuffer samplerHeap = layout.descriptorHeapEnabled() ? new DeviceBuffer(device, "VIM Terrain Sampler Descriptor Heap", layout.samplerHeapBytes(), descriptorHeapUsage, DeviceBufferPlacement.DEVICE_MAPPED) : null;
 		DeviceBuffer resourceHeap = layout.descriptorHeapEnabled() ? new DeviceBuffer(device, "VIM Terrain Resource Descriptor Heap", layout.resourceHeapBytes(), descriptorHeapUsage, DeviceBufferPlacement.DEVICE_MAPPED) : null;
 		DeviceBuffer samplerDescriptorBuffer = layout.descriptorBufferEnabled() ? new DeviceBuffer(device, "VIM Terrain Sampler Descriptor Buffer", layout.samplerDescriptorBufferBytes(), samplerDescriptorBufferUsage, DeviceBufferPlacement.DEVICE_MAPPED) : null;
@@ -81,14 +80,12 @@ record TerrainGpuResources(DeviceBuffer samplerHeap, DeviceBuffer resourceHeap, 
 	void clearDebugCounters() {
 		if (this.debugCounters != null) {
 			this.debugCounters.mapped().asSlice(0L, TerrainGpuLayout.DEBUG_COUNTER_BYTES).fill((byte) 0);
-			this.debugCounters.flush();
 		}
 	}
 	
 	void clearWorkQueueCounters() {
 		if (this.workQueue != null) {
 			this.workQueue.mapped().asSlice(0L, TerrainGpuLayout.TERRAIN_WORK_QUEUE_COUNTER_BYTES).fill((byte) 0);
-			this.workQueue.flush();
 		}
 	}
 	
@@ -100,7 +97,6 @@ record TerrainGpuResources(DeviceBuffer samplerHeap, DeviceBuffer resourceHeap, 
 		if (this.debugCounters == null) {
 			return "none";
 		}
-		this.debugCounters.invalidate();
 		MemorySegment counters = this.debugCounters.mapped();
 		return "culledMeshlets=" + Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, 4L)) + ", visibilityInputPages=" + Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET)) + ", visibilityCulledPages=" + Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET + Integer.BYTES)) + ", visibilityVisiblePages=" + Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET + 2 * Integer.BYTES));
 	}

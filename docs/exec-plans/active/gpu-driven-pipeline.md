@@ -579,6 +579,22 @@ varied by one level in a few hundred pixels. Five PNGs in turn, twice, show no
 item pixel differing; what varies is the ground seen through leaves far below
 the items, by one level, and it varies as much with the flag off.
 
+2026-11-08, terrain on Minecraft's buffers. `DeviceBuffer` was a buffer of the
+mod's made through Minecraft's allocator; it is now a Minecraft `GpuBuffer`,
+made by `GpuDevice.createBuffer` with Minecraft's usages and the mod's, or by
+Minecraft's Vulkan device while Minecraft is still making the device and its
+frontend has none yet, which is when terrain is configured. Its placement
+becomes Minecraft's mapping usages, its mapping a view of `GpuBuffer.map` kept
+open until the buffer is given back, and its destruction Minecraft's queue.
+Three usages join `ShaderStorage`'s in `bufferUsageToVk`: a descriptor heap and
+sampler and resource descriptor buffers (`DescriptorStorage`). Minecraft's
+mappable memory is host-coherent, so terrain no longer flushes. The validation
+layer reports nothing from the mod through strict mesh terrain, occlusion
+culling, entity occlusion culling, render distance 32, a resize, a reload,
+rejoining and shutdown, nor in a session started with every terrain capacity
+at its minimum, which grew the buffers twelve times; strict mesh terrain
+against Minecraft's at the ground differs by a mean under 0.001 of 765.
+
 ## Decisions
 
 - The mod extends Minecraft's renderer instead of running its own beside it

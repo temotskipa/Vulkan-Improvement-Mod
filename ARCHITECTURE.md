@@ -127,10 +127,11 @@ the mod is idle (see `LevelRendererMixin` in
 - `client.vulkan.terrain`: Owns terrain meshlet storage, GPU buffer layout,
   mesh shader dispatch, descriptor resources, terrain material records,
   fragment shading rate, and renderer debug flags.
-- `client.vulkan.gpu`: Owns what every GPU-driven pass shares: the mod's
-  buffers (`DeviceBuffer`), shader compilation, compute pipelines and debug
-  names for Vulkan objects, and the mod's extensions of Minecraft's: the
-  shader-storage buffer usage and buffer device addresses (`ShaderStorage`),
+- `client.vulkan.gpu`: Owns what every GPU-driven pass shares: Minecraft
+  buffers kept mapped for its passes (`DeviceBuffer`), shader compilation,
+  compute pipelines and debug names for Vulkan objects, and the mod's
+  extensions of Minecraft's: the shader-storage and descriptor buffer usages
+  and buffer device addresses (`ShaderStorage`, `DescriptorStorage`),
   compute dispatch on Minecraft's command encoder (`ComputeCommands`), and
   framebuffers kept across frames for its render passes (`FramebufferCache`)
   and barriers held back after its transfers until a command needs them
@@ -317,12 +318,19 @@ renderer code does not drift back into a catch-all root package.
   keyed by section node and chunk layer, not by vanilla draw objects, so later
   GPU visibility work can consume resident section-layer records without
   depending on transient render-pass draw slices.
-- `DeviceBufferPlacement` says where a buffer of the mod's lives. What the
-  pages hold is in device memory and written by copies; what the CPU writes
-  each frame and the GPU reads or counts up in the same frame (visible page
-  lists, mesh-task commands, the material table, counters, descriptors) is in
-  device memory the CPU maps for sequential writes; host memory is for staging
-  only. The mesh stage counts nothing per meshlet.
+- Terrain's buffers are Minecraft's: `DeviceBuffer` makes each through
+  `GpuDevice.createBuffer`, or through Minecraft's Vulkan device while
+  Minecraft is still making the device and the frontend has none yet, with
+  Minecraft's usages and the mod's, and keeps it mapped through Minecraft's
+  `GpuBuffer.map` until it gives it back to Minecraft's destruction queue.
+  `DeviceBufferPlacement` says where one lives, which it asks of Minecraft
+  through the mapping usages. What the pages hold is in device memory and
+  written by copies; what the CPU writes each frame and the GPU reads or
+  counts up in the same frame (visible page lists, mesh-task commands, the
+  material table, counters, descriptors) is in device memory the CPU maps for
+  sequential writes; host memory is for staging and what the CPU reads back.
+  Minecraft's mappable memory is host-coherent, so nothing is flushed. The mesh
+  stage counts nothing per meshlet.
 - `TerrainPerformanceMonitor` times frames and, with `vim.terrainGpuTimer`,
   the GPU time of the mod's prepared work and of each group of terrain layers,
   through Minecraft's own timestamp queries. It measures vanilla terrain and
@@ -336,7 +344,7 @@ renderer code does not drift back into a catch-all root package.
   name them, and the mod writes them, and captured section data, through
   `MemorySegment`s. Only what LWJGL or Minecraft hands over or takes as a
   `ByteBuffer` stays one: push constants, SPIR-V, descriptors and Minecraft's
-  section buffers. `DeviceBuffer` turns a buffer's mapped address into a
+  section buffers. `DeviceBuffer` turns the mapping Minecraft hands over into a
   segment of the buffer's size once, the one unchecked step; every access after
   it is checked against that size and fails once the buffer is given back.
   Offsets into the payload buffers are 64 bits wide, so those buffers may grow

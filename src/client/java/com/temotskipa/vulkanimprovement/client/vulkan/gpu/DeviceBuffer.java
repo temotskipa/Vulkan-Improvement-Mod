@@ -1,99 +1,78 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.gpu;
 
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.renderpearl.api.buffers.GpuBuffer;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice.MappedView;
+import com.mojang.renderpearl.api.device.GpuDevice;
 import com.mojang.renderpearl.backend.vulkan.Destroyable;
 import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
-import com.mojang.renderpearl.backend.vulkan.VulkanUtils;
+import com.mojang.renderpearl.backend.vulkan.VulkanGpuBuffer;
 import org.jspecify.annotations.Nullable;
-import org.lwjgl.PointerBuffer;
-import org.lwjgl.system.MemoryStack;
-import org.lwjgl.util.vma.Vma;
-import org.lwjgl.util.vma.VmaAllocationCreateInfo;
-import org.lwjgl.util.vma.VmaAllocationInfo;
-import org.lwjgl.vulkan.VK10;
-import org.lwjgl.vulkan.VK12;
-import org.lwjgl.vulkan.VkBufferCreateInfo;
-import org.lwjgl.vulkan.VkBufferDeviceAddressInfo;
+import org.lwjgl.system.MemoryUtil;
 
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
-import java.nio.IntBuffer;
-import java.nio.LongBuffer;
 
 /**
- * A Vulkan buffer of the mod's, reached by the GPU through its device address and, where it is
- * mapped, by the CPU through a checked segment.
+ * A Minecraft buffer the mod's GPU passes reach through its device address and, where it is mapped,
+ * the CPU through a checked segment. It is made by {@code GpuDevice.createBuffer}, or by Minecraft's
+ * Vulkan device itself while Minecraft is still making the device, and stays mapped through
+ * Minecraft's {@code GpuBuffer.map} from when it is made until it is given back. Minecraft's mappable
+ * buffers are host-coherent, so what the CPU writes reaches the GPU, and what the GPU writes the CPU,
+ * without a flush.
  */
-public final class DeviceBuffer implements Destroyable {
-	private final VulkanDevice device;
+public final class DeviceBuffer {
 	private final String label;
+	private final GpuBuffer buffer;
 	private final long vkBuffer;
-	private final long allocation;
 	private final long size;
 	private final long deviceAddress;
-	private final long mappedAddress;
-	// How long the CPU may reach the mapped memory: until the buffer is given back. Null where the
-	// CPU cannot map the buffer.
+	// The view Minecraft maps the whole buffer in, kept open until the buffer is given back. Null
+	// where the CPU cannot map the buffer.
+	private final @Nullable MappedView mapping;
+	// How long the CPU may reach the mapped memory: until the buffer is given back.
 	private final @Nullable Arena mappedLifetime;
 	// The mapped memory. Every access is checked against the buffer's size, and fails once the
-	// buffer is given back rather than reach memory that is freed.
+	// buffer is given back rather than reach memory that is unmapped.
 	private final @Nullable MemorySegment mapped;
-	// Whether the CPU's writes reach the GPU, and the GPU's the CPU, without a flush or an
-	// invalidation. A flush of a whole buffer otherwise costs the render thread every frame.
-	private final boolean coherent;
 	private boolean closed;
-	private boolean destroyed;
 	
+	/**
+	 * @param usage Minecraft's buffer usages, with the mod's from {@link ShaderStorage} and
+	 *              {@link DescriptorStorage}; the placement adds the mapping usages
+	 */
 	public DeviceBuffer(VulkanDevice device, String label, long size, int usage, DeviceBufferPlacement placement) {
-		this.device = device;
 		this.label = label;
 		this.size = size;
-		
-		try (MemoryStack stack = MemoryStack.stackPush()) {
-			VkBufferCreateInfo bufferInfo = VkBufferCreateInfo.calloc(stack).sType$Default();
-			bufferInfo.size(size);
-			bufferInfo.usage(usage | VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
-			bufferInfo.sharingMode(VK10.VK_SHARING_MODE_EXCLUSIVE);
-			
-			VmaAllocationCreateInfo allocationInfo = VmaAllocationCreateInfo.calloc(stack);
-			allocationInfo.usage(placement == DeviceBufferPlacement.HOST ? Vma.VMA_MEMORY_USAGE_AUTO_PREFER_HOST : Vma.VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
-			if (placement == DeviceBufferPlacement.HOST) {
-				allocationInfo.flags(Vma.VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | Vma.VMA_ALLOCATION_CREATE_MAPPED_BIT);
-			}
-			else if (placement == DeviceBufferPlacement.DEVICE_MAPPED) {
-				allocationInfo.flags(Vma.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | Vma.VMA_ALLOCATION_CREATE_MAPPED_BIT);
-			}
-			
-			LongBuffer bufferPtr = stack.callocLong(1);
-			PointerBuffer allocationPtr = stack.callocPointer(1);
-			VmaAllocationInfo allocationResult = VmaAllocationInfo.calloc(stack);
-			VulkanUtils.crashIfFailure(device, Vma.vmaCreateBuffer(device.vma(), bufferInfo, allocationInfo, bufferPtr, allocationPtr, allocationResult), "Failed to allocate Vulkan Improvement buffer " + label);
-			this.vkBuffer = bufferPtr.get(0);
-			this.allocation = allocationPtr.get(0);
-			this.mappedAddress = allocationResult.pMappedData();
-			this.mappedLifetime = this.mappedAddress == 0L ? null : placement == DeviceBufferPlacement.HOST ? Arena.ofConfined() : Arena.ofShared();
-			this.mapped = this.mappedLifetime == null ? null : mappedSegment(this.mappedAddress, size, this.mappedLifetime);
-			IntBuffer memoryFlags = stack.callocInt(1);
-			Vma.vmaGetAllocationMemoryProperties(device.vma(), this.allocation, memoryFlags);
-			this.coherent = (memoryFlags.get(0) & VK10.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0;
-			this.deviceAddress = queryDeviceAddress(stack, device, this.vkBuffer);
-			VulkanObjectNames.name(device, VK10.VK_OBJECT_TYPE_BUFFER, this.vkBuffer, label);
+		int placedUsage = usage | switch (placement) {
+			case DEVICE -> 0;
+			case DEVICE_MAPPED -> GpuBuffer.USAGE_MAP_WRITE;
+			case HOST -> GpuBuffer.USAGE_MAP_READ | GpuBuffer.USAGE_MAP_WRITE;
+		};
+		GpuDevice frontend = RenderSystem.tryGetDevice();
+		this.buffer = frontend != null ? frontend.createBuffer(() -> label, placedUsage, size) : device.createBuffer(() -> label, placedUsage, size);
+		this.vkBuffer = ((VulkanGpuBuffer) this.buffer).vkBuffer();
+		this.deviceAddress = (usage & DescriptorStorage.ADDRESSED_USAGES) != 0 && this.buffer instanceof ShaderStorageAddressable addressable ? addressable.vim$deviceAddress() : 0L;
+		if (placement == DeviceBufferPlacement.DEVICE) {
+			this.mapping = null;
+			this.mappedLifetime = null;
+			this.mapped = null;
+		}
+		else {
+			this.mapping = this.buffer.map(0L, size, placement == DeviceBufferPlacement.HOST, true);
+			this.mappedLifetime = placement == DeviceBufferPlacement.HOST ? Arena.ofConfined() : Arena.ofShared();
+			this.mapped = mappedSegment(MemoryUtil.memAddress(this.mapping.data()), size, this.mappedLifetime);
 		}
 	}
 	
 	/**
-	 * The mapped memory as a segment of the buffer's size. Vulkan hands over only its address, so
-	 * this is the one place the mod has to be told how much memory there is; every access after it
-	 * is checked. Making a segment of an address needs native access, which Minecraft starts the
+	 * The mapped memory as a segment of the buffer's size. Minecraft hands over a byte buffer of the
+	 * memory, so this is the one place the mod has to be told how much there is; every access after
+	 * it is checked. Making a segment of an address needs native access, which Minecraft starts the
 	 * game with.
 	 */
 	private static MemorySegment mappedSegment(long address, long size, Arena lifetime) {
 		return MemorySegment.ofAddress(address).reinterpret(size, lifetime, null);
-	}
-	
-	private static long queryDeviceAddress(MemoryStack stack, VulkanDevice device, long buffer) {
-		VkBufferDeviceAddressInfo addressInfo = VkBufferDeviceAddressInfo.calloc(stack).sType$Default();
-		addressInfo.buffer(buffer);
-		return VK12.vkGetBufferDeviceAddress(device.vkDevice(), addressInfo);
 	}
 	
 	public long vkBuffer() {
@@ -112,12 +91,15 @@ public final class DeviceBuffer implements Destroyable {
 		return this.size;
 	}
 	
+	/**
+	 * The buffer's device address, or 0 for one made without a usage that gives it one.
+	 */
 	public long deviceAddress() {
 		return this.deviceAddress;
 	}
 	
 	public boolean hostVisible() {
-		return this.mappedAddress != 0L;
+		return this.mapped != null;
 	}
 	
 	/**
@@ -130,34 +112,15 @@ public final class DeviceBuffer implements Destroyable {
 		return this.mapped;
 	}
 	
-	public void flush() {
-		flush(0L, this.size);
-	}
-	
-	/**
-	 * Makes what the CPU wrote to a range visible to the GPU.
-	 */
-	public void flush(long offset, long length) {
-		if (this.mappedAddress != 0L && !this.coherent && length > 0L) {
-			Vma.vmaFlushAllocation(this.device.vma(), this.allocation, offset, length);
-		}
-	}
-	
-	public void invalidate() {
-		if (this.mappedAddress != 0L && !this.coherent) {
-			Vma.vmaInvalidateAllocation(this.device.vma(), this.allocation, 0L, this.size);
-		}
-	}
-	
 	/**
 	 * Gives the buffer back. The CPU is done with it from here on, though the GPU may still read it
-	 * until Minecraft destroys it.
+	 * until Minecraft destroys it, which Minecraft does once the frames that use it are done.
 	 */
 	public synchronized void close() {
 		if (!this.closed) {
 			this.closed = true;
 			endMappedAccess();
-			this.device.createCommandEncoder().queueForDestroy(this);
+			this.buffer.close();
 		}
 	}
 	
@@ -165,19 +128,20 @@ public final class DeviceBuffer implements Destroyable {
 		if (this.mappedLifetime != null && this.mappedLifetime.scope().isAlive()) {
 			this.mappedLifetime.close();
 		}
+		if (this.mapping != null) {
+			this.mapping.close();
+		}
 	}
 	
+	/**
+	 * Destroys the buffer at once, when the renderer shuts down with the GPU done with it. A buffer
+	 * already given back is Minecraft's to destroy.
+	 */
 	public synchronized void destroyNow() {
-		this.closed = true;
-		destroy();
-	}
-	
-	@Override
-	public synchronized void destroy() {
-		if (!this.destroyed) {
-			this.destroyed = true;
+		if (!this.closed) {
+			this.closed = true;
 			endMappedAccess();
-			Vma.vmaDestroyBuffer(this.device.vma(), this.vkBuffer, this.allocation);
+			((Destroyable) this.buffer).destroy();
 		}
 	}
 }

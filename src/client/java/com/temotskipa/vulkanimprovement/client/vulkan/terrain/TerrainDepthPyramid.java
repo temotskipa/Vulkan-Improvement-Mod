@@ -4,6 +4,7 @@ import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ComputePipeline;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.DeviceBuffer;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.DeviceBufferPlacement;
+import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ShaderStorage;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuLayout;
 import org.jspecify.annotations.Nullable;
 import org.lwjgl.system.MemoryStack;
@@ -43,7 +44,7 @@ final class TerrainDepthPyramid {
 		if (levelCount == 0) {
 			return;
 		}
-		this.buffer = new DeviceBuffer(device, "VIM Terrain Depth Pyramid", texels * Float.BYTES, VK10.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, DeviceBufferPlacement.DEVICE);
+		this.buffer = new DeviceBuffer(device, "VIM Terrain Depth Pyramid", texels * Float.BYTES, ShaderStorage.USAGE_SHADER_STORAGE, DeviceBufferPlacement.DEVICE);
 		this.width = width;
 		this.height = height;
 		this.levels = levelCount;

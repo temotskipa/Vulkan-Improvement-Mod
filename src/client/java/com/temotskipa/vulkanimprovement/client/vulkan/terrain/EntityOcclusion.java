@@ -3,6 +3,7 @@ package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.DeviceBuffer;
 import com.temotskipa.vulkanimprovement.client.vulkan.gpu.DeviceBufferPlacement;
+import com.temotskipa.vulkanimprovement.client.vulkan.gpu.ShaderStorage;
 import com.temotskipa.vulkanimprovement.client.vulkan.terrain.util.TerrainGpuRecords;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
@@ -15,7 +16,6 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
-import org.lwjgl.vulkan.VK10;
 import org.lwjgl.vulkan.VkCommandBuffer;
 
 import java.lang.foreign.MemorySegment;
@@ -241,7 +241,6 @@ public final class EntityOcclusion {
 		DeviceBuffer buffer = ring(device);
 		long boxes = boxesOffset(slot);
 		slot.writeBoxes(buffer.mapped(), boxes);
-		buffer.flush(boxes, slot.count() * BOX_BYTES);
 		if (!program.prepareBoxTest(commandBuffer, buffer.deviceAddress() + boxes, buffer.deviceAddress() + resultsOffset(slot), slot.count(), pyramid)) {
 			this.refusedTests.increment();
 			return;
@@ -254,7 +253,7 @@ public final class EntityOcclusion {
 	private DeviceBuffer ring(VulkanDevice device) {
 		DeviceBuffer buffer = this.ring;
 		if (buffer == null) {
-			buffer = new DeviceBuffer(device, "VIM Entity Occlusion Boxes", SLOT_COUNT * SLOT_BYTES, VK10.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, DeviceBufferPlacement.HOST);
+			buffer = new DeviceBuffer(device, "VIM Entity Occlusion Boxes", SLOT_COUNT * SLOT_BYTES, ShaderStorage.USAGE_SHADER_STORAGE, DeviceBufferPlacement.HOST);
 			this.ring = buffer;
 		}
 		return buffer;
@@ -315,7 +314,6 @@ public final class EntityOcclusion {
 		if (buffer == null) {
 			return;
 		}
-		buffer.invalidate();
 		MemorySegment mapped = buffer.mapped();
 		long results = resultsOffset(slot);
 		this.hiddenEntities.clear();

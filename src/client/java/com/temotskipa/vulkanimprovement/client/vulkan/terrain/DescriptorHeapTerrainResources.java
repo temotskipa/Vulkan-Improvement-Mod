@@ -1,5 +1,6 @@
 package com.temotskipa.vulkanimprovement.client.vulkan.terrain;
 
+import com.mojang.renderpearl.api.buffers.GpuBuffer;
 import com.mojang.renderpearl.api.commands.GpuFence;
 import com.mojang.renderpearl.api.textures.GpuSampler;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
@@ -123,7 +124,6 @@ public final class DescriptorHeapTerrainResources {
 		}
 		
 		TerrainMaterialClassifier.writeTerrainLayerRecords(materialTable.mapped(), textureInfo(blockAtlas), textureInfo(lightmap));
-		materialTable.flush();
 		this.materialTableWrites.increment();
 	}
 	
@@ -281,7 +281,7 @@ public final class DescriptorHeapTerrainResources {
 		for (MeshletPageUpload upload : uploads) {
 			stagingBytes += upload.bytes();
 		}
-		DeviceBuffer staging = stagingBytes > 0L ? new DeviceBuffer(activeDevice, "VIM Terrain Page Staging", stagingBytes, VK10.VK_BUFFER_USAGE_TRANSFER_SRC_BIT, DeviceBufferPlacement.HOST) : null;
+		DeviceBuffer staging = stagingBytes > 0L ? new DeviceBuffer(activeDevice, "VIM Terrain Page Staging", stagingBytes, GpuBuffer.USAGE_COPY_SRC, DeviceBufferPlacement.HOST) : null;
 		Buffer vertexRegions = VkBufferCopy.calloc(uploads.size());
 		Buffer indexRegions = VkBufferCopy.calloc(uploads.size());
 		Buffer headerRegions = VkBufferCopy.calloc(uploads.size());
@@ -297,7 +297,6 @@ public final class DescriptorHeapTerrainResources {
 					cursor = stage(staged, cursor, upload.meshletHeaders(), headerRegions, (long) page.firstMeshlet() * TerrainGpuLayout.MESHLET_HEADER_STRIDE);
 					cursor = stage(staged, cursor, upload.pageRecord(), recordRegions, (long) page.slot() * TerrainGpuLayout.SECTION_METADATA_STRIDE);
 				}
-				staging.flush();
 			}
 			
 			VkCommandBuffer commandBuffer = Objects.requireNonNull(TerrainRenderPassAccess.frameCommandBuffer(encoder), "no render pass is open");
@@ -448,7 +447,6 @@ public final class DescriptorHeapTerrainResources {
 				writeSampledImageDescriptor(device, stack, descriptors, textureLayout.cloudsDepthImageOffset(), textureLayout.sampledImageDescriptorBytes(), this.textureBindings.get(CLOUDS_DEPTH_IMAGE));
 			}
 		}
-		activeResources.resourceDescriptorBuffer().flush();
 		writeTerrainMaterialRecords(activeResources, blockAtlas, lightmap);
 		this.descriptorBufferWrites.increment();
 		this.lastDescriptorWrite = write;
@@ -507,7 +505,6 @@ public final class DescriptorHeapTerrainResources {
 		if (buffer == null) {
 			return new long[3];
 		}
-		buffer.invalidate();
 		MemorySegment counters = buffer.mapped();
 		long base = TerrainGpuLayout.VISIBILITY_COUNTER_OFFSET;
 		return new long[]{Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, base)), Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, base + Integer.BYTES)), Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, base + 2 * Integer.BYTES))};
@@ -527,7 +524,6 @@ public final class DescriptorHeapTerrainResources {
 		if (buffer == null) {
 			return new long[3];
 		}
-		buffer.invalidate();
 		MemorySegment counters = buffer.mapped();
 		long base = TerrainGpuLayout.OCCLUSION_COUNTER_OFFSET;
 		return new long[]{Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, base)), Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, base + Integer.BYTES)), Integer.toUnsignedLong(counters.get(TerrainGpuRecords.INT, base + 2 * Integer.BYTES))};
@@ -577,7 +573,6 @@ public final class DescriptorHeapTerrainResources {
 				records.set(TerrainGpuRecords.FLOAT, record + TerrainVisibleRecord.VISIBILITY, visibility);
 			}
 		}
-		ring.flush((long) allocation.offset() * TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE, (long) count * TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE);
 		this.visiblePageListUploads.increment();
 		this.visiblePageRecordsUploaded.add(count);
 		return new TerrainVisiblePageUpload(allocation.offset(), allocation.offset() + count, count, ring.deviceAddress(), true);
@@ -671,7 +666,6 @@ public final class DescriptorHeapTerrainResources {
 		MemorySegment frame = ring.mapped().asSlice(offsetBytes, (long) written * TerrainGpuLayout.VISIBLE_MESHLET_RECORD_STRIDE);
 		frame.asSlice(0L, counterBytes).fill((byte) 0);
 		MemorySegment.copy(sections.words(), 0, frame, TerrainGpuRecords.LONG, counterBytes, sections.wordCount());
-		ring.flush(offsetBytes, frame.byteSize());
 		this.gpuDrivenFrameUploads.increment();
 		return new TerrainGpuDrivenFrame(ring.deviceAddress(), allocation.offset(), allocation.offset() + written, true);
 	}
@@ -727,7 +721,6 @@ public final class DescriptorHeapTerrainResources {
 				visibleRecords.set(TerrainGpuRecords.FLOAT, record + TerrainVisibleRecord.VISIBILITY, visibility);
 			}
 		}
-		visibleMeshlets.flush();
 		this.visibleMeshletListUploads.increment();
 		this.visibleMeshletRecordsUploaded.add(requiredRecords);
 		this.lastVisibleMeshletUpload = TerrainVisibleMeshletStats.fromAllocation(requiredRecords, 0, allocation);
@@ -797,7 +790,6 @@ public final class DescriptorHeapTerrainResources {
 				queue.set(TerrainGpuRecords.FLOAT, record + TerrainWorkQueueRecord.VISIBILITY, visibility);
 			}
 		}
-		workQueue.flush();
 		this.terrainWorkQueueUploads.increment();
 		this.terrainWorkQueueRecordsUploaded.add(requiredRecords);
 		if (wrapped) {
@@ -825,7 +817,6 @@ public final class DescriptorHeapTerrainResources {
 		
 		DeviceBuffer meshTaskCommands = this.resources.meshTaskCommands();
 		writeMeshTaskCommand(meshTaskCommands.mapped(), upload.offsetBytes(), taskCount);
-		meshTaskCommands.flush();
 		this.terrainMeshTaskCommandUploads.increment();
 		return upload;
 	}
@@ -902,7 +893,6 @@ public final class DescriptorHeapTerrainResources {
 		if (upload.ready()) {
 			DeviceBuffer meshTaskCommands = this.resources.meshTaskCommands();
 			writeMeshTaskCommand(meshTaskCommands.mapped(), upload.offsetBytes(), 0);
-			meshTaskCommands.flush();
 			this.terrainMeshTaskCommandReservations.increment();
 		}
 		return upload;
