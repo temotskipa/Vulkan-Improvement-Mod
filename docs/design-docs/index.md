@@ -7,6 +7,9 @@ Design docs capture durable decisions that future work should preserve.
 - [gpu-driven-worldgen-rendering.md](gpu-driven-worldgen-rendering.md):
   feasibility boundaries for GPU-driven rendering, GPU-assisted visual world
   data, and GPU-authoritative worldgen.
+- [physical-world.md](physical-world.md): the agreed scope for physical light,
+  heat, sound, wind and weather driving gameplay, and the renderer drawing the
+  same quantities.
 
 Add new design docs when a decision changes architecture, runtime contracts, or
 developer workflow.

@@ -138,6 +138,11 @@ should all consume those same records.
 
 ## RT-Derived Gameplay Lighting
 
+The agreed scope is in [physical-world.md](physical-world.md), which takes the
+next step this section leaves open: a deterministic physical light model that
+replaces gameplay light engine-wide, per world, with 0-15 levels derived from it
+for code that is not rewritten. What follows is the earlier feasibility view.
+
 RT can eventually improve gameplay simulation, but this is a different contract
 from visual ray tracing. Minecraft gameplay lighting is authoritative server
 state. For example, monster spawning currently checks sky light, block light,
